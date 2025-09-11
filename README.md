@@ -1,4 +1,4 @@
-# Asmbly Automation Hub
+# Asmbly Facilities and Maintenance Tracking Automation Hub
 
 This repository contains serverless AWS Lambda functions that automate various tasks for Asmbly Makerspace. All infrastructure is managed as code using the AWS Serverless Application Model (SAM).
 
@@ -81,3 +81,4 @@ To add a new function to this project, follow these steps:
 * `template.yaml`: Defines all AWS resources. **Start here to understand the architecture.**
 * `/functions`: Contains a separate folder for each Lambda function's Python code.
 * `/layers`: Holds shared code or dependencies. Currently used for the `requests` Python library.
+
