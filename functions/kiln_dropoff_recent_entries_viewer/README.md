@@ -40,7 +40,7 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 
 ### Visual Flow
 
-
+```
 +---------------+      +----------------+      +-----------------+      +---------------------+
 | User's        |      | ClickUp        |      | AWS API Gateway |      | AWS Lambda Function |
 | Browser       |      | Form           |      | (Public URL)    |      | (Your Code)         |
@@ -67,7 +67,7 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 |                     |                      |                       |
 (9) Display Page              |                      |                       |
 |                     |                      |                       |
-
+```
 
 ### Step-by-Step Data Flow:
 
@@ -131,4 +131,4 @@ All settings are managed via environment variables within the AWS Lambda functio
 
 ## Deployment
 
-The deployment process is managed and specified in the [Deployment Instructions](docs/Deploying.md).
+The deployment process is managed and specified in the [Deployment Instructions](/docs/Deploying.md).

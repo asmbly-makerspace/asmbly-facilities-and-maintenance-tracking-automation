@@ -46,6 +46,7 @@ This diagram illustrates the secure, serverless workflow for the automated task 
 
 ### Visual Flow
 
+```
 +-----------------------+      +---------------------+      +-----------------------+
 | Amazon EventBridge    |      | AWS Lambda Function |      | AWS Secrets Manager   |
 | (Scheduled Rule)      |      | (Your Code)         |      | (API Keys)            |
@@ -62,7 +63,7 @@ This diagram illustrates the secure, serverless workflow for the automated task 
 |                             |
 |               (6) Post Messages ---------->[Slack API]
 |                             |
-
+```
 
 
 ### Step-by-Step Data Flow:
@@ -109,4 +110,4 @@ All settings are managed via environment variables within the AWS Lambda functio
 
 ## Deployment
 
-The deployment process is managed and specified in the [Deployment Instructions](docs/Deploying.md).
+The deployment process is managed and specified in the [Deployment Instructions](/docs/Deploying.md).
