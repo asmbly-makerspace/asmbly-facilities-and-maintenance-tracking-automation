@@ -30,23 +30,3 @@ Making changes and deploying them is a straightforward process.
     sam deploy
     ```
     *Note: The first time you deploy, you should use `sam deploy --guided` to walk through the initial stack setup.*
-
-## Adding a New Lambda Function
-
-To add a new function to this project, follow these steps:
-
-1.  **Create a New Function Folder:**
-    * Inside the `/functions` directory, create a new folder for your function (e.g., `functions/my-new-function/`).
-
-2.  **Write Your Lambda Code:**
-    * Add your Python code to a file inside the new folder. By convention, this file is named `lambda_function.py`, and the main handler function is called `lambda_handler`.
-
-3.  **Define the Function in `template.yaml`:**
-    * Open the `template.yaml` file and add a new resource block for your function. You can copy and paste the structure of an existing function as a starting point.
-    * Make sure to update the `CodeUri` property to point to your new folder (e.g., `CodeUri: functions/my-new-function/`).
-    * Configure the function's `Properties`, including its trigger (`Events`), `Role`, `Environment` variables, and any `Layers` it needs.
-
-4.  **Build and Deploy:**
-    * Run `sam build` to package your new function.
-
-    * Run `sam deploy` to deploy the changes. SAM will see the new function in your template and create it in AWS.

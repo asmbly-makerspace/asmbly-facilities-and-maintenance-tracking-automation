@@ -39,7 +39,7 @@ This project uses the **AWS Serverless Application Model (SAM)**. This means:
 
 ## Supporting Documentation
 
-- [**CONTRIBUTING.md**](CONTRIBUTING.md) - Hot to contribute to the hub
+- [**CONTRIBUTING.md**](CONTRIBUTING.md) - Hot to contribute to the hub and add new functions.
 - [**Deploying.md**](Deploying.md) - How to deploy to the hub
 
 ## Repository Structure Overview
