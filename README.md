@@ -3,6 +3,7 @@
 This repository contains serverless AWS Lambda functions that automate various tasks for Asmbly Makerspace. All infrastructure is managed as code using the AWS Serverless Application Model (SAM).
 
 ## Table of Contents
+- [TODO](#todo)
 - [What's in this Repository?](#whats-in-this-repository)
 - [How It's Managed (The Important Part!)](#how-its-managed-the-important-part)
 - [How to Contribute & Deploy](#how-to-contribute--deploy)
@@ -10,6 +11,14 @@ This repository contains serverless AWS Lambda functions that automate various t
   - [Deployment Workflow](#deployment-workflow)
 - [Adding a New Lambda Function](#adding-a-new-lambda-function)
 - [Repository Structure Overview](#repository-structure-overview)
+
+## TODO
+
+[] Manual Deployment of each lambda for POC purposes
+[] Approval from Asmbly IT
+[] Prove client-side deployment of yaml file
+[] Decide on branch & deployment strategy
+[] Use GitHub Actions for automated deployment
 
 ## What's in this Repository?
 
@@ -81,4 +90,5 @@ To add a new function to this project, follow these steps:
 * `template.yaml`: Defines all AWS resources. **Start here to understand the architecture.**
 * `/functions`: Contains a separate folder for each Lambda function's Python code.
 * `/layers`: Holds shared code or dependencies. Currently used for the `requests` Python library.
+
 
