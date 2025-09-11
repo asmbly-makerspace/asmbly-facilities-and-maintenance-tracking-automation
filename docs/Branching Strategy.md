@@ -2,6 +2,12 @@
 
 This document outlines the branching strategy for this repository. The goal is to maintain the stability of the `main` branch while allowing for organized development of new features and fixes.
 
+## Table of Contents
+- [1. The `main` Branch](#1-the-main-branch)
+- [2. Development Branches](#2-development-branches)
+  - [Branch Naming Convention](#branch-naming-convention)
+- [3. The Workflow](#3-the-workflow)
+
 ## 1. The `main` Branch
 
 The `main` branch is the single source of truth and represents the production-ready code.
