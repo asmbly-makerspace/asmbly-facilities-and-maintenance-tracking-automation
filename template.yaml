@@ -1,0 +1,89 @@
+# template.yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  A collection of Lambda functions for PM automation tasks,
+  fetching data from ClickUp and sending notifications to Slack.
+
+Globals:
+  Function:
+    Runtime: python3.12
+    MemorySize: 128
+
+Resources:
+  # 1. Define the Shared Lambda Layer. The logical ID can be anything, but the LayerName must match AWS
+  RequestsLambdaLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: requests-layer       # <-- EXACT name from the AWS console
+      Description: "Shared layer containing the requests library"
+      ContentUri: layers/requests_layer/ # Points to the folder in the repo
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Retain # Keeps the layer version even if the stack is deleted
+
+  # 2. Define the first Lambda Function (ClickUp Tasks)
+  GetClickUpTasksFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: KilnOpsDropoffRecentEntriesViewer   # <-- CRITICAL: Must be the EXACT name from AWS
+      Description: "https://gist.github.com/sababado/aa8c92c0f9f4488c701523c6fd995c6b"
+      CodeUri: functions/kiln_dropoff_recent_entries_viewer/
+      Handler: lambda_function.lambda_handler # Check this under "Runtime settings"
+      Runtime: python3.12                   # Check this under "Runtime settings"
+      Timeout: 10                           # Check this under "General configuration"
+      Role: arn:aws:iam::110104886034:role/KilnopsDropoffViewerLambdaRole # <-- Get this ARN from "Permissions" tab
+      Layers:
+        - !Ref RequestsLambdaLayer # Attaches the shared layer to this function
+      Environment:
+        Variables:
+          SECRET_NAME: clickup/api/token    # Copy ALL environment variables
+          CLICKUP_LIST_KILNDROP_ID: 901318902829
+      Events:
+        ApiTrigger: # This is a logical name for the trigger
+          Type: Api
+          Properties:
+            Path: /KilnOpsDropoffRecentEntriesViewer  # From your URL
+            Method: get                            # Standard for viewing a page
+            RestApiId: jvh3lxcpf7                  # The ID of your existing API Gateway
+      Tags:
+        Project: kilnops-dropoff-viewer
+
+  # 3. Define the second Lambda Function (Slack Poster)
+  PostSlackMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: PMReminderBot   # <-- CRITICAL: Must be the EXACT name from AWS
+      Description: "https://gist.github.com/sababado/78b9714938e1f4ef001361654b8464e2"
+      CodeUri: functions/pm_bot_reminder/
+      Handler: lambda_function.lambda_handler # Check this under "Runtime settings"
+      Runtime: python3.12                   # Check this under "Runtime settings"
+      Timeout: 180                          # Check this under "General configuration"
+      Role: arn:aws:iam::110104886034:role/PMReminderBotLambdaRole # <-- Get this ARN from "Permissions" tab
+      Layers:
+        - !Ref RequestsLambdaLayer # Attaches the shared layer to this function
+      Environment:
+        Variables:
+          ASSET_FIELD_NAME: 'Asset (P)'
+          BOT_ICON_EMOJI: ':hammer_and_wrench:'
+          BOT_NAME: 'PM Bot'
+          CLICKUP_LIST_ID: '901310894771'
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
+          FREQUENCY_FIELD_NAME: 'Frequency'
+          GENERAL_CHANNEL_NAME: 'stewards'
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'prod/slack-maintenance-bot-token'
+          WORKSPACE_FIELD_NAME: 'Workspace'
+          WORKSPACES: '3d-printing,ceramics,electronics,lasers,metal-shop,textiles,woodshop'
+          STARTER_MESSAGE_TEXT: |
+            Weekly task update!
+            * Mark tasks with :loading: to show that they're being worked on!
+            * Mark tasks with :white_check_mark: to call them done!
+      Events:
+        ScheduledRun: # Example: Trigger with an EventBridge schedule
+          Type: Schedule
+          Properties:
+            Schedule: "cron(30 4 ? * SUN *)" # Every Sunday at 4:30 AM UTC
+            Name: run-every-sunday-morning
+            Description: "Triggers the lambda task fetcher every Sunday morning"
+      Tags:
+        Project: pm-reminder-bot
