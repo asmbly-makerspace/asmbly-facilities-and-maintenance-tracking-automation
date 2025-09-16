@@ -146,7 +146,7 @@ def generate_html_page(tasks):
             <p class="subtitle">Showing drop offs received in the last 24 hours</p>
             
             <div class="instructions">
-                Copy your ID from the list below to a slip for each of your pieces.
+                Please write your Name and your ID from the list below to a slip for each of your pieces.
             </div>
 
             <table>
