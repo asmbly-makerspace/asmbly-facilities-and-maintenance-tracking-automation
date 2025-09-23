@@ -82,8 +82,8 @@ Resources:
         ScheduledRun: # Example: Trigger with an EventBridge schedule
           Type: Schedule
           Properties:
-            Schedule: "cron(30 4 ? * SUN *)" # Every Sunday at 4:30 AM UTC
-            Name: run-every-sunday-morning
-            Description: "Triggers the lambda task fetcher every Sunday morning"
+            Schedule: "cron(30 4 ? * SAT *)" # Every Saturday at 4:30 AM UTC
+            Name: run-every-saturday-morning
+            Description: "Triggers the lambda task fetcher every Saturday morning"
       Tags:
         Project: pm-reminder-bot
