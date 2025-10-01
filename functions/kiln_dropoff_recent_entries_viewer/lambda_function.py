@@ -46,9 +46,12 @@ def generate_html_page(tasks):
             # ClickUp API returns date created as a Unix timestamp in milliseconds
             created_date = datetime.fromtimestamp(int(task['date_created']) / 1000).strftime('%Y-%m-%d %H:%M:%S')
             
+            # Use the custom_id if it exists, otherwise fall back to the standard id
+            display_id = task.get('custom_id', task['id'])
+
             task_rows += f"""
                 <tr>
-                    <td class="task-id">{task['id']}</td>
+                    <td class="task-id">{display_id}</td>
                     <td>{task['name']}</td>
                     <td>{created_date}</td>
                 </tr>
@@ -152,7 +155,7 @@ def generate_html_page(tasks):
             <table>
                 <thead>
                     <tr>
-                        <th>Task ID</th>
+                        <th>Drop-Off ID</th>
                         <th>Name</th>
                         <th>Time Submitted</th>
                     </tr>
@@ -273,4 +276,3 @@ def lambda_handler(event, context):
             "headers": {"Content-Type": "text/html"},
             "body": generate_error_page(str(e)),
         }
-
