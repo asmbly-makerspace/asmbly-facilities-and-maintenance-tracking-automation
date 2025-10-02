@@ -32,7 +32,7 @@ Resources:
       Handler: lambda_function.lambda_handler # Check this under "Runtime settings"
       Runtime: python3.12                   # Check this under "Runtime settings"
       Timeout: 10                           # Check this under "General configuration"
-      Role: arn:aws:iam::110104886034:role/KilnopsDropoffViewerLambdaRole # <-- Get this ARN from "Permissions" tab
+      Role: arn:aws:iam::110104886034:role/KilnOpsDropoffViewerLambdaRole # <-- Get this ARN from "Permissions" tab
       Layers:
         - !Ref RequestsLambdaLayer # Attaches the shared layer to this function
       Environment:
@@ -88,4 +88,63 @@ Resources:
             Description: "Triggers the lambda task fetcher every Saturday morning"
       Tags:
         Project: pm-reminder-bot
+        Workspace: facilities
+
+  # 4. Define the Facilities Item Reorder GET Lambda Function
+  FacilitiesItemReorderGetFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: FacilitiesItemReorder_Get
+      Description: "Handles the initial Slack command to open a modal for reordering items."
+      CodeUri: functions/facilities_item_reorder_get/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Timeout: 10
+      Role: arn:aws:iam::110104886034:role/FacilitiesItemReorderLambdaRole # <-- Placeholder ARN
+      Layers:
+        - !Ref RequestsLambdaLayer
+      Environment:
+        Variables:
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'prod/slack-maintenance-bot-token'
+          LIST_ID: '901320662208'
+      Events:
+        ApiTrigger:
+          Type: Api
+          Properties:
+            Path: /FacilitiesItemReorder_Get
+            Method: get
+            RestApiId: jvh3lxcpf7
+      Tags:
+        Project: facilities-item-reorder
+        Workspace: facilities
+
+  # 5. Define the Facilities Item Reorder POST Lambda Function
+  FacilitiesItemReorderPostFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: FacilitiesItemReorder_Post
+      Description: "Handles the submission from the Slack modal to create a purchase request."
+      CodeUri: functions/facilities_item_reorder_post/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Timeout: 10
+      Role: arn:aws:iam::110104886034:role/FacilitiesItemReorderLambdaRole # <-- Placeholder ARN
+      Layers:
+        - !Ref RequestsLambdaLayer
+      Environment:
+        Variables:
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'prod/slack-maintenance-bot-token'
+          LIST_ID: '901320662208'
+          PURCHASE_REQUEST_LIST_ID: '901310302436'
+      Events:
+        ApiTrigger:
+          Type: Api
+          Properties:
+            Path: /FacilitiesItemReorder_Post
+            Method: post
+            RestApiId: jvh3lxcpf7
+      Tags:
+        Project: facilities-item-reorder
         Workspace: facilities
