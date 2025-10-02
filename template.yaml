@@ -48,6 +48,7 @@ Resources:
             RestApiId: jvh3lxcpf7                  # The ID of your existing API Gateway
       Tags:
         Project: kilnops-dropoff-viewer
+        Workspace: ceramics
 
   # 3. Define the second Lambda Function (Slack Poster)
   PostSlackMessagesFunction:
@@ -87,3 +88,4 @@ Resources:
             Description: "Triggers the lambda task fetcher every Saturday morning"
       Tags:
         Project: pm-reminder-bot
+        Workspace: facilities
