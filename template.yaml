@@ -61,7 +61,44 @@ Resources:
   #       Project: kilnops-dropoff-viewer
   #       Workspace: ceramics
 
-  # 3. Define the Slack Poster Lambda Function (Scheduled)
+  # 3. Define the IAM Role for the PMReminderBot
+  PMReminderBotLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: PMReminderBotLambdaRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: PMReminderBotPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:prod/slack-maintenance-bot-token-*'
+      Tags:
+        - Key: Project
+          Value: pm-reminder-bot
+        - Key: Workspace
+          Value: facilities
+
+  # 4. Define the Slack Poster Lambda Function (Scheduled)
   PostSlackMessagesFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -71,7 +108,7 @@ Resources:
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
       Timeout: 180
-      Role: arn:aws:iam::110104886034:role/PMReminderBotLambdaRole
+      Role: !GetAtt PMReminderBotLambdaRole.Arn # Use the role defined in this template
       Layers:
         - !Ref RequestsLambdaLayer
       Environment:
@@ -95,13 +132,12 @@ Resources:
           Type: Schedule
           Properties:
             Schedule: "cron(30 4 ? * SAT *)"
-            Name: run-every-saturday-morning
             Description: "Triggers the lambda task fetcher every Saturday morning"
       Tags:
         Project: pm-reminder-bot
         Workspace: facilities
 
-  # 4. Define the IAM Role for the FacilitiesItemReorder Lambdas
+  # 5. Define the IAM Role for the FacilitiesItemReorder Lambdas
   FacilitiesItemReorderLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -138,7 +174,7 @@ Resources:
         - Key: Workspace
           Value: facilities
 
-  # 5. Define the Facilities Item Reorder GET Lambda Function
+  # 6. Define the Facilities Item Reorder GET Lambda Function
   FacilitiesItemReorderGetFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -167,7 +203,7 @@ Resources:
         Project: facilities-item-reorder
         Workspace: facilities
 
-  # 6. Define the Facilities Item Reorder POST Lambda Function
+  # 7. Define the Facilities Item Reorder POST Lambda Function
   FacilitiesItemReorderPostFunction:
     Type: AWS::Serverless::Function
     Properties:
