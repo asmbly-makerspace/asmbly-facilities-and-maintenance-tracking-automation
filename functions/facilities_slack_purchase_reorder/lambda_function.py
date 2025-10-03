@@ -29,7 +29,7 @@ def get_secret(secret_name):
     except (json.JSONDecodeError): return secret_string
 
 def get_slack_user_info(api_token, user_id):
-    """Fetches a user's profile information from Slack to get their real name."""
+    # ... (no changes)
     url = "https://slack.com/api/users.info"
     headers = {"Authorization": f"Bearer {api_token}"}
     params = {"user": user_id}
@@ -100,9 +100,16 @@ def prepare_tasks_for_metadata(tasks):
         })
     return prepared_tasks
 
-def build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str="", initial_description=""):
-    # ... (no changes)
+# --- MODIFIED: Added a unique_id parameter ---
+def build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str="", initial_description="", unique_id=None):
+    """Builds the Slack modal view."""
     sorted_tasks = sorted(tasks_to_display, key=lambda t: t['name'])
+
+    # --- MODIFIED: Create a dynamic block_id for the description ---
+    description_block_id = "description_block"
+    if unique_id:
+        description_block_id = f"description_block_{unique_id}"
+
     view = {
         "type": "modal", "callback_id": "reorder_modal_submit",
         "private_metadata": private_metadata_str,
@@ -112,7 +119,7 @@ def build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str="",
             {"type": "input", "block_id": "workspace_filter", "label": {"type": "plain_text", "text": "Filter by Workspace"}, "dispatch_action": True, "element": {"type": "static_select", "action_id": "selected_workspace", "placeholder": {"type": "plain_text", "text": "All Workspaces"}, "options": [{"text": {"type": "plain_text", "text": ws}, "value": ws} for ws in all_workspaces]}, "optional": True},
             {"type": "input", "block_id": "delivery_date_block", "label": {"type": "plain_text", "text": "Required Delivery Date"}, "hint": {"type": "plain_text", "text": "Efforts will be made to meet this date, but it is not a guarantee."}, "element": {"type": "datepicker", "action_id": "delivery_date_action", "placeholder": {"type": "plain_text", "text": "Select a date"}}, "optional": True},
             {"type": "input", "block_id": "item_selection", "label": {"type": "plain_text", "text": "Select an item to reorder"}, "dispatch_action": True, "element": {"type": "static_select", "action_id": "selected_item", "placeholder": {"type": "plain_text", "text": "Select an item"}, "options": [{"text": {"type": "plain_text", "text": task["name"]}, "value": task["id"]} for task in sorted_tasks]}},
-            {"type": "input", "block_id": "description_block", "label": {"type": "plain_text", "text": "Description"}, "element": {"type": "plain_text_input", "action_id": "description_action", "multiline": True, "initial_value": initial_description}, "optional": True},
+            {"type": "input", "block_id": description_block_id, "label": {"type": "plain_text", "text": "Description"}, "element": {"type": "plain_text_input", "action_id": "description_action", "multiline": True, "initial_value": initial_description}, "optional": True},
         ]
     }
     return view
@@ -130,7 +137,6 @@ def lambda_handler(event, context):
             payload = json.loads(payload_str)
 
             if payload.get("type") == "block_actions":
-                # ... (this logic remains the same)
                 view = payload["view"]
                 view_id = view["id"]
                 private_metadata_str = view.get("private_metadata", "{}")
@@ -143,15 +149,22 @@ def lambda_handler(event, context):
                 selected_option = workspace_state.get("selected_option")
                 current_workspace = selected_option.get("value") if selected_option else None
                 description = ""
-                if action_id == "selected_workspace": current_workspace = action.get("selected_option", {}).get("value")
+
+                if action_id == "selected_workspace":
+                    current_workspace = action.get("selected_option", {}).get("value")
                 elif action_id == "selected_item":
                     task_id = action.get("selected_option", {}).get("value")
                     if task_id:
                         task_details = next((t for t in all_tasks_prepared if t['id'] == task_id), None)
                         if task_details:
                             description = task_details.get("description", "")
+
                 tasks_to_display = [t for t in all_tasks_prepared if t.get('workspace_name') == current_workspace] if current_workspace else all_tasks_prepared
-                updated_view = build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str=private_metadata_str, initial_description=description)
+
+                # --- MODIFIED: Pass a unique ID to the modal builder ---
+                unique_id = str(datetime.now().timestamp())
+                updated_view = build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str=private_metadata_str, initial_description=description, unique_id=unique_id)
+
                 http_session.post("https://slack.com/api/views.update", headers=headers, json={"view_id": view_id, "view": updated_view})
                 return {"statusCode": 200, "body": ""}
 
@@ -159,13 +172,17 @@ def lambda_handler(event, context):
                  state_values = payload["view"]["state"]["values"]
                  selected_item_id = state_values.get("item_selection", {}).get("selected_item", {}).get("selected_option", {}).get("value")
                  delivery_date = state_values.get("delivery_date_block", {}).get("delivery_date_action", {}).get("selected_date")
-                 description_text = state_values.get("description_block", {}).get("description_action", {}).get("value")
 
-                 # --- MODIFIED: Get user's real name ---
+                 # --- MODIFIED: Find the description value using its dynamic ID ---
+                 description_text = ""
+                 for block_id, block_values in state_values.items():
+                     if block_id.startswith("description_block"):
+                         description_text = block_values.get("description_action", {}).get("value")
+                         break
+
                  slack_user_id = payload["user"]["id"]
                  slack_user_info = get_slack_user_info(slack_bot_token, slack_user_id)
                  requestor_real_name = slack_user_info.get("user", {}).get("real_name", "Unknown User")
-                 # --- END OF MODIFICATION ---
 
                  original_item_details = get_clickup_task_details(clickup_api_token, selected_item_id)
 
@@ -174,7 +191,7 @@ def lambda_handler(event, context):
                      "custom_fields": [
                          {"id": WORKSPACE_FIELD_ID, "value": get_custom_field_value(original_item_details, WORKSPACE_FIELD_ID)},
                          {"id": SUPPLIER_LINK_FIELD_ID, "value": get_custom_field_value(original_item_details, SUPPLIER_LINK_FIELD_ID)},
-                         {"id": REQUESTOR_NAME_FIELD_ID, "value": requestor_real_name}, # <-- Use real name here
+                         {"id": REQUESTOR_NAME_FIELD_ID, "value": requestor_real_name},
                          {"id": ITEM_TYPE_FIELD_ID, "value": get_custom_field_value(original_item_details, ITEM_TYPE_FIELD_ID)},
                      ]
                  }
@@ -185,7 +202,7 @@ def lambda_handler(event, context):
 
                  create_clickup_purchase_request(clickup_api_token, new_task_payload)
 
-                 success_view = {"type": "modal", "title": {"type": "plain_text", "text": "Success!"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Your purchase request was created successfully! Track it in the #purchase_requests channel."}}], "close": {"type": "plain_text", "text": "Close"}}
+                 success_view = {"type": "modal", "title": {"type": "plain_text", "text": "Success!"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Your purchase request was created successfully."}}], "close": {"type": "plain_text", "text": "Close"}}
                  return {"statusCode": 200, "body": json.dumps({"response_action": "update", "view": success_view})}
 
         # Initial modal open
