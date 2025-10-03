@@ -183,6 +183,7 @@ Resources:
       CodeUri: functions/facilities_item_reorder_get/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
+      MemorySize: 512 # Increased memory to speed up cold starts and execution
       Timeout: 10
       Role: !GetAtt FacilitiesItemReorderLambdaRole.Arn
       Layers:
@@ -197,7 +198,7 @@ Resources:
           Type: Api
           Properties:
             Path: /FacilitiesItemReorder_Get
-            Method: get
+            Method: post # using this to return a slack modal, so this must be a post type.
             RestApiId: !Ref FacilitiesApi
       Tags:
         Project: facilities-item-reorder
@@ -231,3 +232,9 @@ Resources:
       Tags:
         Project: facilities-item-reorder
         Workspace: facilities
+
+# Add this entire section to the end of your file
+Outputs:
+  FacilitiesApiUrl:
+    Description: "The invoke URL for the Facilities API Gateway"
+    Value: !Sub "https://${FacilitiesApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
