@@ -1,4 +1,3 @@
-
 import json
 import os
 import boto3
@@ -15,62 +14,50 @@ secrets_manager = boto3.client("secretsmanager")
 
 def get_secret(secret_name):
     """Retrieves a secret from AWS Secrets Manager."""
-    print(f"Attempting to retrieve secret: {secret_name}")
-    response = secrets_manager.get_secret_value(SecretId=secret_name)
-    secret_string = response["SecretString"]
-    print(f"Successfully retrieved secret: {secret_name}")
-    
-    # Check if the secret is a JSON string and parse it if so.
     try:
+        response = secrets_manager.get_secret_value(SecretId=secret_name)
+        secret_string = response["SecretString"]
         secret_data = json.loads(secret_string)
-        # If it's a dict, assume the token is the first value.
         if isinstance(secret_data, dict):
             return list(secret_data.values())[0]
-    except json.JSONDecodeError:
-        # It's not a JSON string, so return it as is.
-        pass
-    
-    return secret_string
+        return secret_string
+    except (json.JSONDecodeError):
+        return secret_string
 
 def get_clickup_tasks(api_token, list_id):
     """Fetches tasks from a ClickUp list."""
     url = f"https://api.clickup.com/api/v2/list/{list_id}/task"
     headers = {"Authorization": api_token}
-    
-    print(f"Making request to ClickUp API at URL: {url}")
-    print(f"Using Authorization header (masked): {api_token[:4]}...{api_token[-4:]}")
-    
     response = requests.get(url, headers=headers)
-    
-    print(f"ClickUp API response status code: {response.status_code}")
-    # Only print the first 500 chars of the body for brevity
-    print(f"ClickUp API response body (truncated): {response.text[:500]}")
-    
     response.raise_for_status()
     return response.json()["tasks"]
 
-def build_slack_modal(tasks):
-    """Builds the Slack modal view from a list of ClickUp tasks."""
+def get_workspace_name_from_task(task):
+    """Helper function to extract the workspace name from a task's custom fields."""
+    for field in task.get("custom_fields", []):
+        if field.get("name") == "Workspace" and field.get("value") is not None:
+            try:
+                selected_index = int(field.get("value"))
+                options = field.get("type_config", {}).get("options", [])
+                matching_option = next((opt for opt in options if opt.get("orderindex") == selected_index), None)
+                if matching_option:
+                    return matching_option.get("name")
+            except (ValueError, TypeError):
+                continue
+    return None
+
+def get_all_workspaces_from_tasks(tasks):
+    """Extracts a unique, sorted list of all workspace names from a list of tasks."""
     workspaces = set()
     for task in tasks:
-        for field in task.get("custom_fields", []):
-            if field.get("name") == "Workspace" and field.get("value") is not None:
-                try:
-                    # For dropdowns, the 'value' is the orderindex of the selected option.
-                    selected_index = int(field.get("value"))
-                    options = field.get("type_config", {}).get("options", [])
-                    
-                    # Find the option in the list that has the matching orderindex.
-                    matching_option = next((opt for opt in options if opt.get("orderindex") == selected_index), None)
-                    
-                    if matching_option and matching_option.get("name"):
-                        workspaces.add(matching_option.get("name"))
-                        
-                except (ValueError, TypeError):
-                    # This handles cases where the value is not an integer, etc. Just skip.
-                    continue
-    
-    workspace_options = sorted(list(workspaces))
+        workspace_name = get_workspace_name_from_task(task)
+        if workspace_name:
+            workspaces.add(workspace_name)
+    return sorted(list(workspaces))
+
+def build_slack_modal(tasks_to_display, all_workspaces):
+    """Builds the Slack modal view."""
+    sorted_tasks = sorted(tasks_to_display, key=lambda t: t['name'])
 
     return {
         "type": "modal",
@@ -80,6 +67,22 @@ def build_slack_modal(tasks):
         "blocks": [
             {
                 "type": "input",
+                "block_id": "workspace_filter",
+                "label": {"type": "plain_text", "text": "Filter by Workspace"},
+                "dispatch_action": True,
+                "element": {
+                    "type": "static_select",
+                    "action_id": "selected_workspace",
+                    "placeholder": {"type": "plain_text", "text": "All Workspaces"},
+                    "options": [
+                        {"text": {"type": "plain_text", "text": ws}, "value": ws}
+                        for ws in all_workspaces
+                    ],
+                },
+                "optional": True,
+            },
+            {
+                "type": "input",
                 "block_id": "item_selection",
                 "label": {"type": "plain_text", "text": "Select an item to reorder"},
                 "element": {
@@ -87,99 +90,74 @@ def build_slack_modal(tasks):
                     "action_id": "selected_item",
                     "placeholder": {"type": "plain_text", "text": "Select an item"},
                     "options": [
-                        {
-                            "text": {"type": "plain_text", "text": task["name"]},
-                            "value": task["id"],
-                        }
-                        for task in tasks
+                        {"text": {"type": "plain_text", "text": task["name"]}, "value": task["id"]}
+                        for task in sorted_tasks
                     ],
                 },
-            },
-            {
-                "type": "input",
-                "block_id": "workspace_filter",
-                "label": {"type": "plain_text", "text": "Filter by Workspace"},
-                "element": {
-                    "type": "static_select",
-                    "action_id": "selected_workspace",
-                    "placeholder": {"type": "plain_text", "text": "All Workspaces"},
-                    "options": [
-                        {
-                            "text": {"type": "plain_text", "text": workspace},
-                            "value": workspace,
-                        }
-                        for workspace in workspace_options
-                    ],
-                },
-                "optional": True,
             },
         ],
     }
 
 def lambda_handler(event, context):
     try:
-        print(f"Lambda invoked. Event body: {event.get('body')}")
-
-        # Get secrets
         clickup_api_token = get_secret(CLICKUP_API_TOKEN_SECRET_NAME)
         slack_bot_token = get_secret(SLACK_BOT_TOKEN_SECRET_NAME)
+        headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
 
-        # Slack sends a URL-encoded body. Parse it.
         parsed_body = urllib.parse.parse_qs(event["body"])
+        payload_str = parsed_body.get('payload', [None])[0]
 
-        # Check if the request is from an interactive component (e.g., a button)
-        if 'payload' in parsed_body:
-            payload_str = parsed_body['payload'][0]
-            print(f"Received interactive payload: {payload_str}")
-            payload_json = json.loads(payload_str)
-            trigger_id = payload_json.get("trigger_id")
-        # Otherwise, assume it's a slash command.
-        else:
-            print("Received slash command payload.")
-            trigger_id = parsed_body.get("trigger_id", [None])[0]
+        # Scenario 1: User interacts with the modal (e.g., uses the filter)
+        if payload_str:
+            payload = json.loads(payload_str)
+            if payload.get("type") == "block_actions":
+                print("Handling block action: User changed the workspace filter.")
+                action = payload["actions"][0]
+                selected_workspace = action.get("selected_option", {}).get("value")
+                view_id = payload["view"]["id"]
 
+                all_tasks = get_clickup_tasks(clickup_api_token, CLICKUP_LIST_ID)
+                all_workspaces = get_all_workspaces_from_tasks(all_tasks)
+
+                tasks_to_display = []
+                if selected_workspace:
+                    for task in all_tasks:
+                        if get_workspace_name_from_task(task) == selected_workspace:
+                            tasks_to_display.append(task)
+                else:
+                    tasks_to_display = all_tasks
+
+                updated_view = build_slack_modal(tasks_to_display, all_workspaces)
+
+                response = requests.post("https://slack.com/api/views.update", headers=headers, json={"view_id": view_id, "view": updated_view})
+                if not response.json().get("ok"):
+                    print(f"Slack API Error during views.update: {response.json().get('error')}")
+
+                return {"statusCode": 200, "body": ""}
+
+            elif payload.get("type") == "view_submission":
+                 # This is where you would handle the final "Submit" button click
+                 print("View submitted. Add submission handling logic here.")
+                 return {"statusCode": 200, "body": ""}
+
+
+        # Scenario 2: Initial modal open from a Slash Command
+        print("Handling initial slash command to open modal.")
+        trigger_id = parsed_body.get("trigger_id", [None])[0]
         if not trigger_id:
-            print("Error: trigger_id not found in request body")
-            return {
-                "statusCode": 400,
-                "body": json.dumps({"error": "trigger_id not found in request body"}),
-            }
-        
-        print(f"Extracted trigger_id: {trigger_id}")
+            raise ValueError("trigger_id not found in request body")
 
-        # Fetch tasks from ClickUp
-        tasks = get_clickup_tasks(clickup_api_token, CLICKUP_LIST_ID)
+        all_tasks = get_clickup_tasks(clickup_api_token, CLICKUP_LIST_ID)
+        all_workspaces = get_all_workspaces_from_tasks(all_tasks)
+        modal_view = build_slack_modal(all_tasks, all_workspaces)
 
-        # Build and open the Slack modal
-        modal_view = build_slack_modal(tasks)
-        slack_api_url = "https://slack.com/api/views.open"
-        headers = {
-            "Authorization": f"Bearer {slack_bot_token}",
-            "Content-Type": "application/json; charset=utf-8",
-        }
-        payload = {"trigger_id": trigger_id, "view": modal_view}
-        
-        print("Opening Slack modal...")
-        response = requests.post(slack_api_url, headers=headers, json=payload)
-        slack_response_data = response.json()
+        response = requests.post("https://slack.com/api/views.open", headers=headers, json={"trigger_id": trigger_id, "view": modal_view})
+        if not response.json().get("ok"):
+            print(f"Slack API Error during views.open: {response.json().get('error')}")
 
-        if not slack_response_data.get("ok"):
-            print(f"Slack API Error: {slack_response_data.get('error')}")
-            return {
-                "statusCode": 500,
-                "body": json.dumps({"error": f"Slack API error: {slack_response_data.get('error')}"}),
-            }
-        
-        print("Successfully opened Slack modal.")
-        # Return a 200 OK to Slack to acknowledge the command.
         return {"statusCode": 200, "body": ""}
 
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        # Log the full traceback for debugging
         import traceback
         traceback.print_exc()
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": str(e)}),
-        }
+        return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
