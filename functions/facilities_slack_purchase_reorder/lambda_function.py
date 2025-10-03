@@ -3,130 +3,119 @@ import os
 import boto3
 import requests
 import urllib.parse
+from datetime import datetime
 
-# Environment variables
+# (Clients and Environment Variables remain the same)
+secrets_manager = boto3.client("secretsmanager")
+http_session = requests.Session()
 CLICKUP_API_TOKEN_SECRET_NAME = os.environ["CLICKUP_SECRET_NAME"]
 SLACK_BOT_TOKEN_SECRET_NAME = os.environ["SLACK_MAINTENANCE_BOT_SECRET_NAME"]
 CLICKUP_LIST_ID = os.environ["LIST_ID"]
+PURCHASE_REQUEST_LIST_ID = os.environ["PURCHASE_REQUEST_LIST_ID"]
+WORKSPACE_FIELD_ID = os.environ["WORKSPACE_FIELD_ID"]
+SUPPLIER_LINK_FIELD_ID = os.environ["SUPPLIER_LINK_FIELD_ID"]
+REQUESTOR_NAME_FIELD_ID = os.environ["REQUESTOR_NAME_FIELD_ID"]
+ITEM_TYPE_FIELD_ID = os.environ["ITEM_TYPE_FIELD_ID"]
 
-# AWS Secrets Manager client
-secrets_manager = boto3.client("secretsmanager")
 
 def get_secret(secret_name):
-    """Retrieves a secret from AWS Secrets Manager."""
+    # ... (no changes)
     try:
         response = secrets_manager.get_secret_value(SecretId=secret_name)
         secret_string = response["SecretString"]
         secret_data = json.loads(secret_string)
-        if isinstance(secret_data, dict):
-            return list(secret_data.values())[0]
+        if isinstance(secret_data, dict): return list(secret_data.values())[0]
         return secret_string
-    except (json.JSONDecodeError):
-        return secret_string
+    except (json.JSONDecodeError): return secret_string
+
+def get_slack_user_info(api_token, user_id):
+    """Fetches a user's profile information from Slack to get their real name."""
+    url = "https://slack.com/api/users.info"
+    headers = {"Authorization": f"Bearer {api_token}"}
+    params = {"user": user_id}
+    response = http_session.get(url, headers=headers, params=params)
+    response.raise_for_status()
+    return response.json()
 
 def get_clickup_tasks(api_token, list_id):
-    """Fetches tasks from a ClickUp list."""
+    # ... (no changes)
     url = f"https://api.clickup.com/api/v2/list/{list_id}/task"
     headers = {"Authorization": api_token}
-    response = requests.get(url, headers=headers)
+    response = http_session.get(url, headers=headers)
     response.raise_for_status()
     return response.json()["tasks"]
 
 def get_clickup_task_details(api_token, task_id):
-    """Fetches the full details for a single ClickUp task, including the description."""
+    # ... (no changes)
     url = f"https://api.clickup.com/api/v2/task/{task_id}"
     headers = {"Authorization": api_token}
-    response = requests.get(url, headers=headers)
+    response = http_session.get(url, headers=headers)
     response.raise_for_status()
     return response.json()
 
+def create_clickup_purchase_request(api_token, payload):
+    # ... (no changes)
+    url = f"https://api.clickup.com/api/v2/list/{PURCHASE_REQUEST_LIST_ID}/task"
+    headers = {"Authorization": api_token, "Content-Type": "application/json"}
+    response = http_session.post(url, headers=headers, json=payload)
+    response.raise_for_status()
+    return response.json()
+
+def get_custom_field_value(task_details, field_id):
+    # ... (no changes)
+    for field in task_details.get("custom_fields", []):
+        if field.get("id") == field_id:
+            return field.get("value")
+    return None
+
+def get_all_workspaces_from_tasks(tasks):
+    # ... (no changes)
+    workspaces = set()
+    for task in tasks:
+        workspace_name = get_workspace_name_from_task(task)
+        if workspace_name: workspaces.add(workspace_name)
+    return sorted(list(workspaces))
+
 def get_workspace_name_from_task(task):
-    """Helper function to extract the workspace name from a task's custom fields."""
+    # ... (no changes)
     for field in task.get("custom_fields", []):
-        if field.get("name") == "Workspace" and field.get("value") is not None:
+        if field.get("id") == WORKSPACE_FIELD_ID and field.get("value") is not None:
             try:
                 selected_index = int(field.get("value"))
                 options = field.get("type_config", {}).get("options", [])
                 matching_option = next((opt for opt in options if opt.get("orderindex") == selected_index), None)
-                if matching_option:
-                    return matching_option.get("name")
-            except (ValueError, TypeError):
-                continue
+                if matching_option: return matching_option.get("name")
+            except (ValueError, TypeError): continue
     return None
 
-def get_all_workspaces_from_tasks(tasks):
-    """Extracts a unique, sorted list of all workspace names from a list of tasks."""
-    workspaces = set()
+def prepare_tasks_for_metadata(tasks):
+    # ... (no changes)
+    prepared_tasks = []
     for task in tasks:
-        workspace_name = get_workspace_name_from_task(task)
-        if workspace_name:
-            workspaces.add(workspace_name)
-    return sorted(list(workspaces))
+        prepared_tasks.append({
+            "id": task.get("id"),
+            "name": task.get("name"),
+            "description": task.get("description") or task.get("text_content") or "",
+            "workspace_name": get_workspace_name_from_task(task)
+        })
+    return prepared_tasks
 
-def build_slack_modal(tasks_to_display, all_workspaces, initial_description=""):
-    """Builds the Slack modal view."""
+def build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str="", initial_description=""):
+    # ... (no changes)
     sorted_tasks = sorted(tasks_to_display, key=lambda t: t['name'])
-
-    return {
-        "type": "modal",
-        "callback_id": "reorder_modal_submit",
+    view = {
+        "type": "modal", "callback_id": "reorder_modal_submit",
+        "private_metadata": private_metadata_str,
         "title": {"type": "plain_text", "text": "Reorder Item"},
         "submit": {"type": "plain_text", "text": "Submit"},
         "blocks": [
-            {
-                "type": "input",
-                "block_id": "workspace_filter",
-                "label": {"type": "plain_text", "text": "Filter by Workspace"},
-                "dispatch_action": True,
-                "element": {
-                    "type": "static_select",
-                    "action_id": "selected_workspace",
-                    "placeholder": {"type": "plain_text", "text": "All Workspaces"},
-                    "options": [
-                        {"text": {"type": "plain_text", "text": ws}, "value": ws}
-                        for ws in all_workspaces
-                    ],
-                },
-                "optional": True,
-            },
-            {
-                "type": "input",
-                "block_id": "delivery_date_block",
-                "label": {"type": "plain_text", "text": "Required Delivery Date (Optional)"},
-                "hint": {"type": "plain_text", "text": "Efforts will be made to meet this date, but it is not a guarantee."},
-                "element": {"type": "datepicker", "action_id": "delivery_date_action", "placeholder": {"type": "plain_text", "text": "Select a date"}},
-                "optional": True,
-            },
-            {
-                "type": "input",
-                "block_id": "item_selection",
-                "label": {"type": "plain_text", "text": "Select an item to reorder"},
-                "dispatch_action": True,  # Trigger an event when an item is selected
-                "element": {
-                    "type": "static_select",
-                    "action_id": "selected_item",
-                    "placeholder": {"type": "plain_text", "text": "Select an item"},
-                    "options": [
-                        {"text": {"type": "plain_text", "text": task["name"]}, "value": task["id"]}
-                        for task in sorted_tasks
-                    ],
-                },
-            },
-            {
-                "type": "input",
-                "block_id": "description_block",
-                "label": {"type": "plain_text", "text": "Description"},
-                "hint": {"type": "plain_text", "text": "When the item has a description, it will load here."},
-                "element": {
-                    "type": "plain_text_input",
-                    "action_id": "description_action",
-                    "multiline": True,
-                    "initial_value": initial_description,
-                },
-                "optional": True,
-            },
-        ],
+            {"type": "input", "block_id": "workspace_filter", "label": {"type": "plain_text", "text": "Filter by Workspace"}, "dispatch_action": True, "element": {"type": "static_select", "action_id": "selected_workspace", "placeholder": {"type": "plain_text", "text": "All Workspaces"}, "options": [{"text": {"type": "plain_text", "text": ws}, "value": ws} for ws in all_workspaces]}, "optional": True},
+            {"type": "input", "block_id": "delivery_date_block", "label": {"type": "plain_text", "text": "Required Delivery Date"}, "hint": {"type": "plain_text", "text": "Efforts will be made to meet this date, but it is not a guarantee."}, "element": {"type": "datepicker", "action_id": "delivery_date_action", "placeholder": {"type": "plain_text", "text": "Select a date"}}, "optional": True},
+            {"type": "input", "block_id": "item_selection", "label": {"type": "plain_text", "text": "Select an item to reorder"}, "dispatch_action": True, "element": {"type": "static_select", "action_id": "selected_item", "placeholder": {"type": "plain_text", "text": "Select an item"}, "options": [{"text": {"type": "plain_text", "text": task["name"]}, "value": task["id"]} for task in sorted_tasks]}},
+            {"type": "input", "block_id": "description_block", "label": {"type": "plain_text", "text": "Description"}, "element": {"type": "plain_text_input", "action_id": "description_action", "multiline": True, "initial_value": initial_description}, "optional": True},
+        ]
     }
+    return view
 
 def lambda_handler(event, context):
     try:
@@ -141,71 +130,81 @@ def lambda_handler(event, context):
             payload = json.loads(payload_str)
 
             if payload.get("type") == "block_actions":
+                # ... (this logic remains the same)
+                view = payload["view"]
+                view_id = view["id"]
+                private_metadata_str = view.get("private_metadata", "{}")
+                all_tasks_prepared = json.loads(private_metadata_str)
+                all_workspaces = sorted(list(set(t['workspace_name'] for t in all_tasks_prepared if t['workspace_name'])))
                 action = payload["actions"][0]
                 action_id = action["action_id"]
-                view_id = payload["view"]["id"]
-
-                # Fetch all tasks to perform filtering/lookups
-                all_tasks = get_clickup_tasks(clickup_api_token, CLICKUP_LIST_ID)
-                all_workspaces = get_all_workspaces_from_tasks(all_tasks)
-
-                # Get the current state of the workspace filter from the modal
-                state_values = payload["view"]["state"]["values"]
-                current_workspace = state_values.get("workspace_filter", {}).get("selected_workspace", {}).get("selected_option", {}).get("value")
-
+                state_values = view["state"]["values"]
+                workspace_state = state_values.get("workspace_filter", {}).get("selected_workspace", {})
+                selected_option = workspace_state.get("selected_option")
+                current_workspace = selected_option.get("value") if selected_option else None
                 description = ""
-
-                if action_id == "selected_workspace":
-                    print("Handling block action: User changed the workspace filter.")
-                    # The selected workspace is the new one from the action
-                    current_workspace = action.get("selected_option", {}).get("value")
-
+                if action_id == "selected_workspace": current_workspace = action.get("selected_option", {}).get("value")
                 elif action_id == "selected_item":
-                    print("Handling block action: User selected an item.")
                     task_id = action.get("selected_option", {}).get("value")
                     if task_id:
-                        task_details = get_clickup_task_details(clickup_api_token, task_id)
-                        description = task_details.get("description") or ""
-
-                # Filter the task list based on the current workspace
-                tasks_to_display = []
-                if current_workspace:
-                    for task in all_tasks:
-                        if get_workspace_name_from_task(task) == current_workspace:
-                            tasks_to_display.append(task)
-                else:
-                    tasks_to_display = all_tasks
-
-                # Re-build and update the modal
-                updated_view = build_slack_modal(tasks_to_display, all_workspaces, initial_description=description)
-                requests.post("https://slack.com/api/views.update", headers=headers, json={"view_id": view_id, "view": updated_view})
+                        task_details = next((t for t in all_tasks_prepared if t['id'] == task_id), None)
+                        if task_details:
+                            description = task_details.get("description", "")
+                tasks_to_display = [t for t in all_tasks_prepared if t.get('workspace_name') == current_workspace] if current_workspace else all_tasks_prepared
+                updated_view = build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str=private_metadata_str, initial_description=description)
+                http_session.post("https://slack.com/api/views.update", headers=headers, json={"view_id": view_id, "view": updated_view})
                 return {"statusCode": 200, "body": ""}
 
             elif payload.get("type") == "view_submission":
-                 print("View submitted. Preparing data for ClickUp.")
                  state_values = payload["view"]["state"]["values"]
-
                  selected_item_id = state_values.get("item_selection", {}).get("selected_item", {}).get("selected_option", {}).get("value")
-                 selected_date = state_values.get("delivery_date_block", {}).get("delivery_date_action", {}).get("selected_date")
+                 delivery_date = state_values.get("delivery_date_block", {}).get("delivery_date_action", {}).get("selected_date")
                  description_text = state_values.get("description_block", {}).get("description_action", {}).get("value")
 
-                 print(f"Selected Item ID: {selected_item_id}")
-                 print(f"Selected Date: {selected_date}")
-                 print(f"Description: {description_text}")
+                 # --- MODIFIED: Get user's real name ---
+                 slack_user_id = payload["user"]["id"]
+                 slack_user_info = get_slack_user_info(slack_bot_token, slack_user_id)
+                 requestor_real_name = slack_user_info.get("user", {}).get("real_name", "Unknown User")
+                 # --- END OF MODIFICATION ---
 
-                 return {"statusCode": 200, "body": ""}
+                 original_item_details = get_clickup_task_details(clickup_api_token, selected_item_id)
 
-        # Initial modal open from a Slash Command
-        print("Handling initial slash command to open modal.")
+                 new_task_payload = {
+                     "name": original_item_details["name"], "description": description_text,
+                     "custom_fields": [
+                         {"id": WORKSPACE_FIELD_ID, "value": get_custom_field_value(original_item_details, WORKSPACE_FIELD_ID)},
+                         {"id": SUPPLIER_LINK_FIELD_ID, "value": get_custom_field_value(original_item_details, SUPPLIER_LINK_FIELD_ID)},
+                         {"id": REQUESTOR_NAME_FIELD_ID, "value": requestor_real_name}, # <-- Use real name here
+                         {"id": ITEM_TYPE_FIELD_ID, "value": get_custom_field_value(original_item_details, ITEM_TYPE_FIELD_ID)},
+                     ]
+                 }
+
+                 if delivery_date:
+                     dt_object = datetime.strptime(delivery_date, '%Y-%m-%d')
+                     new_task_payload["due_date"] = int(dt_object.timestamp() * 1000)
+
+                 create_clickup_purchase_request(clickup_api_token, new_task_payload)
+
+                 success_view = {"type": "modal", "title": {"type": "plain_text", "text": "Success!"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Your purchase request was created successfully! Track it in the #purchase_requests channel."}}], "close": {"type": "plain_text", "text": "Close"}}
+                 return {"statusCode": 200, "body": json.dumps({"response_action": "update", "view": success_view})}
+
+        # Initial modal open
         trigger_id = parsed_body.get("trigger_id", [None])[0]
-        if not trigger_id:
-            raise ValueError("trigger_id not found in request body")
+        if not trigger_id: raise ValueError("trigger_id not found")
 
-        all_tasks = get_clickup_tasks(clickup_api_token, CLICKUP_LIST_ID)
-        all_workspaces = get_all_workspaces_from_tasks(all_tasks)
-        modal_view = build_slack_modal(all_tasks, all_workspaces)
+        all_tasks_full = get_clickup_tasks(clickup_api_token, CLICKUP_LIST_ID)
 
-        requests.post("https://slack.com/api/views.open", headers=headers, json={"trigger_id": trigger_id, "view": modal_view})
+        if not all_tasks_full:
+            error_view = {"type": "modal", "title": {"type": "plain_text", "text": "No Items Found"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Sorry, no reorderable items were found in the ClickUp list."}}], "close": {"type": "plain_text", "text": "Close"}}
+            http_session.post("https://slack.com/api/views.open", headers=headers, json={"trigger_id": trigger_id, "view": error_view})
+            return {"statusCode": 200, "body": ""}
+
+        all_tasks_prepared = prepare_tasks_for_metadata(all_tasks_full)
+        all_workspaces = sorted(list(set(t['workspace_name'] for t in all_tasks_prepared if t['workspace_name'])))
+        private_metadata_str = json.dumps(all_tasks_prepared)
+
+        modal_view = build_slack_modal(all_tasks_prepared, all_workspaces, private_metadata_str=private_metadata_str)
+        http_session.post("https://slack.com/api/views.open", headers=headers, json={"trigger_id": trigger_id, "view": modal_view})
         return {"statusCode": 200, "body": ""}
 
     except Exception as e:

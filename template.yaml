@@ -194,6 +194,10 @@ Resources:
           SLACK_MAINTENANCE_BOT_SECRET_NAME: 'prod/slack-maintenance-bot-token'
           LIST_ID: '901320662208'
           PURCHASE_REQUEST_LIST_ID: '901310302436'
+          WORKSPACE_FIELD_ID: 'f4923783-74db-42ca-bda3-82bbca58abfe'
+          SUPPLIER_LINK_FIELD_ID: 'c25e5cb5-e38f-4ae7-adae-d3620d9157bc'
+          REQUESTOR_NAME_FIELD_ID: '6ec94778-d4a6-4f54-94a6-59769db1ba57'
+          ITEM_TYPE_FIELD_ID: 'f73725e4-d2fa-4187-9241-712af6fadb89'
       Events:
         ApiTrigger:
           Type: Api
