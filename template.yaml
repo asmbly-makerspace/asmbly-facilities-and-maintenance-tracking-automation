@@ -113,7 +113,7 @@ Resources:
         - !Ref RequestsLambdaLayer
       Environment:
         Variables:
-          DRY_RUN: 'true'
+          DRY_RUN: 'false'
           BOT_ICON_EMOJI: ':hammer_and_wrench:'
           BOT_NAME: 'PM Bot'
           CLICKUP_LIST_ID: '901310894771'
