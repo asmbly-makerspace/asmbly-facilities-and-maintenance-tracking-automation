@@ -99,7 +99,7 @@ Resources:
           Value: facilities
 
   # 4. Define the Slack Poster Lambda Function (Scheduled)
-  PostSlackMessagesFunction:
+  PMReminderBotFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: PMReminderBot
