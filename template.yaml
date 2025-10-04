@@ -113,16 +113,17 @@ Resources:
         - !Ref RequestsLambdaLayer
       Environment:
         Variables:
-          ASSET_FIELD_NAME: 'Asset (P)'
+          DRY_RUN: 'true'
           BOT_ICON_EMOJI: ':hammer_and_wrench:'
           BOT_NAME: 'PM Bot'
           CLICKUP_LIST_ID: '901310894771'
           CLICKUP_SECRET_NAME: 'clickup/api/token'
-          FREQUENCY_FIELD_NAME: 'Frequency'
           GENERAL_CHANNEL_NAME: 'stewards'
           SLACK_MAINTENANCE_BOT_SECRET_NAME: 'prod/slack-maintenance-bot-token'
-          WORKSPACE_FIELD_NAME: 'Workspace'
           WORKSPACES: '3d-printing,ceramics,electronics,lasers,metal-shop,textiles,woodshop'
+          CLICKUP_ASSET_FIELD_ID: '487e2b73-8329-4ce2-a0a1-1b83a6069ed1'
+          CLICKUP_FREQUENCY_FIELD_ID: 'b0d864da-9018-4935-ae65-7a9103bf70d2'
+          CLICKUP_WORKSPACE_FIELD_ID: 'f4923783-74db-42ca-bda3-82bbca58abfe'
           STARTER_MESSAGE_TEXT: |
             Weekly task update!
             * Mark tasks with :loading: to show that they're being worked on!
