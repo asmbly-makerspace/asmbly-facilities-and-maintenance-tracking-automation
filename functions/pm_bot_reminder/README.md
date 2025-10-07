@@ -71,7 +71,7 @@ This diagram illustrates the secure, serverless workflow for the automated task 
 1.  **Scheduled Trigger**
     * **Source:** Amazon EventBridge
     * **Destination:** AWS Lambda
-    * **Action:** At the scheduled time (e.g., every Sunday at 4:30 AM CDT), EventBridge automatically triggers the Lambda function to run.
+    * **Action:** At the scheduled time (every Saturday morning), EventBridge automatically triggers the Lambda function to run.
 
 2.  **Fetch Secrets**
     * **Source:** AWS Lambda
@@ -99,9 +99,10 @@ The core infrastructure consists of an IAM Role, two secrets in Secrets Manager,
 
 ### Tags
 
-| Name    | Value           |
-| ------- | --------------- |
-| Project | pm-reminder-bot |
+| Name      | Value           |
+|-----------|-----------------|
+| Project   | pm-reminder-bot |
+| Workspace | facilities      |
 
 ## Configuration
 

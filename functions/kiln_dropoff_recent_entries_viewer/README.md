@@ -104,7 +104,7 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 7.  **Return Task Data**
     * **Source:** ClickUp API
     * **Destination:** AWS Lambda
-    * **Action:** The ClickUp API returns a JSON object containing the 10 most recent tasks.
+    * **Action:** The ClickUp API returns a JSON object containing all tasks created in the last 24 hours.
 
 8.  **Generate and Return HTML**
     * **Source:** AWS Lambda
@@ -120,9 +120,10 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 
 Tags in AWS will be:
 
-| Name    | Value                  |
-| ------- | ---------------------- |
-| Project | kilnops-dropoff-viewer |
+| Name      | Value                  |
+|-----------|------------------------|
+| Project   | kilnops-dropoff-viewer |
+| Workspace | ceramics               |
 
 ## Configuration
 
