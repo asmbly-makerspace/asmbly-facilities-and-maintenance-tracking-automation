@@ -28,39 +28,6 @@ Resources:
         - python3.12
       RetentionPolicy: Retain
 
-  # NOTE: The following function 'GetClickUpTasksFunction' is currently commented out.
-  # It is associated with a manually created API Gateway (ID: jvh3lxcpf7).
-  # To manage this function with SAM, the API Gateway must also be imported into or
-  # recreated by this SAM template. This change requires careful coordination
-  # to avoid disrupting the existing public endpoint.
-  #
-  # GetClickUpTasksFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     FunctionName: KilnOpsDropoffRecentEntriesViewer
-  #     Description: "https://gist.github.com/sababado/aa8c92c0f9f4488c701523c6fd995c6b"
-  #     CodeUri: functions/kiln_dropoff_recent_entries_viewer/
-  #     Handler: lambda_function.lambda_handler
-  #     Runtime: python3.12
-  #     Timeout: 10
-  #     Role: arn:aws:iam::110104886034:role/KilnOpsDropoffViewerLambdaRole
-  #     Layers:
-  #       - !Ref RequestsLambdaLayer
-  #     Environment:
-  #       Variables:
-  #         SECRET_NAME: clickup/api/token
-  #         CLICKUP_LIST_KILNDROP_ID: 901318902829
-  #     Events:
-  #       ApiTrigger:
-  #         Type: Api
-  #         Properties:
-  #           Path: /KilnOpsDropoffRecentEntriesViewer
-  #           Method: get
-  #           RestApiId: jvh3lxcpf7 # <-- This hardcoded ID causes a SAM build error.
-  #     Tags:
-  #       Project: kilnops-dropoff-viewer
-  #       Workspace: ceramics
-
   # 3. Define the IAM Role for the PMReminderBot
   PMReminderBotLambdaRole:
     Type: AWS::IAM::Role
@@ -209,6 +176,70 @@ Resources:
       Tags:
         Project: facilities-item-reorder
         Workspace: facilities
+
+  # 7. Define the IAM Role for the Kiln Dropoff Viewer Function
+  KilnDropoffViewerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: KilnDropoffViewerLambdaRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: KilnDropoffViewerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
+      Tags:
+        - Key: Project
+          Value: kilnops-dropoff-viewer
+        - Key: Workspace
+          Value: ceramics
+
+  # 8. Define the Kiln Dropoff Recent Entries Viewer Lambda Function
+  KilnDropoffRecentEntriesViewerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: KilnOpsDropoffRecentEntriesViewer
+      Description: "https://gist.github.com/sababado/aa8c92c0f9f4488c701523c6fd995c6b"
+      CodeUri: functions/kiln_dropoff_recent_entries_viewer/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Timeout: 10
+      Role: !GetAtt KilnDropoffViewerLambdaRole.Arn
+      Layers:
+        - !Ref RequestsLambdaLayer
+      Environment:
+        Variables:
+          SECRET_NAME: clickup/api/token
+          CLICKUP_LIST_KILNDROP_ID: 901318902829
+      Events:
+        ApiTrigger:
+          Type: Api
+          Properties:
+            Path: /KilnOpsDropoffRecentEntriesViewer
+            Method: get
+            RestApiId: !Ref FacilitiesApi
+      Tags:
+        Project: kilnops-dropoff-viewer
+        Workspace: ceramics
 
 # Add this entire section to the end of your file
 Outputs:
