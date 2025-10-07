@@ -1,0 +1,483 @@
+{
+  "tasks": [
+    {
+      "id": "obfuscated_task_001",
+      "custom_id": "KO-FAKE-001",
+      "name": "Customer A",
+      "status": {
+        "status": "to fire",
+        "id": "status_id_obfuscated_open"
+      },
+      "creator": {
+        "id": -1,
+        "username": "ClickBot",
+        "email": "clickbot@clickup.com"
+      },
+      "watchers": [
+        {
+          "id": -1,
+          "username": "ClickBot",
+          "email": "clickbot@clickup.com"
+        }
+      ],
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_email",
+          "name": "Contact Email",
+          "value": "customer.a@example.com"
+        },
+        {
+          "id": "uuid_obfuscated_field_phone",
+          "name": "Contact Phone Number",
+          "value": "+1 555-555-0101"
+        },
+        {
+          "id": "uuid_obfuscated_field_firingtype",
+          "name": "Firing Type",
+          "value": 1
+        },
+        {
+          "id": "uuid_obfuscated_field_pieces",
+          "name": "Number of Pieces",
+          "value": "17"
+        },
+        {
+          "id": "uuid_obfuscated_field_photo",
+          "name": "Photo",
+          "value": [
+            {
+              "id": "uuid_obfuscated_attachment_101.jpg",
+              "title": "image_1.jpg",
+              "extension": "jpg",
+              "url": "https://attachments.example.com/obfuscated_path/image_1.jpg"
+            }
+          ]
+        }
+      ],
+      "team_id": "team_id_12345",
+      "url": "https://app.clickup.com/t/obfuscated_task_001",
+      "list": { "id": "list_id_56789" },
+      "project": { "id": "project_id_11223" },
+      "folder": { "id": "folder_id_11223" },
+      "space": { "id": "space_id_99887" }
+    },
+    {
+      "id": "obfuscated_task_002",
+      "custom_id": "KO-FAKE-002",
+      "name": "Customer C",
+      "status": {
+        "status": "fired (email)",
+        "id": "status_id_obfuscated_done",
+        "type": "done"
+      },
+      "creator": {
+        "id": -1,
+        "username": "ClickBot",
+        "email": "clickbot@clickup.com"
+      },
+      "watchers": [
+        {
+          "id": -1,
+          "username": "ClickBot",
+          "email": "clickbot@clickup.com"
+        },
+        {
+          "id": "user_id_901",
+          "username": "Staff Member A",
+          "email": "staff.a@example.com"
+        }
+      ],
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_email",
+          "name": "Contact Email",
+          "value": "customer.c@example.com"
+        },
+        {
+          "id": "uuid_obfuscated_field_phone",
+          "name": "Contact Phone Number",
+          "value": "+1 555-555-0102"
+        },
+        {
+          "id": "uuid_obfuscated_field_kiln",
+          "name": "Kiln Firings",
+          "type": "list_relationship",
+          "value": [
+            {
+              "id": "obfuscated_linked_task_1",
+              "custom_id": "KO-FAKE-101",
+              "url": "https://app.clickup.com/t/obfuscated_linked_task_1"
+            }
+          ]
+        }
+      ],
+      "team_id": "team_id_12345",
+      "url": "https://app.clickup.com/t/obfuscated_task_002",
+      "list": { "id": "list_id_56789" },
+      "project": { "id": "project_id_11223" },
+      "folder": { "id": "folder_id_11223" },
+      "space": { "id": "space_id_99887" }
+    },
+    {
+      "id": "obfuscated_task_003",
+      "custom_id": "KO-FAKE-003",
+      "name": "Customer F",
+      "status": {
+        "status": "in kiln process",
+        "id": "status_id_obfuscated_custom"
+      },
+      "creator": {
+        "id": -1,
+        "username": "ClickBot",
+        "email": "clickbot@clickup.com"
+      },
+      "watchers": [
+        {
+          "id": -1,
+          "username": "ClickBot",
+          "email": "clickbot@clickup.com"
+        },
+        {
+          "id": "user_id_901",
+          "username": "Staff Member A",
+          "email": "staff.a@example.com"
+        }
+      ],
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_email",
+          "name": "Contact Email",
+          "value": "customer.f@example.com"
+        },
+        {
+          "id": "uuid_obfuscated_field_phone",
+          "name": "Contact Phone Number",
+          "value": "+1 555-555-0103"
+        }
+      ],
+      "team_id": "team_id_12345",
+      "url": "https://app.clickup.com/t/obfuscated_task_003",
+      "list": { "id": "list_id_56789" },
+      "project": { "id": "project_id_11223" },
+      "folder": { "id": "folder_id_11223" },
+      "space": { "id": "space_id_99887" }
+    },
+    {
+      "id": "obfuscated_task_004",
+      "custom_id": "KO-FAKE-004",
+      "name": "Customer G",
+      "status": {
+        "status": "to fire",
+        "id": "status_id_obfuscated_open"
+      },
+      "creator": {
+        "id": "user_id_902",
+        "username": "Staff Member B",
+        "email": "staff.b@example.com"
+      },
+      "watchers": [
+        {
+          "id": -1,
+          "username": "ClickBot",
+          "email": "clickbot@clickup.com"
+        },
+        {
+          "id": "user_id_902",
+          "username": "Staff Member B",
+          "email": "staff.b@example.com"
+        }
+      ],
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_email",
+          "name": "Contact Email",
+          "value": "customer.g@example.com"
+        },
+        {
+          "id": "uuid_obfuscated_field_phone",
+          "name": "Contact Phone Number",
+          "value": "+1 555-555-0104"
+        },
+        {
+          "id": "uuid_obfuscated_field_firingtype",
+          "name": "Firing Type",
+          "value": 0
+        }
+      ],
+      "team_id": "team_id_12345",
+      "url": "https://app.clickup.com/t/obfuscated_task_004",
+      "list": { "id": "list_id_56789" },
+      "project": { "id": "project_id_11223" },
+      "folder": { "id": "folder_id_11223" },
+      "space": { "id": "space_id_99887" }
+    },
+    {
+      "id": "obfuscated_task_005",
+      "custom_id": "KO-FAKE-005",
+      "name": "Customer H",
+      "status": {
+        "status": "fired (email)",
+        "id": "status_id_obfuscated_done",
+        "type": "done"
+      },
+      "creator": {
+        "id": -1,
+        "username": "ClickBot",
+        "email": "clickbot@clickup.com"
+      },
+      "watchers": [
+        {
+          "id": -1,
+          "username": "ClickBot",
+          "email": "clickbot@clickup.com"
+        }
+      ],
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_email",
+          "name": "Contact Email",
+          "value": "customer.h@example.com"
+        },
+        {
+          "id": "uuid_obfuscated_field_kiln",
+          "name": "Kiln Firings",
+          "type": "list_relationship",
+          "value": [
+            {
+              "id": "obfuscated_linked_task_2",
+              "custom_id": "KO-FAKE-102",
+              "url": "https://app.clickup.com/t/obfuscated_linked_task_2"
+            },
+            {
+              "id": "obfuscated_linked_task_3",
+              "custom_id": "KO-FAKE-103",
+              "url": "https://app.clickup.com/t/obfuscated_linked_task_3"
+            },
+            {
+              "id": "obfuscated_linked_task_4",
+              "custom_id": "KO-FAKE-104",
+              "url": "https://app.clickup.com/t/obfuscated_linked_task_4"
+            }
+          ]
+        }
+      ],
+      "team_id": "team_id_12345",
+      "url": "https://app.clickup.com/t/obfuscated_task_005",
+      "list": { "id": "list_id_56789" },
+      "project": { "id": "project_id_11223" },
+      "folder": { "id": "folder_id_11223" },
+      "space": { "id": "space_id_99887" }
+    },
+    {
+      "id": "obfuscated_task_006",
+      "custom_id": "KO-FAKE-006",
+      "name": "Customer K",
+      "status": {
+        "status": "to fire",
+        "id": "status_id_obfuscated_open"
+      },
+      "creator": {
+        "id": -1,
+        "username": "ClickBot",
+        "email": "clickbot@clickup.com"
+      },
+      "watchers": [],
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_email",
+          "name": "Contact Email",
+          "value": "customer.k@example.com"
+        },
+        {
+          "id": "uuid_obfuscated_field_photo",
+          "name": "Photo",
+          "value": [
+            {
+              "id": "uuid_obfuscated_attachment_601.HEIC",
+              "title": "photo_6.HEIC",
+              "extension": "HEIC",
+              "mimetype": "image/heic",
+              "url": "https://attachments.example.com/obfuscated_path/photo_6.HEIC"
+            }
+          ]
+        }
+      ],
+      "team_id": "team_id_12345",
+      "url": "https://app.clickup.com/t/obfuscated_task_006",
+      "list": { "id": "list_id_56789" },
+      "project": { "id": "project_id_11223" },
+      "folder": { "id": "folder_id_11223" },
+      "space": { "id": "space_id_99887" }
+    },
+    {
+      "id": "obfuscated_task_007",
+      "custom_id": "KO-FAKE-007",
+      "name": "Customer L",
+      "status": {
+        "status": "to fire",
+        "id": "status_id_obfuscated_open"
+      },
+      "creator": {
+        "id": -1,
+        "username": "ClickBot",
+        "email": "clickbot@clickup.com"
+      },
+      "watchers": [],
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_email",
+          "name": "Contact Email",
+          "value": "customer.l@example.com"
+        },
+        {
+          "id": "uuid_obfuscated_field_photo",
+          "name": "Photo",
+          "value": [
+            {
+              "id": "uuid_obfuscated_attachment_701.jpeg",
+              "title": "photo_701.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_702.jpeg",
+              "title": "photo_702.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_703.jpeg",
+              "title": "photo_703.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_704.jpeg",
+              "title": "photo_704.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_705.jpeg",
+              "title": "photo_705.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_706.jpeg",
+              "title": "photo_706.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_707.jpeg",
+              "title": "photo_707.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_708.jpeg",
+              "title": "photo_708.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_709.jpeg",
+              "title": "photo_709.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_710.jpeg",
+              "title": "photo_710.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_711.jpeg",
+              "title": "photo_711.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_712.jpeg",
+              "title": "photo_712.jpeg"
+            },
+            {
+              "id": "uuid_obfuscated_attachment_713.jpeg",
+              "title": "photo_713.jpeg"
+            }
+          ]
+        }
+      ],
+      "team_id": "team_id_12345",
+      "url": "https://app.clickup.com/t/obfuscated_task_007",
+      "list": { "id": "list_id_56789" },
+      "project": { "id": "project_id_11223" },
+      "folder": { "id": "folder_id_11223" },
+      "space": { "id": "space_id_99887" }
+    },
+    {
+      "id": "obfuscated_task_008",
+      "custom_id": "KO-FAKE-008",
+      "name": "Customer B",
+      "status": {
+        "status": "to fire",
+        "id": "status_id_obfuscated_open"
+      },
+      "creator": {
+        "id": -1,
+        "username": "ClickBot",
+        "email": "clickbot@clickup.com"
+      },
+      "watchers": [],
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_email",
+          "name": "Contact Email",
+          "value": "customer.b@example.com"
+        }
+      ],
+      "team_id": "team_id_12345",
+      "url": "https://app.clickup.com/t/obfuscated_task_008",
+      "list": { "id": "list_id_56789" },
+      "project": { "id": "project_id_11223" },
+      "folder": { "id": "folder_id_11223" },
+      "space": { "id": "space_id_99887" }
+    },
+    {
+      "id": "obfuscated_task_009",
+      "custom_id": "KO-FAKE-009",
+      "name": "Customer I",
+      "status": {
+        "status": "to fire",
+        "id": "status_id_obfuscated_open"
+      },
+      "creator": {
+        "id": -1,
+        "username": "ClickBot",
+        "email": "clickbot@clickup.com"
+      },
+      "watchers": [],
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_email",
+          "name": "Contact Email",
+          "value": "customer.i@example.com"
+        }
+      ],
+      "team_id": "team_id_12345",
+      "url": "https://app.clickup.com/t/obfuscated_task_009",
+      "list": { "id": "list_id_56789" },
+      "project": { "id": "project_id_11223" },
+      "folder": { "id": "folder_id_11223" },
+      "space": { "id": "space_id_99887" }
+    },
+    {
+      "id": "obfuscated_task_010",
+      "custom_id": "KO-FAKE-010",
+      "name": "Customer J",
+      "status": {
+        "status": "to fire",
+        "id": "status_id_obfuscated_open"
+      },
+      "creator": {
+        "id": -1,
+        "username": "ClickBot",
+        "email": "clickbot@clickup.com"
+      },
+      "watchers": [],
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_email",
+          "name": "Contact Email",
+          "value": "customer.j@example.com"
+        }
+      ],
+      "team_id": "team_id_12345",
+      "url": "https://app.clickup.com/t/obfuscated_task_010",
+      "list": { "id": "list_id_56789" },
+      "project": { "id": "project_id_11223" },
+      "folder": { "id": "folder_id_11223" },
+      "space": { "id": "space_id_99887" }
+    }
+  ]
+}

@@ -44,7 +44,7 @@ def generate_html_page(tasks):
     else:
         for task in tasks:
             # ClickUp API returns date created as a Unix timestamp in milliseconds
-            created_date = datetime.fromtimestamp(int(task['date_created']) / 1000).strftime('%Y-%m-%d %H:%M:%S')
+            created_date = datetime.fromtimestamp(int(task['date_created']) / 1000, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
             
             # Use the custom_id if it exists, otherwise fall back to the standard id
             display_id = task.get('custom_id', task['id'])

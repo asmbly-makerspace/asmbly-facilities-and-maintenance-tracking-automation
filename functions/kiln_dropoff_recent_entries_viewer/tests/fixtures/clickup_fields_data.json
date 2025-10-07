@@ -1,0 +1,133 @@
+{
+  "fields": [
+    {
+      "id": "uuid_obfuscated_field_photo",
+      "name": "Photo",
+      "type": "attachment",
+      "type_config": {},
+      "date_created": "1745423119035",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "uuid_obfuscated_field_rejection",
+      "name": "Rejection Notes",
+      "type": "drop_down",
+      "type_config": {
+        "sorting": "manual",
+        "options": [
+          {
+            "id": "uuid_obfuscated_option_reject_0",
+            "name": "Needs More Dry Time",
+            "color": "#FF4081",
+            "orderindex": 0
+          },
+          {
+            "id": "uuid_obfuscated_option_reject_1",
+            "name": "Has Glaze Issues",
+            "color": "#e50000",
+            "orderindex": 1
+          }
+        ]
+      },
+      "date_created": "1756408957633",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "uuid_obfuscated_field_email",
+      "name": "Contact Email",
+      "type": "email",
+      "type_config": {},
+      "date_created": "1756405408665",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "uuid_obfuscated_field_dropoff",
+      "name": "Drop Off Date",
+      "type": "text",
+      "type_config": {
+        "ai": {
+          "prompt": "Identify the scheduled drop off date from the task details. ",
+          "source": "custom"
+        }
+      },
+      "date_created": "1757455898663",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "uuid_obfuscated_field_phone",
+      "name": "Contact Phone Number",
+      "type": "phone",
+      "type_config": {},
+      "date_created": "1756405396785",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "uuid_obfuscated_field_pieces",
+      "name": "Number of Pieces",
+      "type": "number",
+      "type_config": {},
+      "date_created": "1756405685381",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "uuid_obfuscated_field_firingtype",
+      "name": "Firing Type",
+      "type": "drop_down",
+      "type_config": {
+        "sorting": "manual",
+        "options": [
+          {
+            "id": "uuid_obfuscated_option_firetype_0",
+            "name": "Bisque",
+            "color": "#FF4081",
+            "orderindex": 0
+          },
+          {
+            "id": "uuid_obfuscated_option_firetype_1",
+            "name": "Glaze",
+            "color": "#7C4DFF",
+            "orderindex": 1
+          }
+        ]
+      },
+      "date_created": "1756405558739",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "uuid_obfuscated_field_workspace",
+      "name": "Workspace",
+      "type": "drop_down",
+      "type_config": {
+        "sorting": "manual",
+        "new_drop_down": true,
+        "options": [
+          { "id": "uuid_obfuscated_option_ws_0", "name": "3D Printing" },
+          { "id": "uuid_obfuscated_option_ws_1", "name": "Electronics" },
+          { "id": "uuid_obfuscated_option_ws_2", "name": "Textiles" },
+          { "id": "uuid_obfuscated_option_ws_3", "name": "Lasers" },
+          { "id": "uuid_obfuscated_option_ws_4", "name": "Woodshop" },
+          { "id": "uuid_obfuscated_option_ws_5", "name": "Metal-Shop" },
+          { "id": "uuid_obfuscated_option_ws_6", "name": "Ceramics" },
+          { "id": "uuid_obfuscated_option_ws_7", "name": "Multi-Purpose Room" },
+          { "id": "uuid_obfuscated_option_ws_8", "name": "Lobby" },
+          { "id": "uuid_obfuscated_option_ws_9", "name": "Studios" },
+          { "id": "uuid_obfuscated_option_ws_10", "name": "Hallway" },
+          { "id": "uuid_obfuscated_option_ws_11", "name": "Bathrooms" },
+          { "id": "uuid_obfuscated_option_ws_12", "name": "HVAC" },
+          { "id": "uuid_obfuscated_option_ws_13", "name": "Education / Classes" },
+          { "id": "uuid_obfuscated_option_ws_14", "name": "General Areas" }
+        ]
+      },
+      "date_created": "1759529621828",
+      "hide_from_guests": false,
+      "required": false
+    }
+  ]
+}
