@@ -1,9 +1,8 @@
-import boto3
 import json
 import os
-import requests
 from datetime import datetime, timedelta, timezone
 
+from common import aws, clickup
 
 # --- Environment Variables ---
 # These should be set in the Lambda configuration
@@ -11,28 +10,6 @@ from datetime import datetime, timedelta, timezone
 SECRET_NAME = os.environ.get('SECRET_NAME', 'clickup/api/token')
 # The ID of the ClickUp list where form submissions are created
 LIST_ID = os.environ.get('CLICKUP_LIST_KILNDROP_ID')
-
-
-def get_clickup_api_token():
-    """
-    Retrieves and cleans the ClickUp API token from AWS Secrets Manager.
-    """
-    session = boto3.session.Session()
-    client = session.client(service_name='secretsmanager')
-
-    try:
-        get_secret_value_response = client.get_secret_value(SecretId=SECRET_NAME)
-    except Exception as e:
-        print(f"ERROR: Unable to retrieve secret from Secrets Manager: {e}")
-        raise e
-
-    secret = json.loads(get_secret_value_response['SecretString'])
-    token = secret.get('CLICKUP_API_TOKEN')
-    
-    # Clean the token by stripping leading/trailing whitespace
-    if token:
-        return token.strip()
-    return None
 
 
 def generate_html_page(tasks):
@@ -197,18 +174,10 @@ def generate_error_page(message):
         f'{error_body}<div class="instructions" style="display:none;">'
     )
 
-
 def lambda_handler(event, context):
     """
     Main handler for the Lambda function. Triggered by API Gateway.
     """
-    # --- START OF DEBUGGING CODE ---
-    print(f"--- DEBUG: Lambda function execution started.")
-    print(f"--- DEBUG: List ID from env var 'CLICKUP_LIST_KILNDROP_ID' is: '{LIST_ID}'")
-    print(f"--- DEBUG: Secret Name from env var 'SECRET_NAME' is: '{SECRET_NAME}'")
-    # --- END OF DEBUGGING CODE ---
-    
-    # 1. Check for required environment variables
     if not LIST_ID:
         print("ERROR: CLICKUP_LIST_KILNDROP_ID environment variable not set.")
         return {
@@ -218,49 +187,20 @@ def lambda_handler(event, context):
         }
 
     try:
-        # 2. Get API token from Secrets Manager
-        api_token = get_clickup_api_token()
+        api_token = aws.get_secret(SECRET_NAME, secret_key='CLICKUP_API_TOKEN')
         
-        # --- MORE DEBUGGING CODE ---
-        if api_token:
-            print(f"--- DEBUG: API Token loaded successfully.")
-            # NEW: More detailed logging to verify the token string is clean
-            print(f"--- DEBUG: Token Length: {len(api_token)}")
-            print(f"--- DEBUG: Token Starts With: '{api_token[:8]}...'")
-            print(f"--- DEBUG: Token Ends With: '...{api_token[-4:]}'")
-        else:
-            print("--- DEBUG ERROR: API Token IS MISSING OR NULL after calling get_clickup_api_token().")
-        # --- END OF MORE DEBUGGING CODE ---
-        
-        # 3. Fetch recent tasks from ClickUp API
-        headers = {
-            "Authorization": api_token,
-            "Content-Type": "application/json"
-        }
-        
-        # MODIFIED: Calculate timestamp for 24 hours ago
         twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
         timestamp_ms = int(twenty_four_hours_ago.timestamp() * 1000)
 
-        # MODIFIED: Use the timestamp to filter tasks, REMOVED order_by and reverse
-        url = f"https://api.clickup.com/api/v2/list/{LIST_ID}/task"
-        params = {
-            "date_created_gt": timestamp_ms
-        }
+        tasks = clickup.get_all_tasks(
+            LIST_ID,
+            api_token,
+            params={"date_created_gt": timestamp_ms}
+        )
         
-        # --- FINAL DEBUGGING PRINT ---
-        print(f"--- DEBUG: Making request to URL: {url} with params: {params}")
-        # --- END OF FINAL DEBUGGING PRINT ---
-        
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
-        
-        tasks = response.json().get("tasks", [])
-        
-        # MODIFIED: Sort the tasks manually since the API parameter was removed
+        # Sort the tasks manually by date created
         tasks.sort(key=lambda x: int(x.get('date_created', 0)), reverse=True)
         
-        # 4. Generate and return the HTML page
         html_body = generate_html_page(tasks)
         
         return {

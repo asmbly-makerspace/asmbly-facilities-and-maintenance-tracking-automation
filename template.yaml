@@ -17,7 +17,7 @@ Resources:
     Properties:
       StageName: Prod
 
-  # 2. Define the Shared Lambda Layer
+  # 2. Define the Shared Lambda Layers
   RequestsLambdaLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
@@ -28,40 +28,39 @@ Resources:
         - python3.12
       RetentionPolicy: Retain
 
-  # NOTE: The following function 'GetClickUpTasksFunction' is currently commented out.
-  # It is associated with a manually created API Gateway (ID: jvh3lxcpf7).
-  # To manage this function with SAM, the API Gateway must also be imported into or
-  # recreated by this SAM template. This change requires careful coordination
-  # to avoid disrupting the existing public endpoint.
-  #
-  # GetClickUpTasksFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     FunctionName: KilnOpsDropoffRecentEntriesViewer
-  #     Description: "https://gist.github.com/sababado/aa8c92c0f9f4488c701523c6fd995c6b"
-  #     CodeUri: functions/kiln_dropoff_recent_entries_viewer/
-  #     Handler: lambda_function.lambda_handler
-  #     Runtime: python3.12
-  #     Timeout: 10
-  #     Role: arn:aws:iam::110104886034:role/KilnOpsDropoffViewerLambdaRole
-  #     Layers:
-  #       - !Ref RequestsLambdaLayer
-  #     Environment:
-  #       Variables:
-  #         SECRET_NAME: clickup/api/token
-  #         CLICKUP_LIST_KILNDROP_ID: 901318902829
-  #     Events:
-  #       ApiTrigger:
-  #         Type: Api
-  #         Properties:
-  #           Path: /KilnOpsDropoffRecentEntriesViewer
-  #           Method: get
-  #           RestApiId: jvh3lxcpf7 # <-- This hardcoded ID causes a SAM build error.
-  #     Tags:
-  #       Project: kilnops-dropoff-viewer
-  #       Workspace: ceramics
+  CommonHelpersLambdaLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: common-helpers-layer
+      Description: "Shared layer containing common helper functions for aws, clickup, and slack"
+      ContentUri: layers/common_helpers/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Retain
 
-  # 3. Define the IAM Role for the PMReminderBot
+  # 3. Define the Kiln Drop-off Viewer Function
+  GetClickUpTasksFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: KilnOpsDropoffRecentEntriesViewer
+      Description: "https://gist.github.com/sababado/aa8c92c0f9f4488c701523c6fd995c6b"
+      CodeUri: functions/kiln_dropoff_recent_entries_viewer/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Timeout: 10
+      Role: arn:aws:iam::110104886034:role/KilnOpsDropoffViewerLambdaRole
+      Layers:
+        - !Ref RequestsLambdaLayer
+        - !Ref CommonHelpersLambdaLayer
+      Environment:
+        Variables:
+          SECRET_NAME: clickup/api/token
+          CLICKUP_LIST_KILNDROP_ID: 901318902829
+      Tags:
+        Project: kilnops-dropoff-viewer
+        Workspace: ceramics
+
+  # 4. Define the IAM Role for the PMReminderBot
   PMReminderBotLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -98,7 +97,7 @@ Resources:
         - Key: Workspace
           Value: facilities
 
-  # 4. Define the Slack Poster Lambda Function (Scheduled)
+  # 5. Define the Slack Poster Lambda Function (Scheduled)
   PMReminderBotFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -111,6 +110,7 @@ Resources:
       Role: !GetAtt PMReminderBotLambdaRole.Arn # Use the role defined in this template
       Layers:
         - !Ref RequestsLambdaLayer
+        - !Ref CommonHelpersLambdaLayer
       Environment:
         Variables:
           DRY_RUN: 'false'
@@ -138,7 +138,7 @@ Resources:
         Project: pm-reminder-bot
         Workspace: facilities
 
-  # 5. Define the IAM Role for the Facilities Slack Reorder Function
+  # 6. Define the IAM Role for the Facilities Slack Reorder Function
   FacilitiesItemReorderLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -175,7 +175,7 @@ Resources:
         - Key: Workspace
           Value: facilities
 
-  # 6. Define the Facilities Slack Purchase Reorder Lambda Function
+  # 7. Define the Facilities Slack Purchase Reorder Lambda Function
   FacilitiesSlackPurchaseReorderFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -189,6 +189,7 @@ Resources:
       Role: !GetAtt FacilitiesItemReorderLambdaRole.Arn
       Layers:
         - !Ref RequestsLambdaLayer
+        - !Ref CommonHelpersLambdaLayer
       Environment:
         Variables:
           CLICKUP_SECRET_NAME: 'clickup/api/token'
