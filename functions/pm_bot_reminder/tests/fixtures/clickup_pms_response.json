@@ -1,0 +1,378 @@
+{
+  "tasks": [
+    {
+      "id": "task_obfuscated_001",
+      "name": "Clean Blade",
+      "description": "",
+      "status": {
+        "status": "to do",
+        "id": "status_id_p12345_ABCDEFGH"
+      },
+      "creator": {
+        "id": "user_id_901",
+        "username": "User One",
+        "email": "user.one@example.com"
+      },
+      "checklists": [
+        {
+          "id": "uuid_obfuscated_checklist_001",
+          "task_id": "task_obfuscated_001",
+          "name": "Blade Cleaning",
+          "creator": "user_id_901",
+          "resolved": 5,
+          "unresolved": 0,
+          "items": [
+            { "id": "uuid_obfuscated_item_101", "name": "Unplug Machine", "resolved": true },
+            { "id": "uuid_obfuscated_item_102", "name": "Get Simple Green in a spray bottle.", "resolved": true },
+            { "id": "uuid_obfuscated_item_103", "name": "Use a problem report if any materials are not present or running low.", "resolved": true },
+            { "id": "uuid_obfuscated_item_104", "name": "Spray the blade and scrub with a brush", "resolved": true },
+            { "id": "uuid_obfuscated_item_105", "name": "Test Machine", "resolved": true }
+          ]
+        }
+      ],
+      "due_date": "1760778000000",
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_asset",
+          "name": "Asset",
+          "value": [ { "id": "asset_obfuscated_grizzly_bandsaw", "name": "Grizzly 24\" bandsaw G0569" } ]
+        }
+      ],
+      "team_id": "team_id_100",
+      "url": "https://app.clickup.com/t/task_obfuscated_001",
+      "list": { "id": "list_id_300" },
+      "project": { "id": "folder_id_400" },
+      "folder": { "id": "folder_id_400" },
+      "space": { "id": "space_id_200" }
+    },
+    {
+      "id": "task_obfuscated_002",
+      "name": "Change Dust Collector Filter",
+      "description": "Remove the filter, replace with the spare. This is a 2-3 person job. Bring a dust mask.",
+      "status": {
+        "status": "to do",
+        "id": "status_id_p12345_ABCDEFGH"
+      },
+      "creator": {
+        "id": "user_id_901",
+        "username": "User One",
+        "email": "user.one@example.com"
+      },
+      "checklists": [],
+      "priority": { "id": "2", "priority": "high" },
+      "due_date": "1761800438000",
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_asset",
+          "name": "Asset",
+          "value": [ { "id": "asset_obfuscated_laguna_dust_collector", "name": "Laguna T|Flux 5 Dust Collector" } ]
+        },
+        {
+          "id": "uuid_obfuscated_field_frequency",
+          "name": "Frequency",
+          "value": 1
+        }
+      ],
+      "team_id": "team_id_100",
+      "url": "https://app.clickup.com/t/task_obfuscated_002",
+      "list": { "id": "list_id_300" },
+      "project": { "id": "folder_id_400" },
+      "folder": { "id": "folder_id_400" },
+      "space": { "id": "space_id_200" }
+    },
+    {
+      "id": "task_obfuscated_003",
+      "name": "Inspect Blades",
+      "description": "Unplug Machine and expose blades\nRotate any chipped or worn blades\nReplace blades if needed.",
+      "status": {
+        "status": "to do",
+        "id": "status_id_p12345_ABCDEFGH"
+      },
+      "creator": {
+        "id": "user_id_901",
+        "username": "User One",
+        "email": "user.one@example.com"
+      },
+      "checklists": [
+        {
+          "id": "uuid_obfuscated_checklist_002",
+          "task_id": "task_obfuscated_003",
+          "name": "Blade Inspection",
+          "creator": "user_id_901",
+          "resolved": 0,
+          "unresolved": 6,
+          "items": [
+            { "id": "uuid_obfuscated_item_201", "name": "Unplug Machine and expose blades", "resolved": false },
+            { "id": "uuid_obfuscated_item_202", "name": "Rotate any chipped or worn blades", "resolved": false },
+            { "id": "uuid_obfuscated_item_203", "name": "Replace blades if needed.", "resolved": false },
+            { "id": "uuid_obfuscated_item_204", "name": "Notify staff if blades need to be replaced", "resolved": false },
+            { "id": "uuid_obfuscated_item_205", "name": "Re-cover blades", "resolved": false },
+            { "id": "uuid_obfuscated_item_206", "name": "Test Machine", "resolved": false }
+          ]
+        }
+      ],
+      "due_date": "1759294801000",
+      "start_date": "1759294801000",
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_asset",
+          "name": "Asset",
+          "value": [ { "id": "asset_obfuscated_powermatic_planer", "name": "Powermatic Planer 15hh" } ]
+        }
+      ],
+      "team_id": "team_id_100",
+      "url": "https://app.clickup.com/t/task_obfuscated_003",
+      "list": { "id": "list_id_300" },
+      "project": { "id": "folder_id_400" },
+      "folder": { "id": "folder_id_400" },
+      "space": { "id": "space_id_200" }
+    },
+    {
+      "id": "task_obfuscated_004",
+      "name": "Clean Blade (Dewalt Miter Saw)",
+      "description": "",
+      "status": {
+        "status": "to do",
+        "id": "status_id_p12345_ABCDEFGH"
+      },
+      "creator": {
+        "id": "user_id_901",
+        "username": "User One",
+        "email": "user.one@example.com"
+      },
+      "checklists": [],
+      "due_date": "1759554030000",
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_asset",
+          "name": "Asset"
+        },
+        {
+          "id": "uuid_obfuscated_field_asset_p",
+          "name": "Asset (P)",
+          "value": "Makita 12\" Miter Saw"
+        }
+      ],
+      "team_id": "team_id_100",
+      "url": "https://app.clickup.com/t/task_obfuscated_004",
+      "list": { "id": "list_id_300" },
+      "project": { "id": "folder_id_400" },
+      "folder": { "id": "folder_id_400" },
+      "space": { "id": "space_id_200" }
+    },
+    {
+      "id": "task_obfuscated_005",
+      "name": "De-Goup HVAC #1",
+      "description": "You'll want the scissor lift for this one. Pop-up next to HVAC #1, open the side hatches and clear out any dust build up.",
+      "status": {
+        "status": "to do",
+        "id": "status_id_p12345_ABCDEFGH"
+      },
+      "creator": {
+        "id": "user_id_901",
+        "username": "User One",
+        "email": "user.one@example.com"
+      },
+      "checklists": [],
+      "due_date": "1760605200000",
+      "start_date": "1759050000000",
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_asset",
+          "name": "Asset",
+          "value": [ { "id": "asset_obfuscated_hvac_1", "name": "HVAC (1) Standard AC Carrier 5 Ton" } ]
+        },
+        {
+          "id": "uuid_obfuscated_field_workspace",
+          "name": "Workspace",
+          "value": 4
+        }
+      ],
+      "team_id": "team_id_100",
+      "url": "https://app.clickup.com/t/task_obfuscated_005",
+      "list": { "id": "list_id_300" },
+      "project": { "id": "folder_id_400" },
+      "folder": { "id": "folder_id_400" },
+      "space": { "id": "space_id_200" }
+    },
+    {
+      "id": "task_obfuscated_006",
+      "name": "Draino Sinks",
+      "description": "Buy Draino for all sinks.",
+      "status": {
+        "status": "to do",
+        "id": "status_id_p12345_ABCDEFGH"
+      },
+      "creator": {
+        "id": "user_id_901",
+        "username": "User One",
+        "email": "user.one@example.com"
+      },
+      "checklists": [
+        {
+          "id": "uuid_obfuscated_checklist_003",
+          "task_id": "task_obfuscated_006",
+          "name": "Checklist",
+          "creator": "user_id_901",
+          "resolved": 3,
+          "unresolved": 5,
+          "items": [
+            { "id": "uuid_obfuscated_item_301", "name": "Bathroom Woodshop ", "resolved": true },
+            { "id": "uuid_obfuscated_item_302", "name": "Bathroom Lobby ", "resolved": false },
+            { "id": "uuid_obfuscated_item_303", "name": "Bathroom MPR", "resolved": true },
+            { "id": "uuid_obfuscated_item_304", "name": "Ceramics 1", "resolved": false },
+            { "id": "uuid_obfuscated_item_305", "name": "Woodshop", "resolved": true },
+            { "id": "uuid_obfuscated_item_306", "name": "Metal Shop ", "resolved": false },
+            { "id": "uuid_obfuscated_item_307", "name": "Ceramics 2", "resolved": false },
+            { "id": "uuid_obfuscated_item_308", "name": "Bathroom Ceramics", "resolved": false }
+          ]
+        }
+      ],
+      "due_date": "1761987600000",
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_frequency",
+          "name": "Frequency",
+          "value": 3
+        }
+      ],
+      "team_id": "team_id_100",
+      "url": "https://app.clickup.com/t/task_obfuscated_006",
+      "list": { "id": "list_id_300" },
+      "project": { "id": "folder_id_400" },
+      "folder": { "id": "folder_id_400" },
+      "space": { "id": "space_id_200" }
+    },
+    {
+      "id": "task_obfuscated_007",
+      "name": "Schedule Annual Fire Extinguisher Inspection",
+      "description": "Facilities: Schedule an annual inspection with a vendor.\n\nEnsure fire extinguishers are up-to-date on the facilities layout.",
+      "status": {
+        "status": "to do",
+        "id": "status_id_p12345_ABCDEFGH"
+      },
+      "creator": {
+        "id": "user_id_901",
+        "username": "User One",
+        "email": "user.one@example.com"
+      },
+      "checklists": [],
+      "due_date": "1780304400000",
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_frequency",
+          "name": "Frequency",
+          "value": 4
+        },
+        {
+          "id": "uuid_obfuscated_field_workspace",
+          "name": "Workspace",
+          "value": 14
+        }
+      ],
+      "team_id": "team_id_100",
+      "url": "https://app.clickup.com/t/task_obfuscated_007",
+      "list": { "id": "list_id_300" },
+      "project": { "id": "folder_id_400" },
+      "folder": { "id": "folder_id_400" },
+      "space": { "id": "space_id_200" }
+    },
+    {
+      "id": "task_obfuscated_008",
+      "name": "Refill cutting fluid dispenser bottles",
+      "description": "Refill all four dispenser bottles for the blue cutting fluid from the large bottles stored behind the Cold Saw.",
+      "status": {
+        "status": "to do",
+        "id": "status_id_p12345_ABCDEFGH"
+      },
+      "creator": {
+        "id": "user_id_902",
+        "username": "User Two",
+        "email": "user.two@example.com"
+      },
+      "checklists": [],
+      "due_date": "1760691600000",
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_frequency",
+          "name": "Frequency",
+          "value": 0
+        },
+        {
+          "id": "uuid_obfuscated_field_workspace",
+          "name": "Workspace",
+          "value": 5
+        }
+      ],
+      "team_id": "team_id_100",
+      "url": "https://app.clickup.com/t/task_obfuscated_008",
+      "list": { "id": "list_id_300" },
+      "project": { "id": "folder_id_400" },
+      "folder": { "id": "folder_id_400" },
+      "space": { "id": "space_id_200" }
+    },
+    {
+      "id": "task_obfuscated_009",
+      "name": "Sharpen Bench Splitter",
+      "description": "A leather working tool in textiles. Needs to be tuned up now and then so it can properly shave off belt thickness.",
+      "status": {
+        "status": "to do",
+        "id": "status_id_p12345_ABCDEFGH"
+      },
+      "creator": {
+        "id": "user_id_901",
+        "username": "User One",
+        "email": "user.one@example.com"
+      },
+      "checklists": [],
+      "due_date": "1763719200000",
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_frequency",
+          "name": "Frequency",
+          "value": 2
+        },
+        {
+          "id": "uuid_obfuscated_field_workspace",
+          "name": "Workspace",
+          "value": 2
+        }
+      ],
+      "team_id": "team_id_100",
+      "url": "https://app.clickup.com/t/task_obfuscated_009",
+      "list": { "id": "list_id_300" },
+      "project": { "id": "folder_id_400" },
+      "folder": { "id": "folder_id_400" },
+      "space": { "id": "space_id_200" }
+    },
+    {
+      "id": "task_obfuscated_010",
+      "name": "Renew Lightburn",
+      "description": "Expires on Oct 30",
+      "status": {
+        "status": "to do",
+        "id": "status_id_p12345_ABCDEFGH"
+      },
+      "creator": {
+        "id": "user_id_901",
+        "username": "User One",
+        "email": "user.one@example.com"
+      },
+      "checklists": [],
+      "due_date": "1790744418000",
+      "custom_fields": [
+        {
+          "id": "uuid_obfuscated_field_frequency",
+          "name": "Frequency",
+          "value": 4
+        }
+      ],
+      "team_id": "team_id_100",
+      "url": "https://app.clickup.com/t/task_obfuscated_010",
+      "list": { "id": "list_id_300" },
+      "project": { "id": "folder_id_400" },
+      "folder": { "id": "folder_id_400" },
+      "space": { "id": "space_id_200" }
+    }
+  ]
+}

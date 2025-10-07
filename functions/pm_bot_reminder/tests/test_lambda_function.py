@@ -178,11 +178,11 @@ def test_process_tasks_for_slack():
     assert unique_channels == ['woodshop']
     assert len(task_followups) == 1
     followup = task_followups[0]
-    assert followup['channel'] == 'woodshop'
-    assert followup['asset_name'] == 'Saw'
-    assert followup['frequency'] == 'Weekly'
-    assert followup['task_name'] == 'Task 1'
-    assert followup['task_description'] == 'Description 1'
+    assert followup.channel == 'woodshop'
+    assert followup.asset_name == 'Saw'
+    assert followup.frequency == 'Weekly'
+    assert followup.task_name == 'Task 1'
+    assert followup.task_description == 'Description 1'
 
 
 def test_send_slack_message_success(requests_mock):

@@ -1,7 +1,8 @@
 import boto3
 import json
 import os
-import requests
+import requests # type: ignore
+from dataclasses import dataclass
 import time
 from datetime import datetime, timezone, timedelta
 
@@ -40,6 +41,18 @@ def get_secret(secret_name, secret_key):
     except Exception as e:
         print(f"ERROR: Unable to retrieve secret '{secret_name}' with key '{secret_key}': {e}")
         raise e
+
+@dataclass
+class ClickUpTask:
+    """A simple data class to hold processed task information."""
+    channel: str
+    asset_name: str | None
+    frequency: str | None
+    task_id: str
+    task_name: str
+    task_url: str
+    time_status: str
+    task_description: str | None
 
 # --- ClickUp Functions ---
 
@@ -83,10 +96,14 @@ def get_custom_field_value(task, field_id):
             if isinstance(field_value, str):
                 return field_value.strip()
 
+            # Handle 'relation' fields which can be a list of objects with a 'name' key
             if isinstance(field_value, list) and len(field_value) > 0:
-                if all(isinstance(item, str) for item in field_value):
+                # Check if items are strings or objects with a 'name'
+                if all(isinstance(item, dict) and 'name' in item for item in field_value):
+                    return ", ".join(item['name'] for item in field_value if item.get('name'))
+                # Fallback for a list of simple strings
+                elif all(isinstance(item, str) for item in field_value):
                     return ", ".join(item.strip() for item in field_value)
-                return None
 
             if isinstance(field_value, (int, float)):
                  return str(field_value)
@@ -177,35 +194,32 @@ def process_tasks_for_slack(tasks, workspace_field_id, asset_field_id, frequency
     Processes tasks to extract data and prepare follow-up messages using field IDs.
     """
     unique_channels = set()
-    task_followups = []
+    processed_tasks = []
 
     for task in tasks:
         workspace_channel_original = get_custom_field_value(task, workspace_field_id)
 
         # Skip tasks that don't have a workspace value
-        if not (workspace_channel_original and isinstance(workspace_channel_original, str) and workspace_channel_original.strip()):
+        if not workspace_channel_original:
             continue
 
         # Transform the channel name to match Slack's format.
         # Converts "3D Printing" to "3d-printing"
         channel_name = workspace_channel_original.strip().lower().replace(' ', '-')
-
         unique_channels.add(channel_name)
 
-        task_followups.append({
-            'channel': channel_name,
-            'asset_name': get_custom_field_value(task, asset_field_id),
-            'frequency': get_custom_field_value(task, frequency_field_id),
-            'task_id': task.get('id'),
-            'task_name': task.get('name', 'Unnamed Task'),
-            'task_url': task.get('url', ''),
-            'time_status': task.get('time_status', ''),
-            'task_description': task.get('text_content') or task.get('description')
-        })
+        processed_tasks.append(ClickUpTask(
+            channel=channel_name,
+            asset_name=get_custom_field_value(task, asset_field_id),
+            frequency=get_custom_field_value(task, frequency_field_id),
+            task_id=task.get('id', 'N/A'),
+            task_name=task.get('name', 'Unnamed Task'),
+            task_url=task.get('url', ''),
+            time_status=task.get('time_status', ''),
+            task_description=task.get('text_content') or task.get('description')
+        ))
 
-    return list(unique_channels), task_followups
-
-    return list(unique_channels), task_followups
+    return list(unique_channels), processed_tasks
 
 # --- Slack Functions ---
 
@@ -245,6 +259,18 @@ def send_slack_message(token, channel_to_attempt, text, bot_name, icon_emoji, th
     except Exception as e:
         print(f"Network or script error sending to {final_target_channel}: {e}")
         return {"ok": False, "error": "script_error", "error_message": str(e)}
+
+def format_slack_message(task: ClickUpTask) -> str:
+    """Formats the main Slack message for a given task."""
+    time_status = task.time_status.upper() if task.time_status else 'UNKNOWN'
+    asset_name = task.asset_name or 'N/A'
+    task_name = task.task_name or 'N/A'
+    frequency = task.frequency or 'N/A'
+    task_id = task.task_id or 'N/A'
+
+    return (f"[{time_status}] {task.channel} - {asset_name} - "
+            f"{task_name} - Frequency: {frequency} - "
+            f"ClickUp ID: {task_id}")
 
 # --- AWS Lambda Handler ---
 
@@ -296,49 +322,43 @@ def lambda_handler(event, context):
         all_tasks.sort(key=lambda task: (get_custom_field_value(task, CLICKUP_ASSET_FIELD_ID) or '', task.get('name', '')))
 
         print("Processing all tasks for Slack...")
-        unique_channels, task_followups = process_tasks_for_slack(
+        unique_channels, processed_tasks = process_tasks_for_slack(
             all_tasks, CLICKUP_WORKSPACE_FIELD_ID, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID
         )
-        print(f"Found {len(unique_channels)} unique channels and {len(task_followups)} tasks with valid workspace data.")
+        print(f"Found {len(unique_channels)} unique channels and {len(processed_tasks)} tasks with valid workspace data.")
 
         # --- 3. Send Messages to Slack ---
-        print(f"Task followups to process: {len(task_followups)}")
+        print(f"Tasks to process for Slack: {len(processed_tasks)}")
 
-        # +++ UPDATED THIS LOOP TO HANDLE THREADED REPLIES +++
-        for task in task_followups:
-            # Build the main message
-            message = (
-               f"[{task.get('time_status', '').upper()}] {task.get('channel', 'Unknown')} - {task.get('asset_name', 'N/A')} - "
-               f"{task.get('task_name', 'N/A')} - "
-               f"Frequency: {task.get('frequency', 'N/A')} - "
-               f"ClickUp ID: {task.get('task_id', 'N/A')}"
-            )
-
-            print(f"Attempting to send message to Slack channel: #{task['channel']}")
+        for task in processed_tasks:
+            message = format_slack_message(task)
+            print(f"Attempting to send message to Slack channel: #{task.channel}")
 
             # Send the main message and capture the response
             main_message_response = send_slack_message(
                 token=slack_bot_token,
-                channel_to_attempt=task['channel'],
+                channel_to_attempt=task.channel,
                 text=message,
                 bot_name=BOT_NAME,
                 icon_emoji=BOT_ICON_EMOJI
             )
 
             # Check if the main message was sent successfully and if a description exists
-            task_description = task.get('task_description')
-            if main_message_response.get("ok") and task_description and task_description.strip():
+            if main_message_response.get("ok") and task.task_description and task.task_description.strip():
                 parent_message_ts = main_message_response.get("ts")
+                # Use the channel ID from the response for threaded replies
                 channel_id = main_message_response.get("channel")
 
                 # Add a small delay before sending the threaded reply
                 time.sleep(1)
 
+                print(f"Sending threaded reply for task {task.task_id} in channel {channel_id}")
+
                 # Send the description as a threaded reply
                 send_slack_message(
                     token=slack_bot_token,
-                    channel_to_attempt=channel_id,
-                    text=task_description,
+                    channel_to_attempt=channel_id, # Use channel ID for replies
+                    text=task.task_description,
                     bot_name=BOT_NAME,
                     icon_emoji=BOT_ICON_EMOJI,
                     thread_ts=parent_message_ts
@@ -356,5 +376,5 @@ def lambda_handler(event, context):
     print("--- HANDLER FINISHED SUCCESSFULLY ---")
     return {
         "statusCode": 200,
-        "body": json.dumps(f"Successfully processed {len(task_followups)} tasks.")
+        "body": json.dumps(f"Successfully processed {len(processed_tasks)} tasks.")
     }
