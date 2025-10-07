@@ -19,7 +19,7 @@ ITEM_TYPE_FIELD_ID = os.environ["ITEM_TYPE_FIELD_ID"]
 
 
 def get_secret(secret_name):
-    # ... (no changes)
+    '''Retrieves a secret from AWS Secrets Manager.'''
     try:
         response = secrets_manager.get_secret_value(SecretId=secret_name)
         secret_string = response["SecretString"]
@@ -29,7 +29,7 @@ def get_secret(secret_name):
     except (json.JSONDecodeError): return secret_string
 
 def get_slack_user_info(api_token, user_id):
-    # ... (no changes)
+    '''Retrieves user information from Slack.'''
     url = "https://slack.com/api/users.info"
     headers = {"Authorization": f"Bearer {api_token}"}
     params = {"user": user_id}
@@ -38,7 +38,7 @@ def get_slack_user_info(api_token, user_id):
     return response.json()
 
 def get_clickup_tasks(api_token, list_id):
-    # ... (no changes)
+    '''Retrieves tasks from a ClickUp list.'''
     url = f"https://api.clickup.com/api/v2/list/{list_id}/task"
     headers = {"Authorization": api_token}
     response = http_session.get(url, headers=headers)
@@ -46,7 +46,7 @@ def get_clickup_tasks(api_token, list_id):
     return response.json()["tasks"]
 
 def get_clickup_task_details(api_token, task_id):
-    # ... (no changes)
+    '''Retrieves task details from a ClickUp task.'''
     url = f"https://api.clickup.com/api/v2/task/{task_id}"
     headers = {"Authorization": api_token}
     response = http_session.get(url, headers=headers)
@@ -54,7 +54,7 @@ def get_clickup_task_details(api_token, task_id):
     return response.json()
 
 def create_clickup_purchase_request(api_token, payload):
-    # ... (no changes)
+    '''Creates a ClickUp purchase request.'''
     url = f"https://api.clickup.com/api/v2/list/{PURCHASE_REQUEST_LIST_ID}/task"
     headers = {"Authorization": api_token, "Content-Type": "application/json"}
     response = http_session.post(url, headers=headers, json=payload)
@@ -62,14 +62,14 @@ def create_clickup_purchase_request(api_token, payload):
     return response.json()
 
 def get_custom_field_value(task_details, field_id):
-    # ... (no changes)
+    '''Retrieves the value of a custom field from a task.'''
     for field in task_details.get("custom_fields", []):
         if field.get("id") == field_id:
             return field.get("value")
     return None
 
 def get_all_workspaces_from_tasks(tasks):
-    # ... (no changes)
+    '''Extracts all unique workspace names from tasks.'''
     workspaces = set()
     for task in tasks:
         workspace_name = get_workspace_name_from_task(task)
@@ -77,7 +77,7 @@ def get_all_workspaces_from_tasks(tasks):
     return sorted(list(workspaces))
 
 def get_workspace_name_from_task(task):
-    # ... (no changes)
+    '''Retrieves the name of a workspace from a task.'''
     for field in task.get("custom_fields", []):
         if field.get("id") == WORKSPACE_FIELD_ID and field.get("value") is not None:
             try:
@@ -89,7 +89,7 @@ def get_workspace_name_from_task(task):
     return None
 
 def prepare_tasks_for_metadata(tasks):
-    # ... (no changes)
+    '''Prepares tasks for metadata storage.'''
     prepared_tasks = []
     for task in tasks:
         prepared_tasks.append({
@@ -100,12 +100,10 @@ def prepare_tasks_for_metadata(tasks):
         })
     return prepared_tasks
 
-# --- MODIFIED: Added a unique_id parameter ---
 def build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str="", initial_description="", unique_id=None):
-    """Builds the Slack modal view."""
+    '''Builds the Slack modal view.'''
     sorted_tasks = sorted(tasks_to_display, key=lambda t: t['name'])
 
-    # --- MODIFIED: Create a dynamic block_id for the description ---
     description_block_id = "description_block"
     if unique_id:
         description_block_id = f"description_block_{unique_id}"
