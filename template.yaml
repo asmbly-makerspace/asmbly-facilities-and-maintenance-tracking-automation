@@ -10,18 +10,28 @@ Globals:
     Runtime: python3.12
     MemorySize: 128
 
+Parameters:
+  Stage:
+    Type: String
+    Description: The deployment stage (e.g., dev, stage, prod).
+    Default: dev
+    AllowedValues:
+      - dev
+      - stage
+      - prod
+
 Resources:
   # 1. Define the API Gateway for the new reorder functions
   FacilitiesApi:
     Type: AWS::Serverless::Api
     Properties:
-      StageName: Prod
+      StageName: !Ref Stage
 
   # 2. Define the Shared Lambda Layer
   RequestsLambdaLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: requests-layer
+      LayerName: !Sub "requests-layer-${Stage}"
       Description: "Shared layer containing the requests library"
       ContentUri: layers/requests_layer/
       CompatibleRuntimes:
@@ -32,7 +42,7 @@ Resources:
   PMReminderBotLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: PMReminderBotLambdaRole
+      RoleName: !Sub "PMReminderBotLambdaRole-${Stage}"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -55,10 +65,14 @@ Resources:
                 Resource: 'arn:aws:logs:*:*:*'
               - Effect: Allow
                 Action:
+                  - iam:CreateRole
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/*'
+              - Effect: Allow
+                Action:
                   - secretsmanager:GetSecretValue
                 Resource:
-                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
-                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:prod/slack-maintenance-bot-token-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*' # Assuming this secret is not stage-specific
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Stage}/slack-maintenance-bot-token-*'
       Tags:
         - Key: Project
           Value: pm-reminder-bot
@@ -69,7 +83,7 @@ Resources:
   PMReminderBotFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: PMReminderBot
+      FunctionName: !Sub "PMReminderBot-${Stage}"
       Description: "https://gist.github.com/sababado/78b9714938e1f4ef001361654b8464e2"
       CodeUri: functions/pm_bot_reminder/
       Handler: lambda_function.lambda_handler
@@ -86,7 +100,7 @@ Resources:
           CLICKUP_LIST_ID: '901310894771'
           CLICKUP_SECRET_NAME: 'clickup/api/token'
           GENERAL_CHANNEL_NAME: 'stewards'
-          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'prod/slack-maintenance-bot-token'
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: !Sub '${Stage}/slack-maintenance-bot-token'
           WORKSPACES: '3d-printing,ceramics,electronics,lasers,metal-shop,textiles,woodshop'
           CLICKUP_ASSET_FIELD_ID: '487e2b73-8329-4ce2-a0a1-1b83a6069ed1'
           CLICKUP_FREQUENCY_FIELD_ID: 'b0d864da-9018-4935-ae65-7a9103bf70d2'
@@ -109,7 +123,7 @@ Resources:
   FacilitiesItemReorderLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: FacilitiesItemReorderLambdaRole
+      RoleName: !Sub "FacilitiesItemReorderLambdaRole-${Stage}"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -132,10 +146,14 @@ Resources:
                 Resource: 'arn:aws:logs:*:*:*'
               - Effect: Allow
                 Action:
+                  - iam:CreateRole
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/*'
+              - Effect: Allow
+                Action:
                   - secretsmanager:GetSecretValue
                 Resource:
-                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
-                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:prod/slack-maintenance-bot-token-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*' # Assuming this secret is not stage-specific
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Stage}/slack-maintenance-bot-token-*'
       Tags:
         - Key: Project
           Value: facilities-item-reorder
@@ -146,7 +164,7 @@ Resources:
   FacilitiesSlackPurchaseReorderFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: FacilitiesSlackPurchaseReorder
+      FunctionName: !Sub "FacilitiesSlackPurchaseReorder-${Stage}"
       Description: "Handles Slack interactions for reordering facilities items. It opens a modal for item selection and processes the submission to create a purchase request in ClickUp."
       CodeUri: functions/facilities_slack_purchase_reorder/
       Handler: lambda_function.lambda_handler
@@ -159,7 +177,7 @@ Resources:
       Environment:
         Variables:
           CLICKUP_SECRET_NAME: 'clickup/api/token'
-          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'prod/slack-maintenance-bot-token'
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: !Sub '${Stage}/slack-maintenance-bot-token'
           LIST_ID: '901320662208'
           PURCHASE_REQUEST_LIST_ID: '901310302436'
           WORKSPACE_FIELD_ID: 'f4923783-74db-42ca-bda3-82bbca58abfe'
@@ -181,7 +199,7 @@ Resources:
   KilnDropoffViewerLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: KilnDropoffViewerLambdaRole
+      RoleName: !Sub "KilnDropoffViewerLambdaRole-${Stage}"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -204,6 +222,10 @@ Resources:
                 Resource: 'arn:aws:logs:*:*:*'
               - Effect: Allow
                 Action:
+                  - iam:CreateRole
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/*'
+              - Effect: Allow
+                Action:
                   - secretsmanager:GetSecretValue
                 Resource:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
@@ -217,7 +239,7 @@ Resources:
   KilnDropoffRecentEntriesViewerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: KilnOpsDropoffRecentEntriesViewer
+      FunctionName: !Sub "KilnOpsDropoffRecentEntriesViewer-${Stage}"
       Description: "https://gist.github.com/sababado/aa8c92c0f9f4488c701523c6fd995c6b"
       CodeUri: functions/kiln_dropoff_recent_entries_viewer/
       Handler: lambda_function.lambda_handler
@@ -245,4 +267,4 @@ Resources:
 Outputs:
   FacilitiesApiUrl:
     Description: "The invoke URL for the Facilities API Gateway"
-    Value: !Sub "https://${FacilitiesApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+    Value: !Sub "https://${FacilitiesApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"

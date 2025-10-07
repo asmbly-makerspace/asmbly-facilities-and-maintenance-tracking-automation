@@ -85,6 +85,4 @@ To add a new function to this project, follow these steps:
     * Configure the function's `Properties`, including its trigger (`Events`), `Role`, `Environment` variables, and any `Layers` it needs.
 
 4.  **Build and Deploy:**
-    * Run `sam build` to package your new function.
-
-    * Run `sam deploy` to deploy the changes. SAM will see the new function in your template and create it in AWS.
+    * Checkout [Deploying.md](Deploying.md) for details.

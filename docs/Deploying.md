@@ -4,7 +4,6 @@
 
 - [Prerequisites](#prerequisites)
 - [Deployment Workflow](#deployment-workflow)
-- [Adding a New Lambda Function](#adding-a-new-lambda-function)
 
 
 ## Prerequisites
@@ -17,16 +16,34 @@ You'll need the following installed and configured on your machine:
 
 ## Deployment Workflow
 
-Making changes and deploying them is a straightforward process.
+This project is configured to deploy to multiple stages (e.g., `dev`, `stage`, `prod`). The deployment process uses the AWS SAM CLI.
 
 1.  **Make Code Changes:** Edit the Python code for a function inside the `/functions` directory.
+
 2.  **Update Template (if needed):** If you are changing any infrastructure (e.g., adding an environment variable), edit the `template.yaml` file.
+
 3.  **Build the Project:** From the root directory, run the build command. This packages your code and dependencies.
     ```bash
     sam build
     ```
-4.  **Deploy to AWS:** Deploy the packaged application to the cloud.
+
+4.  **Deploy to AWS:** Deploy the application to the desired environment using the `--config-env` flag. This command reads the deployment settings from the `samconfig.toml` file.
+
+    The `samconfig.toml` file is pre-configured for `dev`, `stage`, and `prod` environments, each with a unique stack name to ensure they are deployed as separate, isolated applications.
+
+    **Deploy to the `dev` environment:**
     ```bash
-    sam deploy
+    sam deploy --config-env dev
     ```
-    *Note: The first time you deploy, you should use `sam deploy --guided` to walk through the initial stack setup.*
+
+    **Deploy to the `stage` environment:**
+    ```bash
+    sam deploy --config-env stage
+    ```
+
+    **Deploy to the `prod` environment:**
+    ```bash
+    sam deploy --config-env prod
+    ```
+
+    SAM will show you the changes to be made and ask for confirmation before applying them to your AWS account.

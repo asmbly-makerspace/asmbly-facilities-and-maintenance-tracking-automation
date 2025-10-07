@@ -1,10 +1,34 @@
 version = 0.1
 
-[default.deploy.parameters]
-stack_name = "AsmblyFacilitiesMaintTrackingStack"
+# This is the 'dev' environment, used when running 'sam deploy' without a --config-env flag.
+[dev.deploy.parameters]
+stack_name = "AsmblyFacilitiesMaintTrackingStack-dev"
 resolve_s3 = true
-s3_prefix = "AsmblyFacilitiesMaintTrackingStack"
+s3_prefix = "AsmblyFacilitiesMaintTrackingStack-dev"
 region = "us-east-2"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+parameter_overrides = "Stage=\"dev\""
+image_repositories = []
+
+# This is the 'prod' environment, used with 'sam deploy --config-env prod'
+[prod.deploy.parameters]
+stack_name = "AsmblyFacilitiesMaintTrackingStack-prod"
+resolve_s3 = true
+s3_prefix = "AsmblyFacilitiesMaintTrackingStack-prod"
+region = "us-east-2"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+parameter_overrides = "Stage=\"prod\""
+image_repositories = []
+
+# This is the 'stage' environment, used with 'sam deploy --config-env stage'
+[stage.deploy.parameters]
+stack_name = "AsmblyFacilitiesMaintTrackingStack-stage"
+resolve_s3 = true
+s3_prefix = "AsmblyFacilitiesMaintTrackingStack-stage"
+region = "us-east-2"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+parameter_overrides = "Stage=\"stage\""
 image_repositories = []
