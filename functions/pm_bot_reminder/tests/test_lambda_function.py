@@ -2,6 +2,7 @@ import json
 import os
 import importlib
 import sys
+import pathlib
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 
@@ -44,6 +45,16 @@ def reload_lambda_function(mock_env_vars):
     """
     importlib.reload(lambda_function)
     yield
+
+@pytest.fixture
+def mock_clickup_fields_from_file():
+    """Loads mock ClickUp field definition data from a JSON file."""
+    # Construct a path to the fixture file relative to this test file
+    fixture_path = pathlib.Path(__file__).parent / "fixtures" / "clickup_tasks_response.json"
+    with open(fixture_path, 'r') as f:
+        tasks = json.load(f)
+    # The JSON file contains a list of fields under the "fields" key.
+    return tasks['fields']
 
 def test_get_secret_success(mocker):
     """Test successful retrieval of a secret from AWS Secrets Manager."""
@@ -224,6 +235,7 @@ def test_lambda_handler_with_tasks(mock_send_slack, mock_get_tasks, mock_get_sec
     # --- Mocks Setup ---
     mock_get_secret.side_effect = ['clickup-token', 'slack-token']
 
+    # This test requires mock *tasks*, not field definitions.
     overdue_tasks = [{
         'id': 't1', 'name': 'Overdue Task', 'date_created': '1672531200000',
         'text_content': 'Overdue Description',
@@ -235,7 +247,7 @@ def test_lambda_handler_with_tasks(mock_send_slack, mock_get_tasks, mock_get_sec
     }]
     upcoming_tasks = [{
         'id': 't2', 'name': 'Upcoming Task', 'date_created': '1672531200001',
-        'text_content': '', # No description
+        'text_content': '',  # No description
         'custom_fields': [
             {'id': 'ws-field-id', 'type': 'drop_down', 'value': 1, 'type_config': {'options': [{'name': 'Lasers', 'orderindex': 1}]}},
             {'id': 'asset-field-id', 'value': 'Glowforge'},

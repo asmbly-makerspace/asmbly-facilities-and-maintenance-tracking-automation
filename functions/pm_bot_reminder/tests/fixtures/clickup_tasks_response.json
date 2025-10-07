@@ -1,0 +1,173 @@
+{
+  "fields": [
+    {
+      "id": "obfuscated-asset-p-field-id",
+      "name": "Asset (P)",
+      "type": "short_text",
+      "type_config": {},
+      "date_created": "1700000000001",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "obfuscated-asset-field-id",
+      "name": "Asset",
+      "type": "list_relationship",
+      "type_config": {
+        "fields": [],
+        "subcategory_id": "900000000001",
+        "subcategory_inverted_name": "Assets"
+      },
+      "date_created": "1700000000002",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "obfuscated-frequency-field-id",
+      "name": "Frequency",
+      "type": "drop_down",
+      "type_config": {
+        "sorting": "manual",
+        "options": [
+          {
+            "id": "obfuscated-freq-opt-1",
+            "name": "Regular",
+            "color": "#81B1FF",
+            "orderindex": 0
+          },
+          {
+            "id": "obfuscated-freq-opt-2",
+            "name": "Monthly",
+            "color": "#0231E8",
+            "orderindex": 1
+          },
+          {
+            "id": "obfuscated-freq-opt-3",
+            "name": "Quarterly",
+            "color": "#f9d900",
+            "orderindex": 2
+          },
+          {
+            "id": "obfuscated-freq-opt-4",
+            "name": "Semi-Annual",
+            "color": "#ff7800",
+            "orderindex": 3
+          },
+          {
+            "id": "obfuscated-freq-opt-5",
+            "name": "Annual",
+            "color": "#e50000",
+            "orderindex": 4
+          }
+        ]
+      },
+      "date_created": "1700000000003",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "obfuscated-workspace-field-id",
+      "name": "Workspace",
+      "type": "drop_down",
+      "type_config": {
+        "sorting": "manual",
+        "new_drop_down": true,
+        "options": [
+          {
+            "id": "obfuscated-ws-opt-1",
+            "name": "3D Printing",
+            "color": "#ee6e23",
+            "orderindex": 0
+          },
+          {
+            "id": "obfuscated-ws-opt-2",
+            "name": "Electronics",
+            "color": "#00916e",
+            "orderindex": 1
+          },
+          {
+            "id": "obfuscated-ws-opt-3",
+            "name": "Textiles",
+            "color": "#7accc4",
+            "orderindex": 2
+          },
+          {
+            "id": "obfuscated-ws-opt-4",
+            "name": "Lasers",
+            "color": "#d33e42",
+            "orderindex": 3
+          },
+          {
+            "id": "obfuscated-ws-opt-5",
+            "name": "Woodshop",
+            "color": "#f3b71b",
+            "orderindex": 4
+          },
+          {
+            "id": "obfuscated-ws-opt-6",
+            "name": "Metal-Shop",
+            "color": "#4e7db4",
+            "orderindex": 5
+          },
+          {
+            "id": "obfuscated-ws-opt-7",
+            "name": "Ceramics",
+            "color": "#f78eea",
+            "orderindex": 6
+          },
+          {
+            "id": "obfuscated-ws-opt-8",
+            "name": "Multi-Purpose Room",
+            "color": "#fff",
+            "orderindex": 7
+          },
+          {
+            "id": "obfuscated-ws-opt-9",
+            "name": "Lobby",
+            "color": "#fff",
+            "orderindex": 8
+          },
+          {
+            "id": "obfuscated-ws-opt-10",
+            "name": "Studios",
+            "color": "#fff",
+            "orderindex": 9
+          },
+          {
+            "id": "obfuscated-ws-opt-11",
+            "name": "Hallway",
+            "color": "#fff",
+            "orderindex": 10
+          },
+          {
+            "id": "obfuscated-ws-opt-12",
+            "name": "Bathrooms",
+            "color": "#fff",
+            "orderindex": 11
+          },
+          {
+            "id": "obfuscated-ws-opt-13",
+            "name": "HVAC",
+            "color": "#fff",
+            "orderindex": 12
+          },
+          {
+            "id": "obfuscated-ws-opt-14",
+            "name": "Education / Classes",
+            "color": "#800000",
+            "orderindex": 13
+          },
+          {
+            "id": "obfuscated-ws-opt-15",
+            "name": "General Areas",
+            "color": "#04A9F4",
+            "orderindex": 14
+          }
+        ]
+      },
+      "date_created": "1700000000004",
+      "hide_from_guests": false,
+      "required": false
+    }
+  ]
+}
