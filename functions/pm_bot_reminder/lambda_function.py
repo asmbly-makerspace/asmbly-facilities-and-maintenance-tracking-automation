@@ -301,7 +301,7 @@ def lambda_handler(event, context):
             return {"statusCode": 200, "body": json.dumps("No tasks to process.")}
 
         print("Sorting all tasks by asset name...")
-        all_tasks.sort(key=lambda task: get_custom_field_value(task, CLICKUP_ASSET_FIELD_ID) or '')
+        all_tasks.sort(key=lambda task: (get_custom_field_value(task, CLICKUP_ASSET_FIELD_ID) or '', task.get('name', '')))
 
         print("Processing all tasks for Slack...")
         unique_channels, task_followups = process_tasks_for_slack(
@@ -325,7 +325,13 @@ def lambda_handler(event, context):
             print(f"Attempting to send message to Slack channel: #{task['channel']}")
 
             # Send the main message and capture the response
-            main_message_response = send_slack_message(slack_bot_token, task['channel'], message, BOT_NAME, BOT_ICON_EMOJI)
+            main_message_response = send_slack_message(
+                token=slack_bot_token,
+                channel_to_attempt=task['channel'],
+                text=message,
+                bot_name=BOT_NAME,
+                icon_emoji=BOT_ICON_EMOJI
+            )
 
             # Check if the main message was sent successfully and if a description exists
             task_description = task.get('task_description')

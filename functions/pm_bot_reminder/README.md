@@ -5,6 +5,7 @@
 - [How It Works](#how-it-works)
 - [AWS Infrastructure](#aws-infrastructure)
 - [Configuration](#configuration)
+- [Testing](#testing)
 - [Deployment](#deployment)
 
 ## Purpose
@@ -107,6 +108,74 @@ The core infrastructure consists of an IAM Role, two secrets in Secrets Manager,
 ## Configuration
 
 All settings are managed via environment variables within the AWS Lambda function's configuration section. This allows for easy updates to things like the ClickUp List ID, bot name, or optional features without changing the code.
+
+
+## Testing
+
+This function includes a suite of unit tests to ensure its logic is correct. The tests mock external dependencies (like AWS, ClickUp, and Slack APIs) so they can be run locally without needing credentials or making real API calls.
+
+### Running Tests Locally
+
+1.  **Navigate to the function directory:**
+    ```bash
+    cd functions/pm_bot_reminder
+    ```
+
+2.  **Create a virtual environment (recommended):**
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+
+3.  **Install test dependencies:**
+    ```bash
+    pip install -r requirements-test.txt
+    ```
+
+4.  **Run the tests using pytest:**
+    ```bash
+    pytest
+    ```
+
+    You should see output indicating that the tests have passed.
+
+### Continuous Integration with GitHub Actions
+
+A GitHub Actions workflow can be set up to automatically run these tests on every push or pull request to your main branches.
+
+1.  Create a file named `.github/workflows/test-pm-bot.yml` in the root of your repository.
+
+2.  Add the following content to the file:
+
+    ```yaml
+    name: Test PM Reminder Bot
+
+    on:
+      push:
+        branches: [ main, dev, stage ]
+      pull_request:
+        branches: [ main, dev, stage ]
+
+    jobs:
+      test:
+        runs-on: ubuntu-latest
+        steps:
+        - uses: actions/checkout@v3
+        - name: Set up Python
+          uses: actions/setup-python@v4
+          with:
+            python-version: '3.12'
+        - name: Install dependencies
+          run: |
+            python -m pip install --upgrade pip
+            pip install -r functions/pm_bot_reminder/requirements-test.txt
+        - name: Run tests
+          run: |
+            cd functions/pm_bot_reminder
+            pytest
+    ```
+
+3.  Commit and push this new workflow file. GitHub will automatically detect it and run your tests on subsequent pushes and pull requests.
 
 
 ## Deployment
