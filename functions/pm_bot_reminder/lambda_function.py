@@ -246,14 +246,6 @@ def send_slack_message(token, channel_to_attempt, text, bot_name, icon_emoji, th
         print(f"Network or script error sending to {final_target_channel}: {e}")
         return {"ok": False, "error": "script_error", "error_message": str(e)}
 
-def handle_starter_messages(slack_bot_token, bot_name, bot_icon_emoji, channel_list, starter_message, parsed_workspaces, general_channel):
-    # This function can be filled in or expanded based on requirements
-    pass
-
-def handle_task_followups(slack_bot_token, bot_name, bot_icon_emoji, task_list, parsed_workspaces, general_channel):
-    # This function can be filled in or expanded based on requirements
-    pass
-
 # --- AWS Lambda Handler ---
 
 def lambda_handler(event, context):

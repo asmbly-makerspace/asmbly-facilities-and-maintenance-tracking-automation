@@ -2,3 +2,4 @@ pytest
 pytest-mock
 requests-mock
 boto3
+pytest-cov

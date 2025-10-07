@@ -2,3 +2,8 @@
 .idea
 # AWS SAM build artifacts
 .aws-sam/
+/.venv
+# Python cache
+__pycache__/
+*.pyc
+.coverage

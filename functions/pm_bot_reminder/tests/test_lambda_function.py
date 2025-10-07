@@ -301,3 +301,21 @@ def test_lambda_handler_with_tasks(mock_send_slack, mock_get_tasks, mock_get_sec
     assert call3_args['channel_to_attempt'] == 'woodshop'
     assert call3_args['text'] == 'Overdue Description'
     assert call3_args['thread_ts'] == '111.111'
+
+
+@patch('lambda_function.get_secret')
+def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, capsys):
+    """Test the main exception handler for unexpected errors."""
+    # --- Mocks Setup ---
+    # Force the first call to get_secret to raise a generic exception
+    mock_get_secret.side_effect = Exception("Something went terribly wrong")
+
+    # --- Execute ---
+    result = lambda_function.lambda_handler({}, None)
+
+    # --- Assertions ---
+    assert result['statusCode'] == 500
+    assert "Something went terribly wrong" in result['body']
+    captured = capsys.readouterr()
+    assert "--- FATAL ERROR in handler:" in captured.out
+    assert "Traceback (most recent call last):" in captured.err
