@@ -214,7 +214,7 @@ def handle_initial_open(trigger_id, http_session, clickup_api_token, slack_heade
     all_workspaces = get_all_workspaces_from_tasks(all_tasks_full, config.workspace_field_id)
     private_metadata_str = json.dumps(all_tasks_prepared)
 
-    modal_view = build_slack_modal(all_tasks_prepared, all_workspaces, private_metadata_str=private_metadatas_str)
+    modal_view = build_slack_modal(all_tasks_prepared, all_workspaces, private_metadata_str=private_metadata_str)
     http_session.post("https://slack.com/api/views.open", headers=slack_headers, json={"trigger_id": trigger_id, "view": modal_view})
     return {"statusCode": 200, "body": ""}
 

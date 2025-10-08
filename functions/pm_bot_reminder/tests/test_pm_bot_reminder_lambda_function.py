@@ -10,6 +10,8 @@ import pytest
 
 # Add the parent directory to the path to allow imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add the layers directory to the path to allow common module imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'layers')))
 
 import lambda_function
 from lambda_function import ( # Keep this for other tests
@@ -185,7 +187,7 @@ def test_send_slack_message_dry_run(capsys):
     assert "Message: Dry run message" in captured.out
 
 
-@patch('common.aws.get_secret')
+@patch('lambda_function.get_secret')
 @patch('lambda_function.get_all_clickup_tasks')
 @patch('lambda_function.send_slack_message')
 def test_lambda_handler_no_tasks(mock_send_slack, mock_get_tasks, mock_get_secret, reload_lambda_function):
@@ -201,7 +203,7 @@ def test_lambda_handler_no_tasks(mock_send_slack, mock_get_tasks, mock_get_secre
     mock_send_slack.assert_not_called()
 
 
-@patch('common.aws.get_secret')
+@patch('lambda_function.get_secret')
 @patch('lambda_function.get_all_clickup_tasks')
 @patch('lambda_function.send_slack_message')
 def test_lambda_handler_with_tasks(mock_send_slack, mock_get_tasks, mock_get_secret, reload_lambda_function):
@@ -277,7 +279,7 @@ def test_lambda_handler_with_tasks(mock_send_slack, mock_get_tasks, mock_get_sec
     assert call3_args['thread_ts'] == '111.111'
 
 
-@patch('common.aws.get_secret')
+@patch('lambda_function.get_secret')
 def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, capsys):
     """Test the main exception handler for unexpected errors."""
     # --- Mocks Setup ---
