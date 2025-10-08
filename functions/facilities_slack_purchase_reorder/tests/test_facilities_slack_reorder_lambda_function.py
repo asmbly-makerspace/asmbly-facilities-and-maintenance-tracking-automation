@@ -23,12 +23,6 @@ from functions.facilities_slack_purchase_reorder import lambda_function
 class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
 
     def setUp(self):
-        # Start the patcher and store the mock
-        self.boto_patcher = patch('boto3.client')
-        self.mock_boto_client = self.boto_patcher.start()
-
-        self.mock_secrets_manager = MagicMock()
-        self.mock_boto_client.return_value = self.mock_secrets_manager
         self.test_dir = os.path.dirname(__file__)
 
         # Load fixtures
@@ -36,21 +30,18 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
             self.clickup_master_items = json.load(f)
         with open(os.path.join(self.test_dir, 'fixtures', 'clickup_fields_data.json')) as f:
             self.clickup_fields_data = json.load(f)
-        self.addCleanup(self.boto_patcher.stop)
 
     def _get_fixture(self, file_path):
         with open(file_path, 'r') as f:
             return json.load(f)
 
     @patch('requests.Session')
-    def test_lambda_handler_initial_open(self, mock_session):
+    @patch('common.aws.get_secret')
+    def test_lambda_handler_initial_open(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()
         mock_session.return_value = mock_http_session
-        self.mock_secrets_manager.get_secret_value.side_effect = [
-            {'SecretString': '{\"clickup_api_token\": \"fake_clickup_token\"}'},
-            {'SecretString': '{\"slack_bot_token\": \"fake_slack_token\"}'}
-        ]
+        mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
         mock_http_session.get.return_value.json.return_value = self.clickup_master_items
         mock_http_session.get.return_value.raise_for_status = MagicMock()
         mock_http_session.post.return_value.raise_for_status = MagicMock()
@@ -77,14 +68,12 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
         self.assertEqual(sent_json['view']['title']['text'], 'Reorder Item')
 
     @patch('requests.Session')
-    def test_no_items_found(self, mock_session):
+    @patch('common.aws.get_secret')
+    def test_no_items_found(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()
         mock_session.return_value = mock_http_session
-        self.mock_secrets_manager.get_secret_value.side_effect = [
-            {'SecretString': '{\"clickup_api_token\": \"fake_clickup_token\"}'},
-            {'SecretString': '{\"slack_bot_token\": \"fake_slack_token\"}'}
-        ]
+        mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
         mock_http_session.get.return_value.json.return_value = {"tasks": []}
         mock_http_session.get.return_value.raise_for_status = MagicMock()
         mock_http_session.post.return_value.raise_for_status = MagicMock()
@@ -105,14 +94,12 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
         self.assertEqual(sent_json['view']['title']['text'], 'No Items Found')
 
     @patch('requests.Session')
-    def test_workspace_filter(self, mock_session):
+    @patch('common.aws.get_secret')
+    def test_workspace_filter(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()
         mock_session.return_value = mock_http_session
-        self.mock_secrets_manager.get_secret_value.side_effect = [
-            {'SecretString': '{\"clickup_api_token\": \"fake_clickup_token\"}'},
-            {'SecretString': '{\"slack_bot_token\": \"fake_slack_token\"}'}
-        ]
+        mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
 
         # Prepare metadata
         all_tasks_prepared = lambda_function.prepare_tasks_for_metadata(self.clickup_master_items.get('tasks', []), "workspace_field_id")
@@ -146,14 +133,12 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
         self.assertEqual(len(item_options), 0)
 
     @patch('requests.Session')
-    def test_item_selection_updates_description(self, mock_session):
+    @patch('common.aws.get_secret')
+    def test_item_selection_updates_description(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()
         mock_session.return_value = mock_http_session
-        self.mock_secrets_manager.get_secret_value.side_effect = [
-            {'SecretString': '{\"clickup_api_token\": \"fake_clickup_token\"}'},
-            {'SecretString': '{\"slack_bot_token\": \"fake_slack_token\"}'}
-        ]
+        mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
 
         # Prepare metadata
         all_tasks_prepared = lambda_function.prepare_tasks_for_metadata(self.clickup_master_items.get('tasks', []), "workspace_field_id")
@@ -190,14 +175,12 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
         self.assertEqual(description_block['element']['initial_value'], expected_description)
 
     @patch('requests.Session')
-    def test_successful_submission(self, mock_session):
+    @patch('common.aws.get_secret')
+    def test_successful_submission(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()
         mock_session.return_value = mock_http_session
-        self.mock_secrets_manager.get_secret_value.side_effect = [
-            {'SecretString': '{\"clickup_api_token\": \"fake_clickup_token\"}'},
-            {'SecretString': '{\"slack_bot_token\": \"fake_slack_token\"}'}
-        ]
+        mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
         mock_http_session.get.side_effect = [
             MagicMock(json=MagicMock(return_value={"user": {"real_name": "Test User"}})),
             MagicMock(json=MagicMock(return_value=self.clickup_master_items['tasks'][0]))
@@ -243,11 +226,12 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
         self.assertEqual(response_body['view']['title']['text'], 'Success!')
 
     @patch('requests.Session')
-    def test_error_handling(self, mock_session):
+    @patch('common.aws.get_secret')
+    def test_error_handling(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()
         mock_session.return_value = mock_http_session
-        self.mock_secrets_manager.get_secret_value.side_effect = Exception("AWS Error")
+        mock_get_secret.side_effect = Exception("AWS Error")
 
         # Test event
         event = {

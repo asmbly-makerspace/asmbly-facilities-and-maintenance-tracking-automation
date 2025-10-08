@@ -1,10 +1,11 @@
 import json
 import os
-import boto3
 import requests
 from datetime import timezone
 import urllib.parse
 from datetime import datetime
+
+from common.aws import get_secret
 
 class Config:
     """Loads and holds configuration from environment variables."""
@@ -34,17 +35,6 @@ class SlackState:
             return self.values[block_id][action_id]["selected_option"]["value"]
         except (KeyError, TypeError):
             return None
-
-def get_secret(secret_name, secrets_manager_client):
-    '''Retrieves a secret from AWS Secrets Manager.'''
-    secrets_manager = secrets_manager_client
-    try:
-        response = secrets_manager.get_secret_value(SecretId=secret_name)
-        secret_string = response["SecretString"]
-        secret_data = json.loads(secret_string)
-        if isinstance(secret_data, dict): return list(secret_data.values())[0]
-        return secret_string
-    except (json.JSONDecodeError): return secret_string
 
 def get_slack_user_info(api_token, user_id, http_session):
     '''Retrieves user information from Slack.'''
@@ -224,7 +214,7 @@ def handle_initial_open(trigger_id, http_session, clickup_api_token, slack_heade
     all_workspaces = get_all_workspaces_from_tasks(all_tasks_full, config.workspace_field_id)
     private_metadata_str = json.dumps(all_tasks_prepared)
 
-    modal_view = build_slack_modal(all_tasks_prepared, all_workspaces, private_metadata_str=private_metadata_str)
+    modal_view = build_slack_modal(all_tasks_prepared, all_workspaces, private_metadata_str=private_metadatas_str)
     http_session.post("https://slack.com/api/views.open", headers=slack_headers, json={"trigger_id": trigger_id, "view": modal_view})
     return {"statusCode": 200, "body": ""}
 
@@ -234,11 +224,10 @@ def lambda_handler(event, context):
     """
     try:
         config = Config()
-        secrets_manager = boto3.client("secretsmanager")
         http_session = requests.Session()
 
-        clickup_api_token = get_secret(config.clickup_api_token_secret_name, secrets_manager)
-        slack_bot_token = get_secret(config.slack_bot_token_secret_name, secrets_manager)
+        clickup_api_token = get_secret(config.clickup_api_token_secret_name, 'CLICKUP_API_TOKEN')
+        slack_bot_token = get_secret(config.slack_bot_token_secret_name, 'SLACK_BOT_TOKEN')
         slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
 
         parsed_body = urllib.parse.parse_qs(event["body"])

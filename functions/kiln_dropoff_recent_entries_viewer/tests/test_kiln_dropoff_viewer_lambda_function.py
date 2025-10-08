@@ -41,29 +41,6 @@ def mock_tasks_from_file():
     return _loader
 
 
-def test_get_clickup_api_token_success(mocker):
-    """Test successful retrieval of a secret from AWS Secrets Manager."""
-    mock_secrets_client = MagicMock()
-    mock_secrets_client.get_secret_value.return_value = {
-        'SecretString': json.dumps({'CLICKUP_API_TOKEN': '  secret-token  '})
-    }
-    mocker.patch('boto3.session.Session.client', return_value=mock_secrets_client)
-
-    token = lambda_function.get_clickup_api_token()
-    assert token == 'secret-token' # Should be stripped
-    mock_secrets_client.get_secret_value.assert_called_once_with(SecretId='clickup/api/token')
-
-
-def test_get_clickup_api_token_failure(mocker):
-    """Test failure to retrieve a secret from AWS Secrets Manager."""
-    mock_secrets_client = MagicMock()
-    mock_secrets_client.get_secret_value.side_effect = Exception("Secrets Manager Error")
-    mocker.patch('boto3.session.Session.client', return_value=mock_secrets_client)
-
-    with pytest.raises(Exception, match="Secrets Manager Error"):
-        lambda_function.get_clickup_api_token()
-
-
 def test_generate_html_page_with_tasks(mock_tasks_from_file):
     """Test HTML page generation with a list of tasks."""
     mock_data = mock_tasks_from_file()
@@ -103,12 +80,12 @@ def test_generate_error_page():
     assert "Test error message" in html
 
 
-@patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_clickup_api_token')
+@patch('common.aws.get_secret')
 @patch('kiln_dropoff_recent_entries_viewer.lambda_function.requests.get')
-def test_lambda_handler_success(mock_requests_get, mock_get_token, reload_lambda_function, mock_tasks_from_file):
+def test_lambda_handler_success(mock_requests_get, mock_get_secret, reload_lambda_function, mock_tasks_from_file):
     """Test the full success path of the lambda_handler."""
     # Arrange
-    mock_get_token.return_value = 'fake-token'
+    mock_get_secret.return_value = 'fake-token'
     mock_data = mock_tasks_from_file() # Get a fresh copy of the data
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None
@@ -134,12 +111,12 @@ def test_lambda_handler_success(mock_requests_get, mock_get_token, reload_lambda
     assert result['body'].find('Customer J') < result['body'].find('Customer A')
 
 
-@patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_clickup_api_token')
+@patch('common.aws.get_secret')
 @patch('kiln_dropoff_recent_entries_viewer.lambda_function.requests.get')
-def test_lambda_handler_clickup_api_error(mock_requests_get, mock_get_token, reload_lambda_function):
+def test_lambda_handler_clickup_api_error(mock_requests_get, mock_get_secret, reload_lambda_function):
     """Test the handler's response to a ClickUp API error."""
     # Arrange
-    mock_get_token.return_value = 'fake-token'
+    mock_get_secret.return_value = 'fake-token'
     mock_requests_get.side_effect = HTTPError("401 Client Error: Unauthorized for url")
 
     # Act
@@ -149,7 +126,6 @@ def test_lambda_handler_clickup_api_error(mock_requests_get, mock_get_token, rel
     assert result['statusCode'] == 500
     assert "<h2>An Error Occurred</h2>" in result['body']
     assert "401 Client Error: Unauthorized for url" in result['body']
-
 
 def test_lambda_handler_missing_env_var(reload_lambda_function, monkeypatch):
     """Test the handler's response when a required environment variable is missing."""
@@ -166,11 +142,11 @@ def test_lambda_handler_missing_env_var(reload_lambda_function, monkeypatch):
     assert "Server configuration error: Missing List ID" in result['body']
 
 
-@patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_clickup_api_token')
-def test_lambda_handler_secret_manager_error(mock_get_token, reload_lambda_function):
+@patch('common.aws.get_secret')
+def test_lambda_handler_secret_manager_error(mock_get_secret, reload_lambda_function):
     """Test the handler's response to a Secrets Manager error."""
     # Arrange
-    mock_get_token.side_effect = Exception("Could not connect to Secrets Manager")
+    mock_get_secret.side_effect = Exception("Could not connect to Secrets Manager")
 
     # Act
     result = lambda_function.lambda_handler({}, None)

@@ -1,10 +1,11 @@
-import boto3
 import json
 import os
 import requests # type: ignore
 from dataclasses import dataclass
 import time
 from datetime import datetime, timezone, timedelta
+
+from common.aws import get_secret
 
 # --- Environment Variables ---
 # These are set in the Lambda function's configuration (template.yaml)
@@ -21,26 +22,6 @@ WORKSPACES_STR = os.environ.get('WORKSPACES')
 GENERAL_CHANNEL_NAME = os.environ.get('GENERAL_CHANNEL_NAME')
 STARTER_MESSAGE_TEXT = os.environ.get('STARTER_MESSAGE_TEXT')
 DRY_RUN = os.environ.get('DRY_RUN', 'false').lower() == 'true'
-
-def get_secret(secret_name, secret_key):
-    """
-    Retrieves a specific key from a secret stored in AWS Secrets Manager.
-    """
-    session = boto3.session.Session()
-    client = session.client(service_name='secretsmanager')
-    try:
-        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-        secret_string = get_secret_value_response['SecretString']
-        secret_dict = json.loads(secret_string)
-
-        if secret_key in secret_dict:
-            return secret_dict[secret_key]
-        else:
-            raise KeyError(f"Key '{secret_key}' not found in secret '{secret_name}'")
-
-    except Exception as e:
-        print(f"ERROR: Unable to retrieve secret '{secret_name}' with key '{secret_key}': {e}")
-        raise e
 
 @dataclass
 class ClickUpTask:

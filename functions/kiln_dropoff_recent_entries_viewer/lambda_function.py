@@ -1,8 +1,8 @@
-import boto3
-import json
 import os
 import requests
 from datetime import datetime, timedelta, timezone
+
+from common.aws import get_secret
 
 
 # --- Environment Variables ---
@@ -11,28 +11,6 @@ from datetime import datetime, timedelta, timezone
 SECRET_NAME = os.environ.get('SECRET_NAME', 'clickup/api/token')
 # The ID of the ClickUp list where form submissions are created
 LIST_ID = os.environ.get('CLICKUP_LIST_KILNDROP_ID')
-
-
-def get_clickup_api_token():
-    """
-    Retrieves and cleans the ClickUp API token from AWS Secrets Manager.
-    """
-    session = boto3.session.Session()
-    client = session.client(service_name='secretsmanager')
-
-    try:
-        get_secret_value_response = client.get_secret_value(SecretId=SECRET_NAME)
-    except Exception as e:
-        print(f"ERROR: Unable to retrieve secret from Secrets Manager: {e}")
-        raise e
-
-    secret = json.loads(get_secret_value_response['SecretString'])
-    token = secret.get('CLICKUP_API_TOKEN')
-    
-    # Clean the token by stripping leading/trailing whitespace
-    if token:
-        return token.strip()
-    return None
 
 
 def generate_html_page(tasks):
@@ -219,7 +197,7 @@ def lambda_handler(event, context):
 
     try:
         # 2. Get API token from Secrets Manager
-        api_token = get_clickup_api_token()
+        api_token = get_secret(SECRET_NAME, 'CLICKUP_API_TOKEN')
         
         # --- MORE DEBUGGING CODE ---
         if api_token:

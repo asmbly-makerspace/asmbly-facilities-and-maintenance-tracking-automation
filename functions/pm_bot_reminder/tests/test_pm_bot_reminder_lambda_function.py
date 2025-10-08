@@ -13,7 +13,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import lambda_function
 from lambda_function import ( # Keep this for other tests
-    get_secret,
     get_custom_field_value,
     fetch_clickup_tasks_page,
     get_all_clickup_tasks,
@@ -55,31 +54,6 @@ def mock_clickup_fields_from_file():
         tasks = json.load(f)
     # The JSON file contains a list of fields under the "fields" key.
     return tasks['fields']
-
-def test_get_secret_success(mocker):
-    """Test successful retrieval of a secret from AWS Secrets Manager."""
-    mock_secrets_client = MagicMock()
-    mock_secrets_client.get_secret_value.return_value = {
-        'SecretString': json.dumps({'MY_KEY': 'supersecret'})
-    }
-    mocker.patch('boto3.session.Session.client', return_value=mock_secrets_client)
-
-    secret = lambda_function.get_secret('some-secret', 'MY_KEY')
-    assert secret == 'supersecret'
-    mock_secrets_client.get_secret_value.assert_called_once_with(SecretId='some-secret')
-
-
-def test_get_secret_key_not_found(mocker):
-    """Test that a KeyError is raised if the key is not in the secret."""
-    mock_secrets_client = MagicMock()
-    mock_secrets_client.get_secret_value.return_value = {
-        'SecretString': json.dumps({'OTHER_KEY': 'supersecret'})
-    }
-    mocker.patch('boto3.session.Session.client', return_value=mock_secrets_client)
-
-    with pytest.raises(KeyError, match="Key 'MISSING_KEY' not found in secret 'some-secret'"):
-        lambda_function.get_secret('some-secret', 'MISSING_KEY')
-
 
 @pytest.mark.parametrize("task, field_id, expected_value", [
     # Test case 1: Simple string value
@@ -211,7 +185,7 @@ def test_send_slack_message_dry_run(capsys):
     assert "Message: Dry run message" in captured.out
 
 
-@patch('lambda_function.get_secret')
+@patch('common.aws.get_secret')
 @patch('lambda_function.get_all_clickup_tasks')
 @patch('lambda_function.send_slack_message')
 def test_lambda_handler_no_tasks(mock_send_slack, mock_get_tasks, mock_get_secret, reload_lambda_function):
@@ -227,7 +201,7 @@ def test_lambda_handler_no_tasks(mock_send_slack, mock_get_tasks, mock_get_secre
     mock_send_slack.assert_not_called()
 
 
-@patch('lambda_function.get_secret')
+@patch('common.aws.get_secret')
 @patch('lambda_function.get_all_clickup_tasks')
 @patch('lambda_function.send_slack_message')
 def test_lambda_handler_with_tasks(mock_send_slack, mock_get_tasks, mock_get_secret, reload_lambda_function):
@@ -303,7 +277,7 @@ def test_lambda_handler_with_tasks(mock_send_slack, mock_get_tasks, mock_get_sec
     assert call3_args['thread_ts'] == '111.111'
 
 
-@patch('lambda_function.get_secret')
+@patch('common.aws.get_secret')
 def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, capsys):
     """Test the main exception handler for unexpected errors."""
     # --- Mocks Setup ---
