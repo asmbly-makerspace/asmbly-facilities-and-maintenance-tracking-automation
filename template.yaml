@@ -84,7 +84,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "PMReminderBot-${Stage}"
-      Description: "https://gist.github.com/sababado/78b9714938e1f4ef001361654b8464e2"
+      Description: "Scheduled function that fetches overdue and upcoming preventative maintenance tasks from ClickUp and sends reminder notifications to the appropriate Slack channels."
       CodeUri: functions/pm_bot_reminder/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
@@ -240,7 +240,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "KilnOpsDropoffRecentEntriesViewer-${Stage}"
-      Description: "https://gist.github.com/sababado/aa8c92c0f9f4488c701523c6fd995c6b"
+      Description: "Generates a public-facing HTML page showing recent kiln drop-off submissions from ClickUp for the last 24 hours. Triggered by API Gateway."
       CodeUri: functions/kiln_dropoff_recent_entries_viewer/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
