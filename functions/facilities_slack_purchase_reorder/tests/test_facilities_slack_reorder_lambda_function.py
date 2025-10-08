@@ -3,14 +3,14 @@ import os
 import sys
 import unittest
 from unittest.mock import patch, MagicMock
-
-# Add project root to path to allow sibling directory imports
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-sys.path.insert(0, project_root)
+ 
+# Add the parent 'functions' directory to the path to allow direct import of the lambda_function
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 # Add the layers directory to the path to allow common module imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'layers')))
 
-from functions.facilities_slack_purchase_reorder import lambda_function
+# Now we can import the lambda function module directly
+from facilities_slack_purchase_reorder import lambda_function
 
 @patch.dict(os.environ, {
     "CLICKUP_SECRET_NAME": "fake_clickup_secret",
@@ -26,6 +26,8 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
 
     def setUp(self):
         self.test_dir = os.path.dirname(__file__)
+        # Set a dummy AWS region to prevent botocore NoRegionError
+        os.environ['AWS_REGION'] = 'us-east-1'
 
         # Load fixtures
         with open(os.path.join(self.test_dir, 'fixtures', 'clickup_master_items_response.json')) as f:
@@ -38,7 +40,7 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
             return json.load(f)
 
     @patch('requests.Session')
-    @patch('functions.facilities_slack_purchase_reorder.lambda_function.get_secret')
+    @patch('facilities_slack_purchase_reorder.lambda_function.get_secret')
     def test_lambda_handler_initial_open(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()
@@ -70,7 +72,7 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
         self.assertEqual(sent_json['view']['title']['text'], 'Reorder Item')
 
     @patch('requests.Session')
-    @patch('functions.facilities_slack_purchase_reorder.lambda_function.get_secret')
+    @patch('facilities_slack_purchase_reorder.lambda_function.get_secret')
     def test_no_items_found(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()
@@ -96,7 +98,7 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
         self.assertEqual(sent_json['view']['title']['text'], 'No Items Found')
 
     @patch('requests.Session')
-    @patch('functions.facilities_slack_purchase_reorder.lambda_function.get_secret')
+    @patch('facilities_slack_purchase_reorder.lambda_function.get_secret')
     def test_workspace_filter(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()
@@ -135,7 +137,7 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
         self.assertEqual(len(item_options), 0)
 
     @patch('requests.Session')
-    @patch('functions.facilities_slack_purchase_reorder.lambda_function.get_secret')
+    @patch('facilities_slack_purchase_reorder.lambda_function.get_secret')
     def test_item_selection_updates_description(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()
@@ -177,7 +179,7 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
         self.assertEqual(description_block['element']['initial_value'], expected_description)
 
     @patch('requests.Session')
-    @patch('functions.facilities_slack_purchase_reorder.lambda_function.get_secret')
+    @patch('facilities_slack_purchase_reorder.lambda_function.get_secret')
     def test_successful_submission(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()
@@ -228,7 +230,7 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
         self.assertEqual(response_body['view']['title']['text'], 'Success!')
 
     @patch('requests.Session')
-    @patch('functions.facilities_slack_purchase_reorder.lambda_function.get_secret')
+    @patch('facilities_slack_purchase_reorder.lambda_function.get_secret')
     def test_error_handling(self, mock_get_secret, mock_session):
         # Mocks
         mock_http_session = MagicMock()

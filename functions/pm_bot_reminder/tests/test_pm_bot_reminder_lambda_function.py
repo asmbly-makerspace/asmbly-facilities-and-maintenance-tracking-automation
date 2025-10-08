@@ -8,20 +8,13 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-# Add the parent directory to the path to allow imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add the parent 'functions' directory to the path to allow direct import of the lambda_function
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 # Add the layers directory to the path to allow common module imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'layers')))
 
-import lambda_function
-from lambda_function import ( # Keep this for other tests
-    get_custom_field_value,
-    fetch_clickup_tasks_page,
-    get_all_clickup_tasks,
-    process_tasks_for_slack,
-    send_slack_message,
-    lambda_handler
-)
+# Now we can import the lambda function module directly
+from pm_bot_reminder import lambda_function
 
 
 @pytest.fixture
@@ -44,7 +37,7 @@ def reload_lambda_function(mock_env_vars):
     Fixture to reload the lambda_function module after env vars are mocked.
     This is crucial because the module loads env vars at the global scope on initial import.
     """
-    importlib.reload(lambda_function)
+    importlib.reload(sys.modules['pm_bot_reminder.lambda_function'])
     yield
 
 @pytest.fixture
@@ -102,7 +95,7 @@ def test_fetch_clickup_tasks_page_http_error(requests_mock):
         lambda_function.fetch_clickup_tasks_page(list_id, api_token, page_num)
 
 
-@patch('lambda_function.fetch_clickup_tasks_page')
+@patch('pm_bot_reminder.lambda_function.fetch_clickup_tasks_page')
 def test_get_all_clickup_tasks_pagination(mock_fetch_page):
     """Test that get_all_clickup_tasks paginates correctly."""
     mock_fetch_page.side_effect = [
@@ -118,7 +111,7 @@ def test_get_all_clickup_tasks_pagination(mock_fetch_page):
     assert mock_fetch_page.call_count == 2
 
 
-@patch('lambda_function.fetch_clickup_tasks_page')
+@patch('pm_bot_reminder.lambda_function.fetch_clickup_tasks_page')
 def test_get_all_clickup_tasks_max_pages(mock_fetch_page):
     """Test that pagination stops at the max_pages limit."""
     mock_fetch_page.return_value = ([{'id': 'task_on_page'}], False)
@@ -176,7 +169,7 @@ def test_send_slack_message_success(requests_mock):
 
 def test_send_slack_message_dry_run(capsys):
     """Test that DRY_RUN mode prints to console instead of sending."""
-    with patch('lambda_function.DRY_RUN', True):
+    with patch('pm_bot_reminder.lambda_function.DRY_RUN', True):
         response = lambda_function.send_slack_message('slack-token', '#general', 'Dry run message', 'Bot', ':emoji:')
 
     assert response['ok'] is True
@@ -187,9 +180,9 @@ def test_send_slack_message_dry_run(capsys):
     assert "Message: Dry run message" in captured.out
 
 
-@patch('lambda_function.get_secret')
-@patch('lambda_function.get_all_clickup_tasks')
-@patch('lambda_function.send_slack_message')
+@patch('pm_bot_reminder.lambda_function.get_secret')
+@patch('pm_bot_reminder.lambda_function.get_all_clickup_tasks')
+@patch('pm_bot_reminder.lambda_function.send_slack_message')
 def test_lambda_handler_no_tasks(mock_send_slack, mock_get_tasks, mock_get_secret, reload_lambda_function):
     """Test the lambda handler when no tasks are found."""
     mock_get_secret.side_effect = ['clickup-token', 'slack-token']
@@ -203,9 +196,9 @@ def test_lambda_handler_no_tasks(mock_send_slack, mock_get_tasks, mock_get_secre
     mock_send_slack.assert_not_called()
 
 
-@patch('lambda_function.get_secret')
-@patch('lambda_function.get_all_clickup_tasks')
-@patch('lambda_function.send_slack_message')
+@patch('pm_bot_reminder.lambda_function.get_secret')
+@patch('pm_bot_reminder.lambda_function.get_all_clickup_tasks')
+@patch('pm_bot_reminder.lambda_function.send_slack_message')
 def test_lambda_handler_with_tasks(mock_send_slack, mock_get_tasks, mock_get_secret, reload_lambda_function):
     """Test the full lambda handler flow with tasks and threaded replies."""
     # --- Mocks Setup ---
@@ -279,7 +272,7 @@ def test_lambda_handler_with_tasks(mock_send_slack, mock_get_tasks, mock_get_sec
     assert call3_args['thread_ts'] == '111.111'
 
 
-@patch('lambda_function.get_secret')
+@patch('pm_bot_reminder.lambda_function.get_secret')
 def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, capsys):
     """Test the main exception handler for unexpected errors."""
     # --- Mocks Setup ---
