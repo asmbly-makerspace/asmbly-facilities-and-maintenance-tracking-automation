@@ -1,13 +1,19 @@
 import boto3
 import json
+import os
 
 def get_secret(secret_name, secret_key):
     """
     Retrieves a specific key from a secret stored in AWS Secrets Manager.
     If the retrieved value is a string, it will be stripped of leading/trailing whitespace.
     """
+    # Use AWS_REGION if available, otherwise default to us-east-1 for local dev/testing
+    region_name = os.environ.get("AWS_REGION", "us-east-1")
     session = boto3.session.Session()
-    client = session.client(service_name='secretsmanager')
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
     try:
         get_secret_value_response = client.get_secret_value(SecretId=secret_name)
         secret_string = get_secret_value_response['SecretString']

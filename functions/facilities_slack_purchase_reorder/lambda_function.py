@@ -6,6 +6,7 @@ import urllib.parse
 from datetime import datetime
 
 from common.aws import get_secret
+from common.clickup import get_all_clickup_tasks, get_task, create_task, get_custom_field_value
 
 class Config:
     """Loads and holds configuration from environment variables."""
@@ -44,37 +45,6 @@ def get_slack_user_info(api_token, user_id, http_session):
     response = http_session.get(url, headers=headers, params=params)
     response.raise_for_status()
     return response.json()
-
-def get_clickup_tasks(api_token, list_id, http_session):
-    '''Retrieves tasks from a ClickUp list.'''
-    url = f"https://api.clickup.com/api/v2/list/{list_id}/task"
-    headers = {"Authorization": api_token}
-    response = http_session.get(url, headers=headers)
-    response.raise_for_status()
-    return response.json()["tasks"]
-
-def get_clickup_task_details(api_token, task_id, http_session):
-    '''Retrieves task details from a ClickUp task.'''
-    url = f"https://api.clickup.com/api/v2/task/{task_id}"
-    headers = {"Authorization": api_token}
-    response = http_session.get(url, headers=headers)
-    response.raise_for_status()
-    return response.json()
-
-def create_clickup_purchase_request(api_token, payload, http_session, purchase_request_list_id):
-    '''Creates a ClickUp purchase request.'''
-    url = f"https://api.clickup.com/api/v2/list/{purchase_request_list_id}/task"
-    headers = {"Authorization": api_token, "Content-Type": "application/json"}
-    response = http_session.post(url, headers=headers, json=payload)
-    response.raise_for_status()
-    return response.json()
-
-def get_custom_field_value(task_details, field_id):
-    '''Retrieves the value of a custom field from a task.'''
-    for field in task_details.get("custom_fields", []):
-        if field.get("id") == field_id:
-            return field.get("value")
-    return None
 
 def get_all_workspaces_from_tasks(tasks, workspace_field_id):
     '''Extracts all unique workspace names from tasks.'''
@@ -179,7 +149,7 @@ def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_t
     slack_user_info = get_slack_user_info(slack_bot_token, slack_user_id, http_session)
     requestor_real_name = slack_user_info.get("user", {}).get("real_name", "Unknown User")
 
-    original_item_details = get_clickup_task_details(clickup_api_token, selected_item_id, http_session)
+    original_item_details = get_task(clickup_api_token, selected_item_id)
 
     new_task_payload = {
         "name": original_item_details["name"], "description": description_text,
@@ -196,14 +166,14 @@ def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_t
         dt_object = datetime.strptime(delivery_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
         new_task_payload["due_date"] = int(dt_object.timestamp() * 1000)
 
-    create_clickup_purchase_request(clickup_api_token, new_task_payload, http_session, config.purchase_request_list_id)
+    create_task(clickup_api_token, config.purchase_request_list_id, new_task_payload)
 
     success_view = {"type": "modal", "title": {"type": "plain_text", "text": "Success!"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Your purchase request was created successfully."}}], "close": {"type": "plain_text", "text": "Close"}}
     return {"statusCode": 200, "body": json.dumps({"response_action": "update", "view": success_view})}
 
 def handle_initial_open(trigger_id, http_session, clickup_api_token, slack_headers, config):
     """Handles the initial slash command to open the modal."""
-    all_tasks_full = get_clickup_tasks(clickup_api_token, config.clickup_list_id, http_session)
+    all_tasks_full = get_all_clickup_tasks(config.clickup_list_id, clickup_api_token)
 
     if not all_tasks_full:
         error_view = {"type": "modal", "title": {"type": "plain_text", "text": "No Items Found"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Sorry, no reorderable items were found in the ClickUp list."}}], "close": {"type": "plain_text", "text": "Close"}}

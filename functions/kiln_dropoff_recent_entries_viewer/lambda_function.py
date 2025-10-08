@@ -1,8 +1,8 @@
 import os
-import requests
 from datetime import datetime, timedelta, timezone
 
 from common.aws import get_secret
+from common.clickup import get_all_clickup_tasks
 
 
 # --- Environment Variables ---
@@ -211,29 +211,10 @@ def lambda_handler(event, context):
         # --- END OF MORE DEBUGGING CODE ---
         
         # 3. Fetch recent tasks from ClickUp API
-        headers = {
-            "Authorization": api_token,
-            "Content-Type": "application/json"
-        }
-        
-        # MODIFIED: Calculate timestamp for 24 hours ago
         twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
         timestamp_ms = int(twenty_four_hours_ago.timestamp() * 1000)
 
-        # MODIFIED: Use the timestamp to filter tasks, REMOVED order_by and reverse
-        url = f"https://api.clickup.com/api/v2/list/{LIST_ID}/task"
-        params = {
-            "date_created_gt": timestamp_ms
-        }
-        
-        # --- FINAL DEBUGGING PRINT ---
-        print(f"--- DEBUG: Making request to URL: {url} with params: {params}")
-        # --- END OF FINAL DEBUGGING PRINT ---
-        
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
-        
-        tasks = response.json().get("tasks", [])
+        tasks = get_all_clickup_tasks(LIST_ID, api_token, date_created_gt=timestamp_ms)
         
         # MODIFIED: Sort the tasks manually since the API parameter was removed
         tasks.sort(key=lambda x: int(x.get('date_created', 0)), reverse=True)

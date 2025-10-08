@@ -4,10 +4,8 @@ import importlib
 import sys
 import pathlib
 from unittest.mock import patch, MagicMock
-from datetime import datetime, timezone
 
 import pytest
-from requests.exceptions import HTTPError
 
 # Add the parent 'functions' directory to the path to allow direct import of the lambda_function
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -83,20 +81,17 @@ def test_generate_error_page():
 
 
 @patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_secret')
-@patch('kiln_dropoff_recent_entries_viewer.lambda_function.requests.get')
-def test_lambda_handler_success(mock_requests_get, mock_get_secret, reload_lambda_function, mock_tasks_from_file):
+@patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_all_clickup_tasks')
+def test_lambda_handler_success(mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function, mock_tasks_from_file):
     """Test the full success path of the lambda_handler."""
     # Arrange
     mock_get_secret.return_value = 'fake-token'
     mock_data = mock_tasks_from_file() # Get a fresh copy of the data
-    mock_response = MagicMock()
-    mock_response.raise_for_status.return_value = None
 
     # We need to add date_created to all tasks for this to work because the fixture lacks it.
     for i, task in enumerate(mock_data['tasks']):
         task['date_created'] = str(1704067200000 + i * 1000)  # Staggered timestamps
-    mock_response.json.return_value = mock_data
-    mock_requests_get.return_value = mock_response
+    mock_get_all_clickup_tasks.return_value = mock_data['tasks']
 
     # Act
     result = lambda_function.lambda_handler({}, None)
@@ -114,12 +109,12 @@ def test_lambda_handler_success(mock_requests_get, mock_get_secret, reload_lambd
 
 
 @patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_secret')
-@patch('kiln_dropoff_recent_entries_viewer.lambda_function.requests.get')
-def test_lambda_handler_clickup_api_error(mock_requests_get, mock_get_secret, reload_lambda_function):
+@patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_all_clickup_tasks')
+def test_lambda_handler_clickup_api_error(mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function):
     """Test the handler's response to a ClickUp API error."""
     # Arrange
     mock_get_secret.return_value = 'fake-token'
-    mock_requests_get.side_effect = HTTPError("401 Client Error: Unauthorized for url")
+    mock_get_all_clickup_tasks.side_effect = ValueError("401 Client Error: Unauthorized for url")
 
     # Act
     result = lambda_function.lambda_handler({}, None)
