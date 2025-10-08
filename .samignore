@@ -1,0 +1,17 @@
+# Ignore all test directories and their contents
+**/tests
+
+# Ignore Python cache files
+**/__pycache__
+**/*.pyc
+
+# Ignore pytest cache
+.pytest_cache
+
+# Ignore common editor and OS files
+.vscode
+.idea
+.DS_Store
+
+# Ignore local SAM build artifacts
+.aws-sam
