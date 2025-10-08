@@ -1,0 +1,265 @@
+import json
+import os
+import sys
+import unittest
+from unittest.mock import patch, MagicMock
+
+# Add project root to path to allow sibling directory imports
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+sys.path.insert(0, project_root)
+
+from functions.facilities_slack_purchase_reorder import lambda_function
+
+@patch.dict(os.environ, {
+    "CLICKUP_SECRET_NAME": "fake_clickup_secret",
+    "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake_slack_secret",
+    "LIST_ID": "fake_list_id",
+    "PURCHASE_REQUEST_LIST_ID": "fake_purchase_list_id",
+    "WORKSPACE_FIELD_ID": "workspace_field_id",
+    "SUPPLIER_LINK_FIELD_ID": "supplier_link_field_id",
+    "REQUESTOR_NAME_FIELD_ID": "requestor_name_field_id",
+    "ITEM_TYPE_FIELD_ID": "item_type_field_id"
+})
+class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
+
+    def setUp(self):
+        # Start the patcher and store the mock
+        self.boto_patcher = patch('boto3.client')
+        self.mock_boto_client = self.boto_patcher.start()
+
+        self.mock_secrets_manager = MagicMock()
+        self.mock_boto_client.return_value = self.mock_secrets_manager
+        self.test_dir = os.path.dirname(__file__)
+
+        # Load fixtures
+        with open(os.path.join(self.test_dir, 'fixtures', 'clickup_master_items_response.json')) as f:
+            self.clickup_master_items = json.load(f)
+        with open(os.path.join(self.test_dir, 'fixtures', 'clickup_fields_data.json')) as f:
+            self.clickup_fields_data = json.load(f)
+        self.addCleanup(self.boto_patcher.stop)
+
+    def _get_fixture(self, file_path):
+        with open(file_path, 'r') as f:
+            return json.load(f)
+
+    @patch('requests.Session')
+    def test_lambda_handler_initial_open(self, mock_session):
+        # Mocks
+        mock_http_session = MagicMock()
+        mock_session.return_value = mock_http_session
+        self.mock_secrets_manager.get_secret_value.side_effect = [
+            {'SecretString': '{\"clickup_api_token\": \"fake_clickup_token\"}'},
+            {'SecretString': '{\"slack_bot_token\": \"fake_slack_token\"}'}
+        ]
+        mock_http_session.get.return_value.json.return_value = self.clickup_master_items
+        mock_http_session.get.return_value.raise_for_status = MagicMock()
+        mock_http_session.post.return_value.raise_for_status = MagicMock()
+
+        # Test event
+        event = {
+            'body': 'trigger_id=fake_trigger_id'
+        }
+
+        # Run
+        response = lambda_function.lambda_handler(event, None)
+
+        # Assertions
+        self.assertEqual(response['statusCode'], 200)
+        
+        # Check that views.open was called
+        call_args, call_kwargs = mock_http_session.post.call_args
+        self.assertEqual(call_args[0], 'https://slack.com/api/views.open')
+        
+        # Check the view that was opened
+        sent_json = call_kwargs['json']
+        self.assertEqual(sent_json['trigger_id'], 'fake_trigger_id')
+        self.assertEqual(sent_json['view']['type'], 'modal')
+        self.assertEqual(sent_json['view']['title']['text'], 'Reorder Item')
+
+    @patch('requests.Session')
+    def test_no_items_found(self, mock_session):
+        # Mocks
+        mock_http_session = MagicMock()
+        mock_session.return_value = mock_http_session
+        self.mock_secrets_manager.get_secret_value.side_effect = [
+            {'SecretString': '{\"clickup_api_token\": \"fake_clickup_token\"}'},
+            {'SecretString': '{\"slack_bot_token\": \"fake_slack_token\"}'}
+        ]
+        mock_http_session.get.return_value.json.return_value = {"tasks": []}
+        mock_http_session.get.return_value.raise_for_status = MagicMock()
+        mock_http_session.post.return_value.raise_for_status = MagicMock()
+
+        # Test event
+        event = {
+            'body': 'trigger_id=fake_trigger_id'
+        }
+
+        # Run
+        response = lambda_function.lambda_handler(event, None)
+
+        # Assertions
+        self.assertEqual(response['statusCode'], 200)
+        call_args, call_kwargs = mock_http_session.post.call_args
+        self.assertEqual(call_args[0], 'https://slack.com/api/views.open')
+        sent_json = call_kwargs['json']
+        self.assertEqual(sent_json['view']['title']['text'], 'No Items Found')
+
+    @patch('requests.Session')
+    def test_workspace_filter(self, mock_session):
+        # Mocks
+        mock_http_session = MagicMock()
+        mock_session.return_value = mock_http_session
+        self.mock_secrets_manager.get_secret_value.side_effect = [
+            {'SecretString': '{\"clickup_api_token\": \"fake_clickup_token\"}'},
+            {'SecretString': '{\"slack_bot_token\": \"fake_slack_token\"}'}
+        ]
+
+        # Prepare metadata
+        all_tasks_prepared = lambda_function.prepare_tasks_for_metadata(self.clickup_master_items.get('tasks', []), "workspace_field_id")
+        private_metadata_str = json.dumps(all_tasks_prepared)
+
+        # Test event
+        event = {
+            'body': f'payload={json.dumps({ 
+                "type": "block_actions", 
+                "actions": [{"action_id": "selected_workspace", "selected_option": {"value": "Clean Room"}}], 
+                "view": { 
+                    "id": "fake_view_id", 
+                    "private_metadata": private_metadata_str, 
+                    "state": {"values": {}} 
+                } 
+            })}'
+        }
+
+        # Run
+        response = lambda_function.lambda_handler(event, None)
+
+        # Assertions
+        self.assertEqual(response['statusCode'], 200)
+        call_args, call_kwargs = mock_http_session.post.call_args
+        self.assertEqual(call_args[0], 'https://slack.com/api/views.update')
+        sent_json = call_kwargs['json']
+        self.assertEqual(sent_json['view_id'], 'fake_view_id')
+        
+        # Check that the item list is filtered
+        item_options = sent_json['view']['blocks'][2]['element']['options']
+        self.assertEqual(len(item_options), 0)
+
+    @patch('requests.Session')
+    def test_item_selection_updates_description(self, mock_session):
+        # Mocks
+        mock_http_session = MagicMock()
+        mock_session.return_value = mock_http_session
+        self.mock_secrets_manager.get_secret_value.side_effect = [
+            {'SecretString': '{\"clickup_api_token\": \"fake_clickup_token\"}'},
+            {'SecretString': '{\"slack_bot_token\": \"fake_slack_token\"}'}
+        ]
+
+        # Prepare metadata
+        all_tasks_prepared = lambda_function.prepare_tasks_for_metadata(self.clickup_master_items.get('tasks', []), "workspace_field_id")
+        private_metadata_str = json.dumps(all_tasks_prepared)
+        selected_task_id = self.clickup_master_items['tasks'][0]["id"]
+        expected_description = self.clickup_master_items['tasks'][0]["description"]
+
+        # Test event
+        event = {
+            'body': f'payload={json.dumps({ 
+                "type": "block_actions", 
+                "actions": [{"action_id": "selected_item", "selected_option": {"value": selected_task_id}}], 
+                "view": { 
+                    "id": "fake_view_id", 
+                    "private_metadata": private_metadata_str, 
+                    "state": {"values": {}} 
+                } 
+            })}'
+        }
+
+        # Run
+        response = lambda_function.lambda_handler(event, None)
+
+        # Assertions
+        self.assertEqual(response['statusCode'], 200)
+        call_args, call_kwargs = mock_http_session.post.call_args
+        self.assertEqual(call_args[0], 'https://slack.com/api/views.update')
+        sent_json = call_kwargs['json']
+        self.assertEqual(sent_json['view_id'], 'fake_view_id')
+
+        # Find the description block and check its initial value
+        description_block = next((b for b in sent_json['view']['blocks'] if b['block_id'].startswith('description_block')), None)
+        self.assertIsNotNone(description_block)
+        self.assertEqual(description_block['element']['initial_value'], expected_description)
+
+    @patch('requests.Session')
+    def test_successful_submission(self, mock_session):
+        # Mocks
+        mock_http_session = MagicMock()
+        mock_session.return_value = mock_http_session
+        self.mock_secrets_manager.get_secret_value.side_effect = [
+            {'SecretString': '{\"clickup_api_token\": \"fake_clickup_token\"}'},
+            {'SecretString': '{\"slack_bot_token\": \"fake_slack_token\"}'}
+        ]
+        mock_http_session.get.side_effect = [
+            MagicMock(json=MagicMock(return_value={"user": {"real_name": "Test User"}})),
+            MagicMock(json=MagicMock(return_value=self.clickup_master_items['tasks'][0]))
+        ]
+        mock_http_session.post.return_value.json.return_value = {"id": "new_task_id"}
+
+        # Test event
+        selected_item_id = self.clickup_master_items['tasks'][0]["id"]
+        event = {
+            'body': f'payload={json.dumps({
+                "type": "view_submission",
+                "user": {"id": "fake_user_id"},
+                "view": {
+                    "state": {
+                        "values": {
+                            "item_selection": {"selected_item": {"selected_option": {"value": selected_item_id}}},
+                            "delivery_date_block": {"delivery_date_action": {"selected_date": "2024-01-01"}},
+                            "description_block_123": {"description_action": {"value": "Custom description"}}
+                        }
+                    }
+                }
+            })}'
+        }
+
+        # Run
+        response = lambda_function.lambda_handler(event, None)
+
+        # Assertions
+        self.assertEqual(response['statusCode'], 200)
+        
+        # Check that a new ClickUp task was created
+        # The last call to post is the one that creates the task
+        call_args, call_kwargs = mock_http_session.post.call_args
+        self.assertEqual(call_args[0], f'https://api.clickup.com/api/v2/list/{os.environ["PURCHASE_REQUEST_LIST_ID"]}/task')
+        sent_json = call_kwargs['json']
+        self.assertEqual(sent_json['name'], self.clickup_master_items['tasks'][0]["name"])
+        self.assertEqual(sent_json['description'], 'Custom description')
+        self.assertEqual(sent_json['due_date'], 1704067200000) # 2024-01-01
+
+        # Check for success view
+        response_body = json.loads(response['body'])
+        self.assertEqual(response_body['response_action'], 'update')
+        self.assertEqual(response_body['view']['title']['text'], 'Success!')
+
+    @patch('requests.Session')
+    def test_error_handling(self, mock_session):
+        # Mocks
+        mock_http_session = MagicMock()
+        mock_session.return_value = mock_http_session
+        self.mock_secrets_manager.get_secret_value.side_effect = Exception("AWS Error")
+
+        # Test event
+        event = {
+            'body': 'trigger_id=fake_trigger_id'
+        }
+
+        # Run
+        response = lambda_function.lambda_handler(event, None)
+
+        # Assertions
+        self.assertEqual(response['statusCode'], 500)
+        self.assertIn("error", json.loads(response['body']))
+
+if __name__ == '__main__':
+    unittest.main()

@@ -1,0 +1,219 @@
+{
+  "tasks": [
+    {
+      "id": "obfuscated_id_1",
+      "custom_id": null,
+      "custom_item_id": 9999,
+      "name": "Glue-up Paper 36\" x 720'",
+      "text_content": "Each glue-up table has one roll on and one-roll as a backup.",
+      "description": "Each glue-up table has one roll on and one-roll as a backup.",
+      "status": {
+        "status": "to-do",
+        "id": "p99999999999_XXXXXXXX",
+        "color": "var(--cu-status-open)",
+        "type": "open",
+        "orderindex": 0
+      },
+      "orderindex": "120459689.00000000000000000000000000000000",
+      "date_created": "1759176416160",
+      "date_updated": "1759529787929",
+      "date_closed": null,
+      "date_done": null,
+      "archived": false,
+      "creator": {
+        "id": 100000001,
+        "username": "John Doe",
+        "color": "",
+        "email": "john.doe@example.com",
+        "profilePicture": null
+      },
+      "assignees": [],
+      "group_assignees": [],
+      "watchers": [
+        {
+          "id": 100000001,
+          "username": "John Doe",
+          "color": "",
+          "initials": "JD",
+          "email": "john.doe@example.com",
+          "profilePicture": null
+        }
+      ],
+      "checklists": [],
+      "tags": [],
+      "parent": null,
+      "top_level_parent": null,
+      "priority": null,
+      "due_date": null,
+      "start_date": null,
+      "points": null,
+      "time_estimate": null,
+      "custom_fields": [
+        {
+          "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+          "name": "Asset",
+          "type": "list_relationship",
+          "type_config": {
+            "fields": [],
+            "subcategory_id": "999999999999",
+            "linked_subcategory_access": true,
+            "subcategory_inverted_name": "Assets"
+          },
+          "date_created": "1759176921264",
+          "hide_from_guests": false,
+          "required": false
+        },
+        {
+          "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+          "name": "Item Type",
+          "type": "drop_down",
+          "type_config": {
+            "sorting": "manual",
+            "options": [
+              {
+                "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+                "name": "Consumable",
+                "color": "#FF4081",
+                "orderindex": 0
+              }
+            ]
+          },
+          "date_created": "1759178916054",
+          "hide_from_guests": false,
+          "value": 0,
+          "value_richtext": "",
+          "required": false
+        },
+        {
+          "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+          "name": "Purchase Requests",
+          "type": "list_relationship",
+          "type_config": {
+            "fields": [],
+            "subcategory_id": "999999999999",
+            "linked_subcategory_access": true,
+            "subcategory_inverted_name": "Purchase Requests"
+          },
+          "date_created": "1759177414523",
+          "hide_from_guests": false,
+          "required": false
+        },
+        {
+          "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+          "name": "Slack Post",
+          "type": "url",
+          "type_config": {},
+          "date_created": "1759801092852",
+          "hide_from_guests": false,
+          "required": false
+        },
+        {
+          "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+          "name": "Vendor",
+          "type": "list_relationship",
+          "type_config": {
+            "fields": [],
+            "subcategory_id": "999999999999",
+            "linked_subcategory_access": true,
+            "subcategory_inverted_name": "Vendors"
+          },
+          "date_created": "1759177255684",
+          "hide_from_guests": false,
+          "value": [
+            {
+              "id": "obfuscated_id_2",
+              "name": "Amazon",
+              "status": "active",
+              "color": "#f8ae00",
+              "custom_type": 1010,
+              "team_id": "99999999999",
+              "deleted": false,
+              "url": "https://app.clickup.com/t/obfuscated_id_2",
+              "access": true
+            }
+          ],
+          "required": false
+        },
+        {
+          "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+          "name": "Workspace",
+          "type": "drop_down",
+          "type_config": {
+            "sorting": "manual",
+            "new_drop_down": true,
+            "options": [
+              {
+                "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+                "name": "Woodshop",
+                "color": "#f3b71b",
+                "orderindex": 4
+              }
+            ]
+          },
+          "date_created": "1759529621828",
+          "hide_from_guests": false,
+          "value": 4,
+          "value_richtext": "",
+          "required": false
+        },
+        {
+          "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+          "name": "Preferred Supplier Link",
+          "type": "url",
+          "type_config": {},
+          "date_created": "1759176476005",
+          "hide_from_guests": false,
+          "value": "https://www.amazon.com/gp/product/B09JB41BL1",
+          "value_richtext": "",
+          "required": false
+        }
+      ],
+      "dependencies": [],
+      "linked_tasks": [],
+      "locations": [],
+      "team_id": "99999999999",
+      "url": "https://app.clickup.com/t/obfuscated_id_1",
+      "sharing": {
+        "public": false,
+        "public_share_expires_on": null,
+        "public_fields": [
+          "assignees",
+          "priority",
+          "due_date",
+          "content",
+          "comments",
+          "attachments",
+          "customFields",
+          "subtasks",
+          "tags",
+          "checklists",
+          "coverimage"
+        ],
+        "token": null,
+        "seo_optimized": false
+      },
+      "permission_level": "create",
+      "list": {
+        "id": "999999999999",
+        "name": "Master Items List",
+        "access": true
+      },
+      "project": {
+        "id": "999999999999",
+        "name": "hidden",
+        "hidden": true,
+        "access": true
+      },
+      "folder": {
+        "id": "999999999999",
+        "name": "hidden",
+        "hidden": true,
+        "access": true
+      },
+      "space": {
+        "id": "99999999999"
+      }
+    }
+  ],
+  "last_page": true
+}

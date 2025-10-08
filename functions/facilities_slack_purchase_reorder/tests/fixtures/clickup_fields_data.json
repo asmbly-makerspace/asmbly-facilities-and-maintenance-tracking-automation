@@ -1,0 +1,201 @@
+{
+  "fields": [
+    {
+      "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "name": "Vendor",
+      "type": "list_relationship",
+      "type_config": {
+        "fields": [],
+        "subcategory_id": "999999999999",
+        "subcategory_inverted_name": "Vendors"
+      },
+      "date_created": "1759177255684",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "name": "Asset",
+      "type": "list_relationship",
+      "type_config": {
+        "fields": [],
+        "subcategory_id": "999999999999",
+        "subcategory_inverted_name": "Assets"
+      },
+      "date_created": "1759176921264",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "name": "Slack Post",
+      "type": "url",
+      "type_config": {},
+      "date_created": "1759801092852",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "name": "Preferred Supplier Link",
+      "type": "url",
+      "type_config": {},
+      "date_created": "1759176476005",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "name": "Workspace",
+      "type": "drop_down",
+      "type_config": {
+        "sorting": "manual",
+        "new_drop_down": true,
+        "options": [
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "3D Printing",
+            "color": "#ee6e23",
+            "orderindex": 0
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Electronics",
+            "color": "#00916e",
+            "orderindex": 1
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Textiles",
+            "color": "#7accc4",
+            "orderindex": 2
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Lasers",
+            "color": "#d33e42",
+            "orderindex": 3
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Woodshop",
+            "color": "#f3b71b",
+            "orderindex": 4
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Metal-Shop",
+            "color": "#4e7db4",
+            "orderindex": 5
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Ceramics",
+            "color": "#f78eea",
+            "orderindex": 6
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Multi-Purpose Room",
+            "color": "#fff",
+            "orderindex": 7
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Lobby",
+            "color": "#fff",
+            "orderindex": 8
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Studios",
+            "color": "#fff",
+            "orderindex": 9
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Hallway",
+            "color": "#fff",
+            "orderindex": 10
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Bathrooms",
+            "color": "#fff",
+            "orderindex": 11
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "HVAC",
+            "color": "#fff",
+            "orderindex": 12
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Education / Classes",
+            "color": "#800000",
+            "orderindex": 13
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "General Areas",
+            "color": "#04A9F4",
+            "orderindex": 14
+          }
+        ]
+      },
+      "date_created": "1759529621828",
+      "hide_from_guests": false,
+      "required": false
+    },
+    {
+      "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "name": "Item Type",
+      "type": "drop_down",
+      "type_config": {
+        "sorting": "manual",
+        "options": [
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Consumable",
+            "color": "#FF4081",
+            "orderindex": 0
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Machine",
+            "color": "#7C4DFF",
+            "orderindex": 1
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Tool",
+            "color": "#800000",
+            "orderindex": 2
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Part",
+            "color": "#04A9F4",
+            "orderindex": 3
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Accessory",
+            "color": "#e50000",
+            "orderindex": 4
+          },
+          {
+            "id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            "name": "Other",
+            "color": "#bf55ec",
+            "orderindex": 5
+          }
+        ]
+      },
+      "date_created": "1759178916054",
+      "hide_from_guests": false,
+      "required": false
+    }
+  ]
+}
