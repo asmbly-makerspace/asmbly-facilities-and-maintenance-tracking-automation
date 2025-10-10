@@ -38,6 +38,16 @@ Resources:
         - python3.12
       RetentionPolicy: Retain
 
+  CommonLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "common-layer-${Stage}"
+      Description: "Shared layer for common utilities (aws, clickup, slack)"
+      ContentUri: layers/common/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Retain
+
   # 3. Define the IAM Role for the PMReminderBot
   PMReminderBotLambdaRole:
     Type: AWS::IAM::Role
@@ -92,6 +102,7 @@ Resources:
       Role: !GetAtt PMReminderBotLambdaRole.Arn # Use the role defined in this template
       Layers:
         - !Ref RequestsLambdaLayer
+        - !Ref CommonLayer
       Environment:
         Variables:
           DRY_RUN: 'false'
@@ -174,6 +185,7 @@ Resources:
       Role: !GetAtt FacilitiesItemReorderLambdaRole.Arn
       Layers:
         - !Ref RequestsLambdaLayer
+        - !Ref CommonLayer
       Environment:
         Variables:
           CLICKUP_SECRET_NAME: 'clickup/api/token'
@@ -248,6 +260,7 @@ Resources:
       Role: !GetAtt KilnDropoffViewerLambdaRole.Arn
       Layers:
         - !Ref RequestsLambdaLayer
+        - !Ref CommonLayer
       Environment:
         Variables:
           SECRET_NAME: clickup/api/token
