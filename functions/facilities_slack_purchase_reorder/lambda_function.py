@@ -172,7 +172,7 @@ def lambda_handler(event, context):
         http_session = requests.Session()
 
         clickup_api_token = get_secret(config.clickup_api_token_secret_name, 'CLICKUP_API_TOKEN')
-        slack_bot_token = get_secret(config.slack_bot_token_secret_name, 'SLACK_BOT_TOKEN')
+        slack_bot_token = get_secret(config.slack_bot_token_secret_name, 'SLACK_MAINTENANCE_BOT_TOKEN')
         slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
 
         parsed_body = urllib.parse.parse_qs(event["body"])
