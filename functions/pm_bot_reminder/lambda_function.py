@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 from common.aws import get_secret
 from common.clickup import get_all_clickup_tasks, get_custom_field_value, ClickUpTask
+from common.slack import send_slack_message
 
 # --- Environment Variables ---
 # These are set in the Lambda function's configuration (template.yaml)
@@ -55,45 +56,6 @@ def process_tasks_for_slack(tasks, workspace_field_id, asset_field_id, frequency
         ))
 
     return list(unique_channels), processed_tasks
-
-# --- Slack Functions ---
-
-def send_slack_message(token, channel_to_attempt, text, bot_name, icon_emoji, thread_ts=None):
-    """
-    Sends a message to a Slack channel, optionally as a threaded reply.
-    """
-    if DRY_RUN:
-        print("--- DRY RUN MODE ---")
-        print(f"Would send to channel: {channel_to_attempt}")
-        print(f"Message: {text}")
-        return {"ok": True, "ts": "DRY_RUN_TIMESTAMP", "channel": channel_to_attempt}
-
-    slack_api_url = "https://slack.com/api/chat.postMessage"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json; charset=utf-8"
-    }
-
-    final_target_channel = TEST_CHANNEL_OVERRIDE if TEST_CHANNEL_OVERRIDE else channel_to_attempt
-
-    payload = {
-        "channel": final_target_channel.strip().lstrip('#'),
-        "text": text,
-        "username": bot_name,
-        "icon_emoji": icon_emoji,
-    }
-    if thread_ts:
-        payload["thread_ts"] = thread_ts
-
-    try:
-        response = requests.post(slack_api_url, headers=headers, json=payload)
-        response_data = response.json()
-        if not response_data.get("ok"):
-            print(f"Slack API Error Response: {response_data}")
-        return response_data
-    except Exception as e:
-        print(f"Network or script error sending to {final_target_channel}: {e}")
-        return {"ok": False, "error": "script_error", "error_message": str(e)}
 
 def format_slack_message(task: ClickUpTask) -> str:
     """Formats the main Slack message for a given task."""

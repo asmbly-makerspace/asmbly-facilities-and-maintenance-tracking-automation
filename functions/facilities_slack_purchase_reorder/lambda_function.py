@@ -7,6 +7,7 @@ from datetime import datetime
 
 from common.aws import get_secret
 from common.clickup import get_all_clickup_tasks, get_task, create_task, get_custom_field_value
+from common.slack import SlackState, get_slack_user_info
 
 class Config:
     """Loads and holds configuration from environment variables."""
@@ -19,32 +20,6 @@ class Config:
         self.supplier_link_field_id = os.environ["SUPPLIER_LINK_FIELD_ID"]
         self.requestor_name_field_id = os.environ["REQUESTOR_NAME_FIELD_ID"]
         self.item_type_field_id = os.environ["ITEM_TYPE_FIELD_ID"]
-
-class SlackState:
-    """A helper to safely access values from Slack's view state."""
-    def __init__(self, state_values):
-        self.values = state_values or {}
-
-    def get_value(self, block_id, action_id, attribute="value"):
-        try:
-            return self.values[block_id][action_id][attribute]
-        except (KeyError, TypeError):
-            return None
-
-    def get_selected_option_value(self, block_id, action_id):
-        try:
-            return self.values[block_id][action_id]["selected_option"]["value"]
-        except (KeyError, TypeError):
-            return None
-
-def get_slack_user_info(api_token, user_id, http_session):
-    '''Retrieves user information from Slack.'''
-    url = "https://slack.com/api/users.info"
-    headers = {"Authorization": f"Bearer {api_token}"}
-    params = {"user": user_id}
-    response = http_session.get(url, headers=headers, params=params)
-    response.raise_for_status()
-    return response.json()
 
 def get_all_workspaces_from_tasks(tasks, workspace_field_id):
     '''Extracts all unique workspace names from tasks.'''

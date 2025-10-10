@@ -81,33 +81,6 @@ def test_process_tasks_for_slack():
     assert followup.task_name == 'Task 1'
     assert followup.task_description == 'Description 1'
 
-
-def test_send_slack_message_success(requests_mock):
-    """Test successfully sending a message to Slack."""
-    requests_mock.post("https://slack.com/api/chat.postMessage", json={"ok": True, "ts": "123.456"})
-
-    response = lambda_function.send_slack_message('slack-token', '#general', 'Hello', 'Bot', ':emoji:')
-
-    assert response['ok'] is True
-    assert response['ts'] == "123.456"
-    sent_payload = requests_mock.last_request.json()
-    assert sent_payload['channel'] == 'general'
-    assert sent_payload['text'] == 'Hello'
-
-
-def test_send_slack_message_dry_run(capsys):
-    """Test that DRY_RUN mode prints to console instead of sending."""
-    with patch('pm_bot_reminder.lambda_function.DRY_RUN', True):
-        response = lambda_function.send_slack_message('slack-token', '#general', 'Dry run message', 'Bot', ':emoji:')
-
-    assert response['ok'] is True
-    assert response['ts'] == "DRY_RUN_TIMESTAMP"
-    captured = capsys.readouterr()
-    assert "--- DRY RUN MODE ---" in captured.out
-    assert "Would send to channel: #general" in captured.out
-    assert "Message: Dry run message" in captured.out
-
-
 @patch('pm_bot_reminder.lambda_function.get_secret')
 @patch('pm_bot_reminder.lambda_function.get_all_clickup_tasks')
 @patch('pm_bot_reminder.lambda_function.send_slack_message')
