@@ -5,10 +5,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Add the parent directory to the path to allow imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add the python directory to the path to allow common module imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'python')))
 
-from aws import get_secret
+from common.aws import get_secret
 
 def test_get_secret_success(mocker):
     """Test successful retrieval of a secret from AWS Secrets Manager."""

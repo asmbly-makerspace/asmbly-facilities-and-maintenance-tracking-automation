@@ -4,10 +4,11 @@ from unittest.mock import patch
 
 import pytest
 
-# Add the layers directory to the path to allow common module imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+# Add the python directory to the path to allow common module imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'python')))
 
 from common import slack
+
 
 def test_send_slack_message_success(requests_mock):
     """Test successfully sending a message to Slack."""

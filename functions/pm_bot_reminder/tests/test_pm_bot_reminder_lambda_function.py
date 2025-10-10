@@ -9,8 +9,8 @@ import pytest
 
 # Add the parent 'functions' directory to the path to allow direct import of the lambda_function
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-# Add the layers directory to the path to allow common module imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'layers')))
+# Add the common layer's python directory to the path to allow common module imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'layers', 'common', 'python')))
 
 # Now we can import the lambda function module directly
 from pm_bot_reminder import lambda_function
