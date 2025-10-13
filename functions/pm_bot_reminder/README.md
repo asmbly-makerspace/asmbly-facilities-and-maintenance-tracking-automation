@@ -139,45 +139,6 @@ This function includes a suite of unit tests to ensure its logic is correct. The
 
     You should see output indicating that the tests have passed.
 
-### Continuous Integration with GitHub Actions
-
-A GitHub Actions workflow can be set up to automatically run these tests on every push or pull request to your main branches.
-
-1.  Create a file named `.github/workflows/test-pm-bot.yml` in the root of your repository.
-
-2.  Add the following content to the file:
-
-    ```yaml
-    name: Test PM Reminder Bot
-
-    on:
-      push:
-        branches: [ main, dev, stage ]
-      pull_request:
-        branches: [ main, dev, stage ]
-
-    jobs:
-      test:
-        runs-on: ubuntu-latest
-        steps:
-        - uses: actions/checkout@v3
-        - name: Set up Python
-          uses: actions/setup-python@v4
-          with:
-            python-version: '3.12'
-        - name: Install dependencies
-          run: |
-            python -m pip install --upgrade pip
-            pip install -r functions/pm_bot_reminder/requirements-test.txt
-        - name: Run tests
-          run: |
-            cd functions/pm_bot_reminder
-            pytest
-    ```
-
-3.  Commit and push this new workflow file. GitHub will automatically detect it and run your tests on subsequent pushes and pull requests.
-
-
 ## Deployment
 
 The deployment process is managed and specified in the [Deployment Instructions](/docs/Deploying.md).
