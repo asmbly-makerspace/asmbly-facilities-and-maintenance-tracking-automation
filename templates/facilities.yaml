@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Resources for Facilities-focused Lambda functions.
+
+Resources:
+  # --- Facilities: PM Reminder Bot ---
+  PMReminderBotLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "PMReminderBotLambdaRole-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: PMReminderBotPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Stage}/slack-maintenance-bot-token-*'
+      Tags:
+        - Key: Project
+          Value: pm-reminder-bot
+        - Key: Workspace
+          Value: facilities
+
+  PMReminderBotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "PMReminderBot-${Stage}"
+      Description: "Scheduled function that fetches overdue and upcoming preventative maintenance tasks from ClickUp and sends reminder notifications to the appropriate Slack channels."
+      CodeUri: ../functions/facilities/pm_bot_reminder/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Timeout: 180
+      Role: !GetAtt PMReminderBotLambdaRole.Arn
+      Layers:
+        - !Ref RequestsLambdaLayer
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          DRY_RUN: 'false'
+          BOT_ICON_EMOJI: ':hammer_and_wrench:'
+          BOT_NAME: 'PM Bot'
+          CLICKUP_LIST_ID: '901310894771'
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
+          GENERAL_CHANNEL_NAME: 'stewards'
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: !Sub 'slack-maintenance-bot-token'
+          WORKSPACES: '3d-printing,ceramics,electronics,lasers,metal-shop,textiles,woodshop'
+          CLICKUP_ASSET_FIELD_ID: '487e2b73-8329-4ce2-a0a1-1b83a6069ed1'
+          CLICKUP_FREQUENCY_FIELD_ID: 'b0d864da-9018-4935-ae65-7a9103bf70d2'
+          CLICKUP_WORKSPACE_FIELD_ID: 'f4923783-74db-42ca-bda3-82bbca58abfe'
+          STARTER_MESSAGE_TEXT: |
+            Weekly task update!
+            * Mark tasks with :loading: to show that they're being worked on!
+            * Mark tasks with :white_check_mark: to call them done!
+      Events:
+        ScheduledRun:
+          Type: Schedule
+          Properties:
+            Schedule: "cron(30 4 ? * SAT *)"
+            Description: "Triggers the lambda task fetcher every Saturday morning"
+      Tags:
+        Project: pm-reminder-bot
+        Workspace: facilities

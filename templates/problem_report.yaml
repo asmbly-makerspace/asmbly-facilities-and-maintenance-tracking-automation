@@ -1,0 +1,5 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Resources for Problem Report-focused Lambda functions.
+
+Resources:
+# Add your new Problem Report Lambda function, IAM Role, and other resources here.

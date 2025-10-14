@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Resources for Purchase Request-focused Lambda functions.
+
+Resources:
+  # --- Purchase Request: Slack Reorder ---
+  FacilitiesItemReorderLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "FacilitiesItemReorderLambdaRole-${Stage}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: FacilitiesItemReorderPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenance-bot-token-*'
+      Tags:
+        - Key: Project
+          Value: facilities-item-reorder
+        - Key: Workspace
+          Value: facilities
+
+  FacilitiesSlackPurchaseReorderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "FacilitiesSlackPurchaseReorder-${Stage}"
+      Description: "Handles Slack interactions for reordering facilities items. It opens a modal for item selection and processes the submission to create a purchase request in ClickUp."
+      CodeUri: ../functions/purchase_request/facilities_slack_purchase_reorder/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      MemorySize: 512
+      Timeout: 10
+      Role: !GetAtt FacilitiesItemReorderLambdaRole.Arn
+      Layers:
+        - !Ref RequestsLambdaLayer
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: !Sub 'slack-maintenance-bot-token'
+          LIST_ID: '901320662208'
+          PURCHASE_REQUEST_LIST_ID: '901310302436'
+          WORKSPACE_FIELD_ID: 'f4923783-74db-42ca-bda3-82bbca58abfe'
+          SUPPLIER_LINK_FIELD_ID: 'c25e5cb5-e38f-4ae7-adae-d3620d9157bc'
+          REQUESTOR_NAME_FIELD_ID: '6ec94778-d4a6-4f54-94a6-59769db1ba57'
+          ITEM_TYPE_FIELD_ID: 'f73725e4-d2fa-4187-9241-712af6fadb89'
+      Events:
+        ApiTrigger:
+          Type: Api
+          Properties:
+            Path: /FacilitiesSlackPurchaseReorder
+            Method: post
+            RestApiId: !Ref FacilitiesApi
+      Tags:
+        Project: facilities-item-reorder
+        Workspace: facilities
