@@ -1,5 +1,20 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
 Description: Resources for Ceramics-focused Lambda functions.
+
+Parameters:
+  Stage:
+    Type: String
+    Description: The deployment stage (e.g., dev, stage, prod).
+  RequestsLayerARN:
+    Type: String
+    Description: The ARN of the shared Requests Lambda Layer.
+  CommonLayerARN:
+    Type: String
+    Description: The ARN of the shared Common Utilities Lambda Layer.
+  FacilitiesApiId:
+    Type: String
+    Description: The ID of the shared Facilities API Gateway.
 
 Resources:
   # --- Ceramics: Kiln Dropoff Viewer ---
@@ -53,19 +68,17 @@ Resources:
       Timeout: 10
       Role: !GetAtt KilnDropoffViewerLambdaRole.Arn
       Layers:
-        - !Ref RequestsLambdaLayer
-        - !Ref CommonLayer
+        - !Ref RequestsLayerARN
+        - !Ref CommonLayerARN
       Environment:
         Variables:
           SECRET_NAME: clickup/api/token
           CLICKUP_LIST_KILNDROP_ID: 901318902829
-      Events:
-        ApiTrigger:
-          Type: Api
-          Properties:
-            Path: /KilnOpsDropoffRecentEntriesViewer
-            Method: get
-            RestApiId: !Ref FacilitiesApi
       Tags:
         Project: kilnops-dropoff-viewer
         Workspace: ceramics
+
+Outputs:
+  KilnDropoffViewerFunction:
+    Description: "The Kiln Dropoff Viewer Lambda Function"
+    Value: !Ref KilnDropoffRecentEntriesViewerFunction

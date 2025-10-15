@@ -1,5 +1,17 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
 Description: Resources for Problem Report-focused Lambda functions.
 
+# Parameters are required because the root template passes them in
+Parameters:
+  Stage:
+    Type: String
+  RequestsLayerARN:
+    Type: String
+  CommonLayerARN:
+    Type: String
+
 Resources:
-# Add your new Problem Report Lambda function, IAM Role, and other resources here.
+  # This is a harmless placeholder to make the template valid
+  Placeholder:
+    Type: AWS::CloudFormation::WaitConditionHandle

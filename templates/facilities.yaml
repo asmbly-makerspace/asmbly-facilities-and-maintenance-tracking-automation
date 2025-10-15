@@ -1,5 +1,17 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
 Description: Resources for Facilities-focused Lambda functions.
+
+Parameters:
+  Stage:
+    Type: String
+    Description: The deployment stage (e.g., dev, stage, prod).
+  RequestsLayerARN:
+    Type: String
+    Description: The ARN of the shared Requests Lambda Layer.
+  CommonLayerARN:
+    Type: String
+    Description: The ARN of the shared Common Utilities Lambda Layer.
 
 Resources:
   # --- Facilities: PM Reminder Bot ---
@@ -54,8 +66,8 @@ Resources:
       Timeout: 180
       Role: !GetAtt PMReminderBotLambdaRole.Arn
       Layers:
-        - !Ref RequestsLambdaLayer
-        - !Ref CommonLayer
+        - !Ref RequestsLayerARN
+        - !Ref CommonLayerARN
       Environment:
         Variables:
           DRY_RUN: 'false'

@@ -1,5 +1,20 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
 Description: Resources for Purchase Request-focused Lambda functions.
+
+Parameters:
+  Stage:
+    Type: String
+    Description: The deployment stage (e.g., dev, stage, prod).
+  RequestsLayerARN:
+    Type: String
+    Description: The ARN of the shared Requests Lambda Layer.
+  CommonLayerARN:
+    Type: String
+    Description: The ARN of the shared Common Utilities Lambda Layer.
+  FacilitiesApiId:
+    Type: String
+    Description: The ID of the shared Facilities API Gateway.
 
 Resources:
   # --- Purchase Request: Slack Reorder ---
@@ -55,8 +70,8 @@ Resources:
       Timeout: 10
       Role: !GetAtt FacilitiesItemReorderLambdaRole.Arn
       Layers:
-        - !Ref RequestsLambdaLayer
-        - !Ref CommonLayer
+        - !Ref RequestsLayerARN
+        - !Ref CommonLayerARN
       Environment:
         Variables:
           CLICKUP_SECRET_NAME: 'clickup/api/token'
@@ -67,13 +82,11 @@ Resources:
           SUPPLIER_LINK_FIELD_ID: 'c25e5cb5-e38f-4ae7-adae-d3620d9157bc'
           REQUESTOR_NAME_FIELD_ID: '6ec94778-d4a6-4f54-94a6-59769db1ba57'
           ITEM_TYPE_FIELD_ID: 'f73725e4-d2fa-4187-9241-712af6fadb89'
-      Events:
-        ApiTrigger:
-          Type: Api
-          Properties:
-            Path: /FacilitiesSlackPurchaseReorder
-            Method: post
-            RestApiId: !Ref FacilitiesApi
       Tags:
         Project: facilities-item-reorder
         Workspace: facilities
+
+Outputs:
+  PurchaseReorderFunction:
+    Description: "The Purchase Request Reorder Lambda Function"
+    Value: !Ref FacilitiesSlackPurchaseReorderFunction
