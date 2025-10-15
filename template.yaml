@@ -50,25 +50,29 @@ Resources:
         - python3.12
       RetentionPolicy: Retain
 
-  Fn::Transform:
-    Name: AWS::Include
-    Parameters:
-      Location: ./templates/facilities.yaml
+  FacilitiesResources:
+    Fn::Transform:
+      Name: AWS::Include
+      Parameters:
+        Location: ./templates/facilities.yaml
   
-  Fn::Transform:
-    Name: AWS::Include
-    Parameters:
-      Location: ./templates/purchase_request.yaml
+  PurchaseRequestResources:
+    Fn::Transform:
+      Name: AWS::Include
+      Parameters:
+        Location: ./templates/purchase_request.yaml
   
-  Fn::Transform:
-    Name: AWS::Include
-    Parameters:
-      Location: ./templates/ceramics.yaml
+  CeramicsResources:
+    Fn::Transform:
+      Name: AWS::Include
+      Parameters:
+        Location: ./templates/ceramics.yaml
   
-  Fn::Transform:
-    Name: AWS::Include
-    Parameters:
-      Location: ./templates/problem_report.yaml
+  ProblemReportResources:
+    Fn::Transform:
+      Name: AWS::Include
+      Parameters:
+        Location: ./templates/problem_report.yaml
 
 # Add this entire section to the end of your file
 Outputs:
