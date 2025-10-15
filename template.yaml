@@ -50,12 +50,25 @@ Resources:
         - python3.12
       RetentionPolicy: Retain
 
-  # Include resources from other template files
-  Fn::Include:
-    - Location: ./templates/facilities.yaml
-    - Location: ./templates/purchase_request.yaml
-    - Location: ./templates/ceramics.yaml
-    - Location: ./templates/problem_report.yaml
+  Fn::Transform:
+    Name: AWS::Include
+    Parameters:
+      Location: ./templates/facilities.yaml
+  
+  Fn::Transform:
+    Name: AWS::Include
+    Parameters:
+      Location: ./templates/purchase_request.yaml
+  
+  Fn::Transform:
+    Name: AWS::Include
+    Parameters:
+      Location: ./templates/ceramics.yaml
+  
+  Fn::Transform:
+    Name: AWS::Include
+    Parameters:
+      Location: ./templates/problem_report.yaml
 
 # Add this entire section to the end of your file
 Outputs:
