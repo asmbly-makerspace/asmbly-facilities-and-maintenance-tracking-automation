@@ -6,10 +6,13 @@ Description: Resources for Problem Report-focused Lambda functions.
 Parameters:
   Stage:
     Type: String
+    Description: The deployment stage (e.g., dev, stage, prod).
   RequestsLayerARN:
     Type: String
+    Description: The ARN of the shared Requests Lambda Layer.
   CommonLayerARN:
     Type: String
+    Description: The ARN of the shared Common Utilities Lambda Layer.
 
 Resources:
   # This is a harmless placeholder to make the template valid
