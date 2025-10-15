@@ -124,15 +124,22 @@ def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_t
     slack_user_info = get_slack_user_info(slack_bot_token, slack_user_id, http_session)
     requestor_real_name = slack_user_info.get("user", {}).get("real_name", "Unknown User")
 
+    def get_raw_custom_field_value(task, field_id):
+        """Helper to get the raw 'value' of a custom field, not the interpreted one."""
+        for field in task.get("custom_fields", []):
+            if field.get("id") == field_id:
+                return field.get("value")
+        return None
+
     original_item_details = get_task(clickup_api_token, selected_item_id)
 
     new_task_payload = {
         "name": original_item_details["name"], "description": description_text,
         "custom_fields": [
-            {"id": config.workspace_field_id, "value": get_custom_field_value(original_item_details, config.workspace_field_id)},
-            {"id": config.supplier_link_field_id, "value": get_custom_field_value(original_item_details, config.supplier_link_field_id)},
+            {"id": config.workspace_field_id, "value": get_raw_custom_field_value(original_item_details, config.workspace_field_id)},
+            {"id": config.supplier_link_field_id, "value": get_raw_custom_field_value(original_item_details, config.supplier_link_field_id)},
             {"id": config.requestor_name_field_id, "value": requestor_real_name},
-            {"id": config.item_type_field_id, "value": get_custom_field_value(original_item_details, config.item_type_field_id)},
+            {"id": config.item_type_field_id, "value": get_raw_custom_field_value(original_item_details, config.item_type_field_id)},
         ]
     }
 
