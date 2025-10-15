@@ -12,12 +12,8 @@ Parameters:
   CommonLayerARN:
     Type: String
     Description: The ARN of the shared Common Utilities Lambda Layer.
-  FacilitiesApiId:
-    Type: String
-    Description: The ID of the shared Facilities API Gateway.
 
 Resources:
-  # --- Ceramics: Kiln Dropoff Viewer ---
   KilnDropoffViewerLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -61,7 +57,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "KilnOpsDropoffRecentEntriesViewer-${Stage}"
-      Description: "Generates a public-facing HTML page showing recent kiln drop-off submissions from ClickUp for the last 24 hours. Triggered by API Gateway."
+      Description: "Generates a public-facing HTML page showing recent kiln drop-off submissions."
       CodeUri: ../functions/ceramics/kiln_dropoff_recent_entries_viewer/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
@@ -72,13 +68,13 @@ Resources:
         - !Ref CommonLayerARN
       Environment:
         Variables:
-          SECRET_NAME: clickup/api/token
+          SECRET_NAME: 'clickup/api/token'
           CLICKUP_LIST_KILNDROP_ID: 901318902829
       Tags:
         Project: kilnops-dropoff-viewer
         Workspace: ceramics
 
 Outputs:
-  KilnDropoffViewerFunction:
-    Description: "The Kiln Dropoff Viewer Lambda Function"
-    Value: !Ref KilnDropoffRecentEntriesViewerFunction
+  KilnDropoffViewerFunctionArn:
+    Description: "The ARN of the Kiln Dropoff Viewer Lambda Function"
+    Value: !GetAtt KilnDropoffRecentEntriesViewerFunction.Arn

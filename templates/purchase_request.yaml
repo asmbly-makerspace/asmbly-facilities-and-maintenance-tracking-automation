@@ -12,12 +12,8 @@ Parameters:
   CommonLayerARN:
     Type: String
     Description: The ARN of the shared Common Utilities Lambda Layer.
-  FacilitiesApiId:
-    Type: String
-    Description: The ID of the shared Facilities API Gateway.
 
 Resources:
-  # --- Purchase Request: Slack Reorder ---
   FacilitiesItemReorderLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -62,7 +58,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "FacilitiesSlackPurchaseReorder-${Stage}"
-      Description: "Handles Slack interactions for reordering facilities items. It opens a modal for item selection and processes the submission to create a purchase request in ClickUp."
+      Description: "Handles Slack interactions for reordering facilities items."
       CodeUri: ../functions/purchase_request/facilities_slack_purchase_reorder/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
@@ -87,6 +83,6 @@ Resources:
         Workspace: facilities
 
 Outputs:
-  PurchaseReorderFunction:
-    Description: "The Purchase Request Reorder Lambda Function"
-    Value: !Ref FacilitiesSlackPurchaseReorderFunction
+  PurchaseReorderFunctionArn:
+    Description: "The ARN of the Purchase Request Reorder Lambda Function"
+    Value: !GetAtt FacilitiesSlackPurchaseReorderFunction.Arn

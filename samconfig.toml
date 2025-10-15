@@ -7,7 +7,7 @@ resolve_s3 = true
 s3_prefix = "AsmblyFacilitiesMaintTrackingStack-dev"
 region = "us-east-2"
 confirm_changeset = true
-capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
 parameter_overrides = "Stage=\"dev\""
 image_repositories = []
 
@@ -18,7 +18,7 @@ resolve_s3 = true
 s3_prefix = "AsmblyFacilitiesMaintTrackingStack-prod"
 region = "us-east-2"
 confirm_changeset = true
-capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
 parameter_overrides = "Stage=\"prod\""
 image_repositories = []
 
@@ -29,6 +29,6 @@ resolve_s3 = true
 s3_prefix = "AsmblyFacilitiesMaintTrackingStack-stage"
 region = "us-east-2"
 confirm_changeset = true
-capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
 parameter_overrides = "Stage=\"stage\""
 image_repositories = []

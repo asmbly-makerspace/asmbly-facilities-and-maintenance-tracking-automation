@@ -21,7 +21,6 @@ Parameters:
       - prod
 
 Resources:
-  # 1. Define the API Gateway and its explicit routes
   FacilitiesApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -38,18 +37,17 @@ Resources:
                 httpMethod: POST
                 type: aws_proxy
                 uri:
-                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PurchaseRequestStack.Outputs.PurchaseReorderFunction}/invocations"
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PurchaseRequestStack.Outputs.PurchaseReorderFunctionArn}/invocations"
               responses: {}
           /KilnOpsDropoffRecentEntriesViewer:
             get:
               x-amazon-apigateway-integration:
-                httpMethod: POST # Note: This must be POST for Lambda proxy integrations
+                httpMethod: POST
                 type: aws_proxy
                 uri:
-                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CeramicsStack.Outputs.KilnDropoffViewerFunction}/invocations"
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CeramicsStack.Outputs.KilnDropoffViewerFunctionArn}/invocations"
               responses: {}
 
-  # 2. Define the Shared Lambda Layers
   RequestsLambdaLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
@@ -70,7 +68,6 @@ Resources:
         - python3.12
       RetentionPolicy: Retain
 
-  # 3. Define the Nested Application Stacks
   FacilitiesStack:
     Type: AWS::Serverless::Application
     Properties:
@@ -88,7 +85,6 @@ Resources:
         Stage: !Ref Stage
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
-        FacilitiesApiId: !Ref FacilitiesApi # <-- This was the missing line
 
   CeramicsStack:
     Type: AWS::Serverless::Application
@@ -98,7 +94,6 @@ Resources:
         Stage: !Ref Stage
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
-        FacilitiesApiId: !Ref FacilitiesApi # <-- This was the missing line
 
   ProblemReportStack:
     Type: AWS::Serverless::Application
@@ -109,11 +104,10 @@ Resources:
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
 
-  # 4. Grant API Gateway permission to invoke the Lambda functions
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt PurchaseRequestStack.Outputs.PurchaseReorderFunction
+      FunctionName: !GetAtt PurchaseRequestStack.Outputs.PurchaseReorderFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
@@ -121,7 +115,7 @@ Resources:
   CeramicsInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt CeramicsStack.Outputs.KilnDropoffViewerFunction
+      FunctionName: !GetAtt CeramicsStack.Outputs.KilnDropoffViewerFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
