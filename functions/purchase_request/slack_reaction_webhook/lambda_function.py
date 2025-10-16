@@ -1,0 +1,138 @@
+import json
+import logging
+import os
+import re
+import boto3
+import requests
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Environment variables
+CLICKUP_SECRET_NAME = os.environ.get("CLICKUP_SECRET_NAME")
+SLACK_SECRET_NAME = os.environ.get("SLACK_MAINTENANCE_BOT_SECRET_NAME")
+
+# Reaction to status mapping from reaction to ClickUp status name
+REACTION_TO_STATUS = {
+    "loading": "in review",
+    "truck": "purchased",
+    "house": "delivered",
+    "no_entry_sign": "declined",
+    "white_check_mark": "Closed",
+}
+
+# Mapping from status name to ClickUp status ID
+STATUS_NAME_TO_ID = {
+    "in review": "sc901310302436_af0Y5Erf",
+    "purchased": "sc901310302436_2E6Zn1Xp",
+    "delivered": "sc901310302436_EWDBr1Jw",
+    "declined": "sc901310302436_WBeguowd",
+    "Closed": "sc901310302436_xYvx2MbY",
+}
+
+def get_secret(secret_name):
+    """Retrieves a secret from AWS Secrets Manager."""
+    session = boto3.session.Session()
+    client = session.client(service_name="secretsmanager")
+    try:
+        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
+        return json.loads(get_secret_value_response["SecretString"])
+    except Exception as e:
+        logger.error(f"Error getting secret {secret_name}: {e}")
+        raise e
+
+def lambda_handler(event, context):
+    """
+    Handles a Slack reaction webhook to update a ClickUp task status.
+    """
+    logger.info(f"Received event: {json.dumps(event)}")
+    body = json.loads(event.get("body", "{}"))
+
+    # Handle Slack URL verification
+    if "challenge" in body:
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"challenge": body["challenge"]})
+        }
+
+    slack_event = body.get("event", {})
+    if not slack_event or slack_event.get("type") != "reaction_added":
+        logger.info("Not a reaction_added event.")
+        return {"statusCode": 200, "body": json.dumps("Event received.")}
+
+    reaction = slack_event.get("reaction")
+    if reaction not in REACTION_TO_STATUS:
+        logger.info(f"Ignoring reaction: {reaction}")
+        return {"statusCode": 200, "body": json.dumps("Irrelevant reaction.")}
+
+    try:
+        # Get Slack token
+        slack_secrets = get_secret(SLACK_SECRET_NAME)
+        slack_bot_token = slack_secrets.get("SLACK_BOT_TOKEN") # Assuming this key exists
+        if not slack_bot_token:
+            raise ValueError("SLACK_BOT_TOKEN not found in secret")
+
+        slack_client = WebClient(token=slack_bot_token)
+
+        item = slack_event.get("item", {})
+        channel_id = item.get("channel")
+        message_ts = item.get("ts")
+
+        # Fetch the message that was reacted to
+        history = slack_client.conversations_history(
+            channel=channel_id,
+            latest=message_ts,
+            inclusive=True,
+            limit=1
+        )
+        
+        if not history["messages"]:
+            logger.error("Could not find message from reaction event.")
+            return {"statusCode": 404, "body": json.dumps("Message not found.")}
+
+        message_text = history["messages"][0].get("text", "")
+        
+        # Parse ClickUp task ID from the message
+        match = re.search(r"https://app\.clickup\.com/t/(\w+)", message_text)
+        if not match:
+            logger.info("No ClickUp task URL found in the message.")
+            return {"statusCode": 200, "body": json.dumps("No ClickUp task ID found.")}
+        
+        task_id = match.group(1)
+        
+        # Get new status from reaction
+        new_status_name = REACTION_TO_STATUS[reaction]
+        new_status_id = STATUS_NAME_TO_ID[new_status_name]
+
+        # Get ClickUp token
+        clickup_secrets = get_secret(CLICKUP_SECRET_NAME)
+        clickup_api_token = clickup_secrets.get("CLICKUP_API_TOKEN") # Assuming this key exists
+        if not clickup_api_token:
+            raise ValueError("CLICKUP_API_TOKEN not found in secret")
+
+        # Update ClickUp task status
+        url = f"https://api.clickup.com/api/v2/task/{task_id}"
+        headers = {
+            "Authorization": clickup_api_token,
+            "Content-Type": "application/json"
+        }
+        payload = {"status": new_status_id}
+        
+        response = requests.put(url, headers=headers, json=payload)
+        response.raise_for_status()
+
+        logger.info(f"Updated ClickUp task {task_id} to status '{new_status_name}'")
+        return {"statusCode": 200, "body": json.dumps("Task status updated successfully.")}
+
+    except SlackApiError as e:
+        logger.error(f"Slack API error: {e.response['error']}")
+        return {"statusCode": 500, "body": json.dumps("Error communicating with Slack.")}
+    except requests.exceptions.RequestException as e:
+        logger.error(f"ClickUp API request failed: {e}")
+        return {"statusCode": 500, "body": json.dumps("Error updating ClickUp task.")}
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
+        return {"statusCode": 500, "body": json.dumps("Internal server error.")}
