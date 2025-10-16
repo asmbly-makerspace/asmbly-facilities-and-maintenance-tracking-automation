@@ -1,5 +1,4 @@
 .DS_Store
-.idea
 # AWS SAM build artifacts
 .aws-sam/
 /.venv
@@ -8,3 +7,16 @@ __pycache__/
 *.pyc
 .coverage
 .pytest_cache
+
+# Default JetBrains ignores
+.idea/*
+!/.idea/misc.xml
+!/.idea/modules.xml
+!/.idea/vcs.xml
+
+# Un-ignore the project's main module file
+!/*.iml
+
+# KEEP IGNORING user-specific files!
+.idea/workspace.xml
+.idea/tasks.xml
