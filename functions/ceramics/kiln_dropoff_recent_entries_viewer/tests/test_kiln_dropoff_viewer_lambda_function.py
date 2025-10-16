@@ -1,19 +1,15 @@
 import json
 import os
 import importlib
-import sys
 import pathlib
 from unittest.mock import patch, MagicMock
 
 import pytest
 
-# Add the parent 'functions' directory to the path to allow direct import of the lambda_function
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-# Add the common layer's python directory to the path to allow common module imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'layers', 'common', 'python')))
-
 # Now we can import the lambda function module directly
-from kiln_dropoff_recent_entries_viewer import lambda_function
+from functions.ceramics.kiln_dropoff_recent_entries_viewer import lambda_function
+
+LAMBDA_FUNCTION_PATH = "functions.ceramics.kiln_dropoff_recent_entries_viewer.lambda_function"
 
 
 @pytest.fixture
@@ -80,8 +76,8 @@ def test_generate_error_page():
     assert "Test error message" in html
 
 
-@patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_secret')
-@patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
 def test_lambda_handler_success(mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function, mock_tasks_from_file):
     """Test the full success path of the lambda_handler."""
     # Arrange
@@ -108,8 +104,8 @@ def test_lambda_handler_success(mock_get_all_clickup_tasks, mock_get_secret, rel
     assert result['body'].find('Customer J') < result['body'].find('Customer A')
 
 
-@patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_secret')
-@patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
 def test_lambda_handler_clickup_api_error(mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function):
     """Test the handler's response to a ClickUp API error."""
     # Arrange
@@ -139,7 +135,7 @@ def test_lambda_handler_missing_env_var(reload_lambda_function, monkeypatch):
     assert "Server configuration error: Missing List ID" in result['body']
 
 
-@patch('kiln_dropoff_recent_entries_viewer.lambda_function.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
 def test_lambda_handler_secret_manager_error(mock_get_secret, reload_lambda_function):
     """Test the handler's response to a Secrets Manager error."""
     # Arrange
