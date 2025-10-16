@@ -9,6 +9,7 @@ Following these guidelines helps maintain the quality of the project and respect
 - [How to Contribute](#how-to-contribute)
 - [Development Setup](#development-setup)
 - [Adding a New Lambda Function](#adding-a-new-lambda-function)
+- [Running Tests](#running-tests)
 
 ---
 
@@ -63,11 +64,15 @@ Our collaboration model is built on a clear development workflow. Before you beg
 
 To work on this project locally, you will need the following tools installed:
 
-* [AWS CLI](https://aws.amazon.com/cli/)
-* [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
-* [Docker](https://www.docker.com/products/docker-desktop/)
+*   **Python 3.12+**: Download from [python.org](https://www.python.org/downloads/).
+    *   **On Windows**, it is crucial that you check the **"Add python.exe to PATH"** box during installation.
+*   [**AWS CLI**](https://aws.amazon.com/cli/)
+*   [**AWS SAM CLI**](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
+*   [**Docker**](https://www.docker.com/products/docker-desktop/)
 
 For a guide on how to build and deploy the application, please see our [**Deploying.md**](Deploying.md) file.
+
+---
 
 ## Adding a New Lambda Function
 
@@ -86,3 +91,46 @@ To add a new function to this project, follow these steps:
 
 4.  **Build and Deploy:**
     * Checkout [Deploying.md](Deploying.md) for details.
+
+---
+
+## Running Tests
+
+This project uses `pytest` for running unit and integration tests. Before you can run the tests, you need to set up a Python virtual environment and install the development dependencies.
+
+1.  **Create a Virtual Environment:**
+    From the root of the project, create a virtual environment. This only needs to be done once.
+
+    ```bash
+    # On Windows
+    py -m venv .venv
+
+    # On macOS/Linux
+    python3 -m venv .venv
+    ```
+
+2.  **Activate the Environment:**
+    Before working on the project, you must activate the virtual environment.
+
+    *   On **Windows**:
+        ```powershell
+        .venv\Scripts\Activate.ps1
+        ```
+    *   On **macOS/Linux**:
+        ```bash
+        source .venv/bin/activate
+        ```
+
+3.  **Install Dependencies:**
+    Install all required packages for development and testing.
+
+    ```bash
+    pip install -r requirements-dev.txt
+    ```
+
+4.  **Run Tests:**
+    With the dependencies installed, you can now run the test suite:
+
+    ```bash
+    pytest
+    ```

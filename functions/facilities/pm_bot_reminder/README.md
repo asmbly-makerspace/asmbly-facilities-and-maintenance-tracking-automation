@@ -129,7 +129,7 @@ This function includes a suite of unit tests to ensure its logic is correct. The
 
 3.  **Install test dependencies:**
     ```bash
-    pip install -r requirements-test.txt
+    pip install -r requirements-dev.txt
     ```
 
 4.  **Run the tests using pytest:**
