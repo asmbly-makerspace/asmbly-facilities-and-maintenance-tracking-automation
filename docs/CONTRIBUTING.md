@@ -76,18 +76,23 @@ For a guide on how to build and deploy the application, please see our [**Deploy
 
 ## Adding a New Lambda Function
 
-To add a new function to this project, follow these steps:
+This project is organized into multiple stacks (e.g., `core-infra`, `monitoring`), each with its own `template.yaml` file. When adding a new function, you must add it to the correct stack.
+
+> **Note:** The primary guide for deployments is **Deploying.md**. It contains detailed information about the multi-stack architecture and how to deploy individual stacks.
+
+To add a new function to a specific stack:
 
 1.  **Create a New Function Folder:**
-    * Inside the `/functions` directory, create a new folder for your function (e.g., `functions/my-new-function/`).
+    * Inside the `/functions` directory, create a new folder for your function (e.g., `functions/my-new-function/`). Keep your function's business logic separate from other functions.
 
 2.  **Write Your Lambda Code:**
     * Add your Python code to a file inside the new folder. By convention, this file is named `lambda_function.py`, and the main handler function is called `lambda_handler`.
 
-3.  **Define the Function in `template.yaml`:**
-    * Open the `template.yaml` file and add a new resource block for your function. You can copy and paste the structure of an existing function as a starting point.
+3.  **Define the Function in the Correct `template.yaml`:**
+    * Open the `template.yaml` file for the stack you are modifying (e.g., `stacks/monitoring/template.yaml`).
+    * Add a new `AWS::Serverless::Function` resource block for your function. You can copy an existing function as a starting point.
     * Make sure to update the `CodeUri` property to point to your new folder (e.g., `CodeUri: functions/my-new-function/`).
-    * Configure the function's `Properties`, including its trigger (`Events`), `Role`, `Environment` variables, and any `Layers` it needs.
+    * Configure the function's `Properties`, including its trigger (`Events`), `Role`, `Environment` variables, and any `Layers` it needs. Refer to other functions in the same template for examples.
 
 4.  **Build and Deploy:**
     * Checkout [Deploying.md](Deploying.md) for details.
