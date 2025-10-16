@@ -14,7 +14,7 @@ Parameters:
     Description: The ARN of the shared Common Utilities Lambda Layer.
 
 Resources:
-  FacilitiesItemReorderLambdaRole:
+  SlackSlashReorderLambdaRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -27,7 +27,7 @@ Resources:
             Action:
               - sts:AssumeRole
       Policies:
-        - PolicyName: FacilitiesItemReorderPolicy
+        - PolicyName: SlackSlashReorderPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -49,22 +49,22 @@ Resources:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenance-bot-token-*'
       Tags:
         - Key: Project
-          Value: facilities-item-reorder
+          Value: slack-slash-reorder
         - Key: Workspace
           Value: facilities
         - Key: Stage
           Value: !Ref Stage
 
-  FacilitiesSlackPurchaseReorderFunction:
+  SlackSlashReorderFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Description: "Handles Slack interactions for reordering facilities items."
-      CodeUri: ../functions/purchase_request/facilities_slack_purchase_reorder/
+      Description: "Handles a Slack slash command to create a reorder/purchase request in ClickUp."
+      CodeUri: ../functions/purchase_request/slack_slash_reorder/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
       MemorySize: 512
       Timeout: 10
-      Role: !GetAtt FacilitiesItemReorderLambdaRole.Arn
+      Role: !GetAtt SlackSlashReorderLambdaRole.Arn
       Layers:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN
@@ -79,11 +79,11 @@ Resources:
           REQUESTOR_NAME_FIELD_ID: '6ec94778-d4a6-4f54-94a6-59769db1ba57'
           ITEM_TYPE_FIELD_ID: 'f73725e4-d2fa-4187-9241-712af6fadb89'
       Tags:
-        Project: facilities-item-reorder
+        Project: slack-slash-reorder
         Workspace: facilities
         Stage: !Ref Stage
 
 Outputs:
-  PurchaseReorderFunctionArn:
-    Description: "The ARN of the Purchase Request Reorder Lambda Function"
-    Value: !GetAtt FacilitiesSlackPurchaseReorderFunction.Arn
+  SlackSlashReorderFunctionArn:
+    Description: "The ARN of the Slack Slash Reorder Lambda Function"
+    Value: !GetAtt SlackSlashReorderFunction.Arn

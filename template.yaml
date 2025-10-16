@@ -31,13 +31,13 @@ Resources:
           title: 'Asmbly Facilities API'
           version: '1.0'
         paths:
-          /FacilitiesSlackPurchaseReorder:
+          /SlackSlashReorder:
             post:
               x-amazon-apigateway-integration:
                 httpMethod: POST
                 type: aws_proxy
                 uri:
-                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PurchaseRequestStack.Outputs.PurchaseReorderFunctionArn}/invocations"
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PurchaseRequestStack.Outputs.SlackSlashReorderFunctionArn}/invocations"
               responses: {}
           /KilnOpsDropoffRecentEntriesViewer:
             get:
@@ -107,7 +107,7 @@ Resources:
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt PurchaseRequestStack.Outputs.PurchaseReorderFunctionArn
+      FunctionName: !GetAtt PurchaseRequestStack.Outputs.SlackSlashReorderFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
