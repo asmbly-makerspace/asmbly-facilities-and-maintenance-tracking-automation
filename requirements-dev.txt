@@ -1,5 +1,7 @@
-ytest
+pytest
+slack_sdk
 pytest-mock
+requests
 requests-mock
 boto3
 pytest-cov

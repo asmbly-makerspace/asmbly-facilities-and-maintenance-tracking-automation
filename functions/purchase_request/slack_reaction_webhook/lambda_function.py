@@ -12,10 +12,6 @@ from common import aws, clickup
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Environment variables
-CLICKUP_SECRET_NAME = os.environ.get("CLICKUP_SECRET_NAME")
-SLACK_SECRET_NAME = os.environ.get("SLACK_MAINTENANCE_BOT_SECRET_NAME")
-
 # Reaction to status mapping from reaction to ClickUp status name
 REACTION_TO_STATUS = {
     "loading": "in review",
@@ -59,8 +55,12 @@ def lambda_handler(event, context):
         return {"statusCode": 200, "body": json.dumps("Irrelevant reaction.")}
 
     try:
+        # Get environment variables within the handler for testability
+        clickup_secret_name = os.environ.get("CLICKUP_SECRET_NAME")
+        slack_secret_name = os.environ.get("SLACK_MAINTENANCE_BOT_SECRET_NAME")
+
         # Get Slack token from AWS Secrets Manager
-        slack_bot_token = aws.get_secret(SLACK_SECRET_NAME, "SLACK_BOT_TOKEN")
+        slack_bot_token = aws.get_secret(slack_secret_name, "SLACK_BOT_TOKEN")
         slack_client = WebClient(token=slack_bot_token)
 
         item = slack_event.get("item", {})
@@ -74,27 +74,27 @@ def lambda_handler(event, context):
             inclusive=True,
             limit=1
         )
-        
+
         if not history["messages"]:
             logger.error("Could not find message from reaction event.")
             return {"statusCode": 404, "body": json.dumps("Message not found.")}
 
         message_text = history["messages"][0].get("text", "")
-        
+
         # Parse ClickUp task ID from the message
         match = re.search(r"https://app\.clickup\.com/t/(\w+)", message_text)
         if not match:
             logger.info("No ClickUp task URL found in the message.")
             return {"statusCode": 200, "body": json.dumps("No ClickUp task ID found.")}
-        
+
         task_id = match.group(1)
-        
+
         # Get new status from reaction
         new_status_name = REACTION_TO_STATUS[reaction]
         new_status_id = STATUS_NAME_TO_ID[new_status_name]
 
         # Get ClickUp token from AWS Secrets Manager
-        clickup_api_token = aws.get_secret(CLICKUP_SECRET_NAME, "CLICKUP_API_TOKEN")
+        clickup_api_token = aws.get_secret(clickup_secret_name, "CLICKUP_API_TOKEN")
 
         # Update ClickUp task status
         payload = {"status": new_status_id}
