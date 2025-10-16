@@ -2,10 +2,11 @@ import json
 import logging
 import os
 import re
-import boto3
-import requests
+
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+
+from common import aws, clickup
 
 # Configure logging
 logger = logging.getLogger()
@@ -33,17 +34,6 @@ STATUS_NAME_TO_ID = {
     "Closed": "sc901310302436_xYvx2MbY",
 }
 
-def get_secret(secret_name):
-    """Retrieves a secret from AWS Secrets Manager."""
-    session = boto3.session.Session()
-    client = session.client(service_name="secretsmanager")
-    try:
-        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-        return json.loads(get_secret_value_response["SecretString"])
-    except Exception as e:
-        logger.error(f"Error getting secret {secret_name}: {e}")
-        raise e
-
 def lambda_handler(event, context):
     """
     Handles a Slack reaction webhook to update a ClickUp task status.
@@ -69,12 +59,8 @@ def lambda_handler(event, context):
         return {"statusCode": 200, "body": json.dumps("Irrelevant reaction.")}
 
     try:
-        # Get Slack token
-        slack_secrets = get_secret(SLACK_SECRET_NAME)
-        slack_bot_token = slack_secrets.get("SLACK_BOT_TOKEN") # Assuming this key exists
-        if not slack_bot_token:
-            raise ValueError("SLACK_BOT_TOKEN not found in secret")
-
+        # Get Slack token from AWS Secrets Manager
+        slack_bot_token = aws.get_secret(SLACK_SECRET_NAME, "SLACK_BOT_TOKEN")
         slack_client = WebClient(token=slack_bot_token)
 
         item = slack_event.get("item", {})
@@ -107,22 +93,12 @@ def lambda_handler(event, context):
         new_status_name = REACTION_TO_STATUS[reaction]
         new_status_id = STATUS_NAME_TO_ID[new_status_name]
 
-        # Get ClickUp token
-        clickup_secrets = get_secret(CLICKUP_SECRET_NAME)
-        clickup_api_token = clickup_secrets.get("CLICKUP_API_TOKEN") # Assuming this key exists
-        if not clickup_api_token:
-            raise ValueError("CLICKUP_API_TOKEN not found in secret")
+        # Get ClickUp token from AWS Secrets Manager
+        clickup_api_token = aws.get_secret(CLICKUP_SECRET_NAME, "CLICKUP_API_TOKEN")
 
         # Update ClickUp task status
-        url = f"https://api.clickup.com/api/v2/task/{task_id}"
-        headers = {
-            "Authorization": clickup_api_token,
-            "Content-Type": "application/json"
-        }
         payload = {"status": new_status_id}
-        
-        response = requests.put(url, headers=headers, json=payload)
-        response.raise_for_status()
+        clickup.update_task(clickup_api_token, task_id, payload)
 
         logger.info(f"Updated ClickUp task {task_id} to status '{new_status_name}'")
         return {"statusCode": 200, "body": json.dumps("Task status updated successfully.")}
@@ -130,9 +106,6 @@ def lambda_handler(event, context):
     except SlackApiError as e:
         logger.error(f"Slack API error: {e.response['error']}")
         return {"statusCode": 500, "body": json.dumps("Error communicating with Slack.")}
-    except requests.exceptions.RequestException as e:
-        logger.error(f"ClickUp API request failed: {e}")
-        return {"statusCode": 500, "body": json.dumps("Error updating ClickUp task.")}
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}")
-        return {"statusCode": 500, "body": json.dumps("Internal server error.")}
+        return {"statusCode": 500, "body": json.dumps(f"Internal server error: {e}")}

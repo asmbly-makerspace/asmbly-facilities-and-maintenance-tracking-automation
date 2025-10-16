@@ -12,14 +12,14 @@ class TestSlackReactionWebhook(TestCase):
         "CLICKUP_SECRET_NAME": "fake_clickup_secret",
         "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake_slack_secret",
     })
-    @patch("functions.purchase_request.slack_reaction_webhook.lambda_function.get_secret")
-    @patch("functions.purchase_request.slack_reaction_webhook.lambda_function.WebClient")
-    @patch("requests.put")
-    def test_lambda_handler_success(self, mock_requests_put, mock_web_client, mock_get_secret):
+    @patch("common.aws.get_secret")
+    @patch("slack_sdk.WebClient")
+    @patch("common.clickup.update_task")
+    def test_lambda_handler_success(self, mock_update_task, mock_web_client, mock_get_secret):
         # Mock secrets
         mock_get_secret.side_effect = [
-            {"SLACK_BOT_TOKEN": "fake_slack_token"},
-            {"CLICKUP_API_TOKEN": "fake_clickup_token"}
+            "fake_slack_token",
+            "fake_clickup_token"
         ]
 
         # Mock Slack client
@@ -30,9 +30,6 @@ class TestSlackReactionWebhook(TestCase):
                 {"text": "some text https://app.clickup.com/t/12345 some other text"}
             ]
         }
-
-        # Mock requests.put
-        mock_requests_put.return_value.status_code = 200
 
         # Test event
         event = {
@@ -49,7 +46,18 @@ class TestSlackReactionWebhook(TestCase):
 
         self.assertEqual(response["statusCode"], 200)
         self.assertEqual(response["body"], json.dumps("Task status updated successfully."))
-        mock_requests_put.assert_called_once()
+
+        # Assert that secrets were fetched correctly
+        self.assertEqual(mock_get_secret.call_count, 2)
+        mock_get_secret.assert_any_call("fake_slack_secret", "SLACK_BOT_TOKEN")
+        mock_get_secret.assert_any_call("fake_clickup_secret", "CLICKUP_API_TOKEN")
+
+        # Assert that the ClickUp task was updated with the correct status
+        mock_update_task.assert_called_once_with(
+            "fake_clickup_token",
+            "12345",
+            {"status": "sc901310302436_2E6Zn1Xp"} # ID for 'purchased'
+        )
 
     def test_lambda_handler_challenge(self):
         event = {
