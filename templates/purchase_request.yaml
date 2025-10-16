@@ -17,7 +17,6 @@ Resources:
   FacilitiesItemReorderLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "FacilitiesItemReorderLambdaRole-${Stage}"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -53,11 +52,12 @@ Resources:
           Value: facilities-item-reorder
         - Key: Workspace
           Value: facilities
+        - Key: Stage
+          Value: !Ref Stage
 
   FacilitiesSlackPurchaseReorderFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "FacilitiesSlackPurchaseReorder-${Stage}"
       Description: "Handles Slack interactions for reordering facilities items."
       CodeUri: ../functions/purchase_request/facilities_slack_purchase_reorder/
       Handler: lambda_function.lambda_handler
@@ -81,6 +81,7 @@ Resources:
       Tags:
         Project: facilities-item-reorder
         Workspace: facilities
+        Stage: !Ref Stage
 
 Outputs:
   PurchaseReorderFunctionArn:

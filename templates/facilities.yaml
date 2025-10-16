@@ -18,7 +18,6 @@ Resources:
   PMReminderBotLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "PMReminderBotLambdaRole-${Stage}"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -54,11 +53,12 @@ Resources:
           Value: pm-reminder-bot
         - Key: Workspace
           Value: facilities
+        - Key: Stage
+          Value: !Ref Stage
 
   PMReminderBotFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "PMReminderBot-${Stage}"
       Description: "Scheduled function that fetches overdue and upcoming preventative maintenance tasks from ClickUp and sends reminder notifications to the appropriate Slack channels."
       CodeUri: ../functions/facilities/pm_bot_reminder/
       Handler: lambda_function.lambda_handler
@@ -94,3 +94,9 @@ Resources:
       Tags:
         Project: pm-reminder-bot
         Workspace: facilities
+        Stage: !Ref Stage
+
+Outputs:
+  PMReminderBotFunctionArn:
+    Description: "The ARN of the PM Reminder Bot Lambda Function"
+    Value: !GetAtt PMReminderBotFunction.Arn
