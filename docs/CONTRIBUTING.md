@@ -94,6 +94,15 @@ To add a new function to a specific stack:
     * Make sure to update the `CodeUri` property to point to your new folder (e.g., `CodeUri: functions/my-new-function/`).
     * Configure the function's `Properties`, including its trigger (`Events`), `Role`, `Environment` variables, and any `Layers` it needs. Refer to other functions in the same template for examples.
 
+    > **Important:** When defining AWS resources that require a globally unique name (like IAM Roles, S3 Buckets, etc.), you **must** include the `${Stage}` parameter in the resource name. This prevents naming conflicts between different deployment environments (e.g., `dev` and `prod`).
+    >
+    > **Example for an IAM Role name:**
+    > ```yaml
+    > Properties:
+    >   RoleName: !Sub 'MyFunctionRoleName-${Stage}'
+    >   # ... other properties
+    > ```
+
 4.  **Build and Deploy:**
     * Checkout [Deploying.md](Deploying.md) for details.
 
