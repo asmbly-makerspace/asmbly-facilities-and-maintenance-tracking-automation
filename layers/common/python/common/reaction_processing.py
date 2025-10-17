@@ -18,12 +18,12 @@ def process_base_reaction(event_body, reaction_to_status, slack_secret_name, cli
         # Return a simple status if the reaction is irrelevant
         return {"status": "ignored", "reason": f"Irrelevant reaction: {reaction}"}
 
-    # Fetch secrets
+    # Fetch secrets and APIs
     slack_bot_token = aws.get_secret(slack_secret_name, "SLACK_MAINTENANCE_BOT_TOKEN")
     clickup_api_token = aws.get_secret(clickup_secret_name, "CLICKUP_API_TOKEN")
+    slack_client = WebClient(token=slack_bot_token)
 
     # Get Slack message history
-    slack_client = WebClient(token=slack_bot_token)
     item = slack_event.get("item", {})
     history = slack_client.conversations_history(
         channel=item.get("channel"), latest=item.get("ts"), inclusive=True, limit=1

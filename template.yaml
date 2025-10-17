@@ -68,6 +68,30 @@ Resources:
         - python3.12
       RetentionPolicy: Retain
 
+  ReactionMapPurchaseRequestParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /config/reaction-handler/purchase-request
+      Type: String
+      Description: "JSON mapping of reactions to statuses for purchase requests."
+      # Value: '{}'
+      Tags:
+        Project: slack-reaction-purchase-request
+        Workspace: facilities
+        Stage: !Ref Stage
+
+  ReactionMapProblemReportParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /config/reaction-handler/problem-report
+      Type: String
+      Description: "JSON mapping of reactions to statuses for problem reports."
+      # Value: '{}'
+      Tags:
+        Project: slack-reaction-problem-report
+        Workspace: facilities
+        Stage: !Ref Stage
+
   FacilitiesStack:
     Type: AWS::Serverless::Application
     Properties:
