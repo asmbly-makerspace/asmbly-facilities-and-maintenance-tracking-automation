@@ -7,8 +7,7 @@ from common import reaction_processing
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize the client in the global scope for reuse
-ssm_client = boto3.client('ssm')
+# These are static and can remain in the global scope
 SLACK_SECRET_NAME = 'slack-maintenance-bot-token'
 CLICKUP_SECRET_NAME = 'clickup/api/token'
 
@@ -23,7 +22,9 @@ def lambda_handler(event, context):
             return {"statusCode": 200, "body": json.dumps({"challenge": body["challenge"]})}
 
         # --- Load Configuration Inside the Handler ---
-        # The configuration is fetched at runtime.
+        # Initialize the client here so it can be mocked during tests
+        ssm_client = boto3.client('ssm')
+
         reaction_map_parameter_name = os.environ.get("REACTION_MAP_PARAMETER_NAME")
         if not reaction_map_parameter_name:
             raise ValueError("REACTION_MAP_PARAMETER_NAME environment variable not set.")
