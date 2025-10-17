@@ -133,3 +133,7 @@ All settings are managed via environment variables within the AWS Lambda functio
 ## Deployment
 
 The deployment process is managed and specified in the [Deployment Instructions](/docs/Deploying.md).
+
+## Usage
+
+The URL is in the CLickUp form in Ceramics -> Drop Off Requests -> Kiln Drop Off Form -> Settings -> Redirect URL.
