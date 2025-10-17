@@ -57,6 +57,7 @@ Resources:
   KilnDropoffRecentEntriesViewerFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "KilnDropoffRecentEntriesViewerFunction-${Stage}"
       Description: "Generates a public-facing HTML page showing recent kiln drop-off submissions from ClickUp for the last 24 hours. Triggered by API Gateway."
       CodeUri: ../functions/ceramics/kiln_dropoff_recent_entries_viewer/
       Handler: lambda_function.lambda_handler

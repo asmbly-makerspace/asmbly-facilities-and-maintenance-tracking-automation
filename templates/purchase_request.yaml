@@ -113,7 +113,7 @@ Resources:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenance-bot-token-*'
               - Effect: Allow
                 Action: ssm:GetParameter
-                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/reaction-handler/purchase-request'
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/config/reaction-handler/purchase-request'
       Tags:
         - Key: Project
           Value: slack-reaction-purchase-request
@@ -138,7 +138,7 @@ Resources:
         - !Ref CommonLayerARN
       Environment:
         Variables:
-          REACTION_MAP_PARAMETER_NAME: /config/reaction-handler/purchase-request
+          REACTION_MAP_PARAMETER_NAME: !Sub "/${Stage}/config/reaction-handler/purchase-request"
       Tags:
         Project: slack-reaction-purchase-request
         Workspace: facilities
