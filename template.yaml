@@ -56,14 +56,14 @@ Resources:
                 uri:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn}/invocations"
               responses: {}
-          /problem-report/slack-reaction:
-            post:
-              x-amazon-apigateway-integration:
-                httpMethod: POST
-                type: aws_proxy
-                uri:
-                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProblemReportStack.Outputs.ProblemReportReactionFunctionArn}/invocations"
-              responses: {}
+#          /problem-report/slack-reaction:
+#            post:
+#              x-amazon-apigateway-integration:
+#                httpMethod: POST
+#                type: aws_proxy
+#                uri:
+#                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProblemReportStack.Outputs.ProblemReportReactionFunctionArn}/invocations"
+#              responses: {}
 
   RequestsLambdaLayer:
     Type: AWS::Serverless::LayerVersion
