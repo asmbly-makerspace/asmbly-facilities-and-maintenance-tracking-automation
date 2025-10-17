@@ -57,27 +57,27 @@ The bot functions as a serverless AWS Lambda function that is triggered by a Sla
 
 1.  **Add Reaction**
     *   **Source:** User in Slack
-    *   **Action:** The user adds a specific emoji reaction to a message containing a ClickUp task link.
+    *   **Action:** The user adds a specific emoji reaction (e.g., `:truck:`) to a message containing a ClickUp task link. The mapping of emojis to statuses is defined in a configuration file.
 
 2.  **Send POST Request**
     *   **Source:** Slack
     *   **Destination:** AWS API Gateway
-    *   **Action:** Slack sends a POST request containing the event details to the API Gateway endpoint.
+    *   **Action:** Slack sends a POST request containing the event details (including the reaction emoji) to the API Gateway endpoint.
 
 3.  **Trigger Lambda Function**
     *   **Source:** AWS API Gateway
     *   **Destination:** AWS Lambda
     *   **Action:** The incoming request to the API Gateway endpoint automatically triggers the Lambda function.
 
-4.  **Fetch Secrets**
+4.  **Fetch Secrets & Config**
     *   **Source:** AWS Lambda
     *   **Destination:** AWS Secrets Manager
-    *   **Action:** The function makes a secure, internal call to retrieve the ClickUp and Slack API tokens.
+    *   **Action:** The function makes a secure, internal call to retrieve the ClickUp and Slack API tokens. It also loads the emoji-to-status mapping from the `configs/reactions_purchase_request.json` file packaged with the function.
 
 5.  **Get Slack Message & Update ClickUp Task**
     *   **Source:** AWS Lambda
     *   **Destination:** Slack API & ClickUp API
-    *   **Action:** The Lambda function fetches the content of the message that was reacted to, finds the ClickUp task URL, and makes a server-to-server API request to ClickUp to update the task status.
+    *   **Action:** The function fetches the content of the message that was reacted to, finds the ClickUp task URL, and uses the reaction emoji to determine the new status from its configuration. It then makes a server-to-server API request to ClickUp to update the task status accordingly.
 
 6.  **Post Confirmation Message**
     *   **Source:** AWS Lambda
@@ -97,7 +97,26 @@ The core infrastructure consists of an IAM Role, secrets in Secrets Manager, an 
 
 ## Configuration
 
-All settings are managed via environment variables within the AWS Lambda function's configuration section. This allows for easy updates to things like the ClickUp List ID or bot name without changing the code.
+Configuration for the function is managed in two places: environment variables and a JSON configuration file.
+
+### Environment Variables
+
+Core settings are managed via environment variables within the AWS Lambda function's configuration section. This allows for easy updates to things like the ClickUp List ID or bot name without changing the code.
+
+### Reaction to Status Mapping
+
+The mapping between Slack emoji reactions and the corresponding ClickUp task statuses is defined in the `configs/reactions_purchase_request.json` file. This file is bundled with the Lambda function during deployment.
+
+This approach allows for easy modification of which emoji triggers which status change without altering the Python code.
+
+**Example `configs/reactions_purchase_request.json`:**
+```json
+{
+  "truck": "purchased",
+  "house": "delivered",
+  "no_entry_sign": "declined"
+}
+```
 
 ## Testing
 
