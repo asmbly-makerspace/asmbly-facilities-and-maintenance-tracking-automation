@@ -56,12 +56,13 @@ def test_slack_state_get_selected_option_value():
     assert state.get_selected_option_value("block1", "action2") is None
     assert state.get_selected_option_value("block2", "action1") is None
 
-@patch('common.slack.requests.get')
-def test_get_slack_user_info(mock_requests_get):
+def test_get_slack_user_info():
     """Test retrieving user information from Slack."""
     user_id = "U12345"
     api_token = "xoxb-fake-token"
-    mock_response = {
+
+    # 1. Set up the expected JSON that the Slack API would return
+    mock_api_response = {
         "ok": True,
         "user": {
             "id": user_id,
@@ -69,14 +70,27 @@ def test_get_slack_user_info(mock_requests_get):
             "real_name": "Test User"
         }
     }
+
+    # 2. Create a mock for the HTTP response object
     mock_response_obj = MagicMock()
-    mock_response_obj.json.return_value = mock_response
-    mock_requests_get.return_value = mock_response_obj
-    mock_requests_get.return_value.raise_for_status.return_value = None
+    mock_response_obj.json.return_value = mock_api_response
+    mock_response_obj.raise_for_status.return_value = None
 
+    # 3. Create a mock for the session object and configure its `get` method
+    mock_session = MagicMock()
+    mock_session.get.return_value = mock_response_obj
 
-    user_info = slack.get_slack_user_info(api_token, user_id)
+    # 4. Call the function, injecting the mock session
+    user_info = slack.get_slack_user_info(api_token, user_id, http_session=mock_session)
 
-    # The function returns the entire response on success
+    # 5. Assert that the function returned the correct data
     assert user_info["ok"] is True
     assert user_info["user"]["real_name"] == "Test User"
+
+    # 6. Assert that the session's get method was called with the correct arguments
+    # CORRECTED: Pass the 'url' as a positional argument to match the actual function call
+    mock_session.get.assert_called_once_with(
+        "https://slack.com/api/users.info",
+        headers={"Authorization": f"Bearer {api_token}"},
+        params={"user": user_id}
+    )
