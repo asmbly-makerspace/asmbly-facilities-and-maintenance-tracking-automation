@@ -33,30 +33,39 @@ def test_get_custom_field_value(task, field_id, expected_value):
     assert clickup.get_custom_field_value(task, field_id) == expected_value
 
 
-def test_fetch_clickup_tasks_page_success(requests_mock):
+@patch('common.clickup.requests.request')
+def test_fetch_clickup_tasks_page_success(mock_requests_request):
     """Test successfully fetching a page of tasks from ClickUp."""
     list_id = '123'
     api_token = 'token'
     page_num = 0
     mock_response = {'tasks': [{'id': 'task1'}], 'last_page': True}
-    requests_mock.get(f"https://api.clickup.com/api/v2/list/{list_id}/task", json=mock_response)
+    mock_requests_request.return_value.json.return_value = mock_response
+    mock_requests_request.return_value.raise_for_status.return_value = None
 
     tasks, last_page = clickup.fetch_clickup_tasks_page(list_id, api_token, page_num)
 
     assert len(tasks) == 1
     assert tasks[0]['id'] == 'task1'
     assert last_page is True
+    mock_requests_request.assert_called_once()
 
 
-def test_fetch_clickup_tasks_page_http_error(requests_mock):
+@patch('common.clickup.requests.request')
+def test_fetch_clickup_tasks_page_http_error(mock_requests_request):
     """Test that an HTTP error from ClickUp API is handled."""
-    list_id = '123'
-    api_token = 'token'
-    page_num = 0
-    requests_mock.get(f"https://api.clickup.com/api/v2/list/{list_id}/task", status_code=401, reason="Unauthorized", json={'err': 'Invalid token'})
+    from unittest.mock import MagicMock
+    import json
+    from requests.exceptions import HTTPError
+    mock_response = MagicMock()
+    mock_response.status_code = 401
+    mock_response.reason = "Unauthorized"
+    mock_response.text = "Invalid JSON body"
+    mock_response.json.side_effect = json.JSONDecodeError("Expecting value", "doc", 0)
+    mock_requests_request.return_value.raise_for_status.side_effect = HTTPError("401 Unauthorized", response=mock_response)
 
     with pytest.raises(ValueError, match="ClickUp API HTTP Error: 401 Unauthorized"):
-        clickup.fetch_clickup_tasks_page(list_id, api_token, page_num)
+        clickup.fetch_clickup_tasks_page('123', 'token', 0)
 
 
 @patch('common.clickup.fetch_clickup_tasks_page')

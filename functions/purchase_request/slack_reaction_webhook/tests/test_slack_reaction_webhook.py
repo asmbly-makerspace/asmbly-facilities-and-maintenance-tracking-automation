@@ -2,8 +2,8 @@ import json
 import os
 from unittest import TestCase
 from unittest.mock import patch, MagicMock
-from slack_sdk.errors import SlackApiError
 
+# The lambda_function import remains the same
 from functions.purchase_request.slack_reaction_webhook import lambda_function
 
 LAMBDA_FUNCTION_PATH = "functions.purchase_request.slack_reaction_webhook.lambda_function"
@@ -12,23 +12,27 @@ LAMBDA_FUNCTION_PATH = "functions.purchase_request.slack_reaction_webhook.lambda
 class TestSlackReactionWebhook(TestCase):
 
     @patch.dict(os.environ, {
-        "CLICKUP_SECRET_NAME": "fake_clickup_secret",
-        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake_slack_secret",
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
     })
-    @patch(f"{LAMBDA_FUNCTION_PATH}.aws.get_secret")
-    @patch(f"{LAMBDA_FUNCTION_PATH}.WebClient")
-    @patch(f"{LAMBDA_FUNCTION_PATH}.clickup.update_task")
-    def test_lambda_handler_success(self, mock_update_task, mock_web_client, mock_get_secret):
-        # Mocks
-        mock_get_secret.side_effect = ["fake_slack_token", "fake_clickup_token"]
-        mock_slack_instance = MagicMock()
-        mock_web_client.return_value = mock_slack_instance
-        mock_slack_instance.conversations_history.return_value = {
-            "ok": True,
-            "messages": [{"text": "some text https://app.clickup.com/t/12345 some other text"}]
+    @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
+    # CORRECTED: Patch the client where it is used in the lambda_function module
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_lambda_handler_success(self, mock_boto3_client, mock_reaction_processing):
+        # 1. Mock the SSM Parameter Store call
+        mock_ssm_instance = MagicMock()
+        mock_boto3_client.return_value = mock_ssm_instance
+
+        fake_reaction_map = { "truck": "purchased" }
+        mock_ssm_instance.get_parameter.return_value = {
+            'Parameter': {
+                'Value': json.dumps(fake_reaction_map)
+            }
         }
 
-        # Event
+        # 2. Mock the result of the shared helper function
+        mock_reaction_processing.process_base_reaction.return_value = {"status": "success"}
+
+        # 3. Define the test event
         event = {
             "body": json.dumps({
                 "event": {
@@ -38,16 +42,23 @@ class TestSlackReactionWebhook(TestCase):
             })
         }
 
-        # Execute
+        # 4. Execute the handler
         response = lambda_function.lambda_handler(event, None)
 
-        # Assert
+        # 5. Assert the results
         self.assertEqual(response["statusCode"], 200)
-        self.assertEqual(response["body"], json.dumps("Task status updated successfully."))
-        mock_get_secret.assert_any_call("fake_slack_secret", "SLACK_BOT_TOKEN")
-        mock_get_secret.assert_any_call("fake_clickup_secret", "CLICKUP_API_TOKEN")
-        mock_update_task.assert_called_once_with(
-            "fake_clickup_token", "12345", {"status": "sc901310302436_2E6Zn1Xp"}
+        self.assertEqual(response["body"], json.dumps("Request processed successfully."))
+
+        # Assert that SSM was called correctly
+        mock_boto3_client.assert_called_once_with('ssm')
+        mock_ssm_instance.get_parameter.assert_called_once_with(Name="/fake/ssm/param-name")
+
+        # Assert that our shared helper was called with the correct arguments
+        mock_reaction_processing.process_base_reaction.assert_called_once_with(
+            json.loads(event["body"]),
+            fake_reaction_map,
+            'slack-maintenance-bot-token',
+            'clickup/api/token'
         )
 
     def test_lambda_handler_challenge(self):
@@ -57,19 +68,21 @@ class TestSlackReactionWebhook(TestCase):
         self.assertIn("test_challenge", response["body"])
 
     @patch.dict(os.environ, {
-        "CLICKUP_SECRET_NAME": "fake_clickup_secret",
-        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake_slack_secret",
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
     })
-    @patch(f"{LAMBDA_FUNCTION_PATH}.aws.get_secret")
-    @patch(f"{LAMBDA_FUNCTION_PATH}.WebClient")
-    def test_lambda_handler_slack_api_error(self, mock_web_client, mock_get_secret):
+    @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
+    # CORRECTED: Also update the patch target here
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_lambda_handler_general_exception(self, mock_boto3_client, mock_reaction_processing):
         # Mocks
-        mock_get_secret.return_value = "fake_slack_token"
-        mock_slack_instance = MagicMock()
-        mock_web_client.return_value = mock_slack_instance
-        mock_slack_instance.conversations_history.side_effect = SlackApiError(
-            message="invalid_auth", response={"ok": False, "error": "invalid_auth"}
-        )
+        mock_ssm_instance = MagicMock()
+        mock_boto3_client.return_value = mock_ssm_instance
+        mock_ssm_instance.get_parameter.return_value = {
+            'Parameter': {'Value': '{"truck": "purchased"}'}
+        }
+
+        # Make the shared helper raise an error
+        mock_reaction_processing.process_base_reaction.side_effect = Exception("Something went wrong")
 
         # Event
         event = {
@@ -84,13 +97,14 @@ class TestSlackReactionWebhook(TestCase):
         # Execute
         response = lambda_function.lambda_handler(event, None)
 
-        # Assert
+        # Assert that the handler caught the exception and returned a 500 error
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("Server error", response["body"])
+        self.assertIn("Internal server error", response["body"])
 
-    def test_lambda_handler_missing_env_var(self):
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_lambda_handler_missing_env_var(self, mock_boto3_client):
         """
-        Tests that the handler fails gracefully if environment variables are missing.
+        Tests that the handler fails gracefully if REACTION_MAP_PARAMETER_NAME is missing.
         """
         # Event
         event = {
@@ -102,11 +116,10 @@ class TestSlackReactionWebhook(TestCase):
             })
         }
 
-        # Using an empty patch.dict to ensure no env vars are set
+        # Use an empty patch.dict to ensure the env var is not set
         with patch.dict(os.environ, {}, clear=True):
-            # Execute
             response = lambda_function.lambda_handler(event, None)
 
         # Assert
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("Missing required environment variables", response["body"])
+        self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", response["body"])
