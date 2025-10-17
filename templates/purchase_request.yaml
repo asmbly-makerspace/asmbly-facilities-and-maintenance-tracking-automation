@@ -142,7 +142,7 @@ Resources:
           Type: Api
           Properties:
             Path: /purchase-request/slack-reaction
-            Method: post
+            Method: any
       Tags:
         Project: slack-reaction-webhook
         Workspace: facilities

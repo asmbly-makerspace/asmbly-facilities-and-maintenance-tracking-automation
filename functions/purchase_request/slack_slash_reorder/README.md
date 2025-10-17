@@ -25,7 +25,7 @@ The bot functions as a serverless AWS Lambda function that is triggered by a Sla
 *   **AWS Lambda:** A serverless function that contains the Python logic to process the request.
 *   **AWS Secrets Manager:** A secure storage service for the ClickUp and Slack API tokens.
 *   **ClickUp API:** The official API for creating tasks.
-*   **Slack API:** The official API for sending messages back to the user.
+*   **Slack API:** The official API for opening modals and sending messages back to the user.
 
 ### Visual Flow
 

@@ -1,24 +1,133 @@
-# Slack Reaction Webhook
+# Facilities Slack Purchase Reaction Webhook
 
-This Lambda function acts as a webhook for reactions on Slack posts in the #purchase-requests channel. When a specific reaction is added to a message containing a ClickUp task URL, this function updates the status of that ClickUp task.
+## Table of Contents
+- [Purpose](#purpose)
+- [How It Works](#how-it-works)
+- [AWS Infrastructure](#aws-infrastructure)
+- [Configuration](#configuration)
+- [Testing](#testing)
+- [Deployment](#deployment)
 
-## Functionality
+## Purpose
 
-1.  **Receives Slack Events**: The function is triggered by HTTP POST requests from Slack's Event API, specifically for `reaction_added` events.
-2.  **Parses ClickUp Task ID**: It extracts the ClickUp task ID from the message that was reacted to.
-3.  **Maps Reactions to Statuses**: It maps the Slack reaction emoji to a corresponding ClickUp task status.
-4.  **Updates ClickUp Task**: It uses the ClickUp API to update the status of the identified task.
+This script is an automated bot designed to bridge the gap between team communication in Slack and purchasing tasks in ClickUp. Its primary purpose is to allow facilities team members to approve purchase requests from within Slack using an emoji reaction, which then automatically updates the corresponding task in ClickUp.
 
-### Supported Reactions and Statuses
+The ultimate goal of this tool is to streamline the purchasing process, improve tracking of requests, and save valuable time.
 
-| Reaction Emoji | ClickUp Status |
-| --- | --- |
-| :loading: | In Review |
-| :truck: | Purchased |
-| :house: | Delivered |
-| :no_entry_sign: | Declined |
-| :white_check_mark: | Closed |
+## How It Works
+
+The bot functions as a serverless AWS Lambda function that is triggered by a Slack `reaction_added` event.
+
+### Components:
+
+*   **Slack Event Subscription:** A custom subscription in Slack that listens for `reaction_added` events.
+*   **AWS API Gateway:** Provides a public URL (endpoint) that Slack sends requests to.
+*   **AWS Lambda:** A serverless function that contains the Python logic to process the request.
+*   **AWS Secrets Manager:** A secure storage service for the ClickUp and Slack API tokens.
+*   **ClickUp API:** The official API for updating tasks.
+*   **Slack API:** The official API for fetching message history and sending messages back to the user.
+
+### Visual Flow
+
+```
++---------------+      +-----------------+      +---------------------+      +-----------------------+
+| User's Slack  |      | AWS API Gateway |      | AWS Lambda Function |      | AWS Secrets Manager   |
+| (Adds React)  |      | (Public URL)    |      | (Your Code)         |      | (API Keys)            |
++---------------+      +-----------------+      +---------------------+      +-----------------------+
+        |                      |                       |                              |
+(1) Add Reaction  -----------> | (2) Send POST Request |                       |                              |
+        |                      |---------------------->| (3) Trigger Function  |                              |
+        |                      |                       |---------------------->| (4) Get Secrets        |
+        |                      |                       |<----------------------| (5) Return Secrets     |
+        |                      |                       |                              |
+        |                      |                       | (6) Get Slack Message ----> [Slack API]
+        |                      |                       |<------------------------| (7) Return Message     |
+        |                      |                       |                              |
+        |                      |                       | (8) Update ClickUp Task ---> [ClickUp API]
+        |                      |                       |                              |
+        |                      |                       |<--------------------------| (9) Return Task Data   |
+        |                      |                       |                              |
+        |                      |                       | (10) Post Confirmation Msg -> [Slack API]
+        |                      |                       |                              |
+|<-----------------------------------------------------| (11) Display Confirmation|                              |
+        |                      |                       |                              |
+```
+
+### Step-by-Step Data Flow:
+
+1.  **Add Reaction**
+    *   **Source:** User in Slack
+    *   **Action:** The user adds a specific emoji reaction to a message containing a ClickUp task link.
+
+2.  **Send POST Request**
+    *   **Source:** Slack
+    *   **Destination:** AWS API Gateway
+    *   **Action:** Slack sends a POST request containing the event details to the API Gateway endpoint.
+
+3.  **Trigger Lambda Function**
+    *   **Source:** AWS API Gateway
+    *   **Destination:** AWS Lambda
+    *   **Action:** The incoming request to the API Gateway endpoint automatically triggers the Lambda function.
+
+4.  **Fetch Secrets**
+    *   **Source:** AWS Lambda
+    *   **Destination:** AWS Secrets Manager
+    *   **Action:** The function makes a secure, internal call to retrieve the ClickUp and Slack API tokens.
+
+5.  **Get Slack Message & Update ClickUp Task**
+    *   **Source:** AWS Lambda
+    *   **Destination:** Slack API & ClickUp API
+    *   **Action:** The Lambda function fetches the content of the message that was reacted to, finds the ClickUp task URL, and makes a server-to-server API request to ClickUp to update the task status.
+
+6.  **Post Confirmation Message**
+    *   **Source:** AWS Lambda
+    *   **Destination:** Slack API
+    *   **Action:** The function sends a formatted message back to the user in Slack, confirming that the task has been updated.
+
+## AWS Infrastructure
+
+The core infrastructure consists of an IAM Role, secrets in Secrets Manager, an API Gateway endpoint, and the Lambda function itself. All related resources are tagged for cost allocation and organization.
+
+### Tags
+
+| Name      | Value                             |
+|-----------|-----------------------------------|
+| Project   | facilities-purchase-reaction-webhook |
+| Workspace | facilities                        |
+
+## Configuration
+
+All settings are managed via environment variables within the AWS Lambda function's configuration section. This allows for easy updates to things like the ClickUp List ID or bot name without changing the code.
+
+## Testing
+
+This function includes a suite of unit tests to ensure its logic is correct. The tests mock external dependencies (like AWS, ClickUp, and Slack APIs) so they can be run locally without needing credentials or making real API calls.
+
+### Running Tests Locally
+
+1.  **Navigate to the function directory:**
+    ```bash
+    cd functions/purchase_request/slack_reaction_webhook
+    ```
+
+2.  **Create a virtual environment (recommended):**
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+
+3.  **Install test dependencies:**
+    ```bash
+    pip install -r requirements-dev.txt
+    ```
+
+4.  **Run the tests using pytest:**
+    ```bash
+    pytest
+    ```
+
+    You should see output indicating that the tests have passed.
 
 ## Deployment
 
-The function is deployed as part of the `purchase_request` serverless application. See the main `README.md` for deployment instructions.
+The deployment process is managed and specified in the [Deployment Instructions](/docs/Deploying.md).

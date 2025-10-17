@@ -21,14 +21,6 @@ REACTION_TO_STATUS = {
     "white_check_mark": "Closed",
 }
 
-STATUS_NAME_TO_ID = {
-    "in review": "sc901310302436_af0Y5Erf",
-    "purchased": "sc901310302436_2E6Zn1Xp",
-    "delivered": "sc901310302436_EWDBr1Jw",
-    "declined": "sc901310302436_WBeguowd",
-    "Closed": "sc901310302436_xYvx2MbY",
-}
-
 # --- Helper Function for Configuration ---
 def _get_config():
     """
@@ -57,8 +49,7 @@ def lambda_handler(event, context):
     try:
         body = json.loads(event.get("body", "{}"))
 
-        # CORRECTED LOGIC: Handle Slack URL verification challenge immediately.
-        # This does not require any configuration and should be handled first.
+        # Handle Slack URL verification challenge immediately.
         if "challenge" in body:
             return {"statusCode": 200, "body": json.dumps({"challenge": body["challenge"]})}
 
@@ -74,7 +65,7 @@ def lambda_handler(event, context):
             return {"statusCode": 200, "body": json.dumps(f"Ignoring irrelevant reaction: {reaction}")}
 
         # Get Slack token and initialize client
-        slack_bot_token = aws.get_secret(config["slack_secret_name"], "SLACK_BOT_TOKEN")
+        slack_bot_token = aws.get_secret(config["slack_secret_name"], "SLACK_MAINTENANCE_BOT_TOKEN")
         slack_client = WebClient(token=slack_bot_token)
 
         # Fetch the message that was reacted to
@@ -98,13 +89,15 @@ def lambda_handler(event, context):
 
         task_id = match.group(1)
 
-        # Get new status from reaction
+        # Get new status name from the reaction
         new_status_name = REACTION_TO_STATUS[reaction]
-        new_status_id = STATUS_NAME_TO_ID[new_status_name]
 
         # Get ClickUp token and update the task
         clickup_api_token = aws.get_secret(config["clickup_secret_name"], "CLICKUP_API_TOKEN")
-        clickup.update_task(clickup_api_token, task_id, {"status": new_status_id})
+
+        # Construct the payload using the status NAME, which is confirmed to work
+        payload = {"status": new_status_name}
+        clickup.update_task(clickup_api_token, task_id, payload)
 
         logger.info(f"Updated ClickUp task {task_id} to status '{new_status_name}'")
         return {"statusCode": 200, "body": json.dumps("Task status updated successfully.")}
