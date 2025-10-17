@@ -29,7 +29,7 @@ Resources:
       DefinitionBody:
         openapi: '3.0.1'
         info:
-          title: 'Asmbly Facilities API'
+          title: !Sub 'Asmbly Facilities API - ${Stage}'
           version: '1.0'
         paths:
           /SlackSlashReorder:
@@ -88,7 +88,7 @@ Resources:
   ReactionMapPurchaseRequestParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub "/config/${Stage}/reaction-handler/purchase-request"
+      Name: !Sub "/${Stage}/config/reaction-handler/purchase-request"
       Type: String
       Description: "JSON mapping of reactions to statuses for purchase requests."
       Value:
@@ -105,7 +105,7 @@ Resources:
   ReactionMapProblemReportParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub "/config/${Stage}/reaction-handler/problem-report"
+      Name: !Sub "/${Stage}/config/reaction-handler/problem-report"
       Type: String
       Description: "JSON mapping of reactions to statuses for problem reports."
       Value:

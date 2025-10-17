@@ -128,3 +128,7 @@ This function includes a suite of unit tests to ensure its logic is correct. The
 ## Deployment
 
 The deployment process is managed and specified in the [Deployment Instructions](/docs/Deploying.md).
+
+## Usage
+
+The URL is used in the Maintenance Slack App in Interactivity and in the `/reorder` slash command. 
