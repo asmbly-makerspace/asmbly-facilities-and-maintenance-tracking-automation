@@ -47,6 +47,14 @@ Resources:
                 uri:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CeramicsStack.Outputs.KilnDropoffViewerFunctionArn}/invocations"
               responses: {}
+          /purchase-request/slack-reaction:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn}/invocations"
+              responses: {}
 
   RequestsLambdaLayer:
     Type: AWS::Serverless::LayerVersion
@@ -71,7 +79,7 @@ Resources:
   ReactionMapPurchaseRequestParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /config/reaction-handler/purchase-request
+      Name: /config/purchase-request/reaction-handler
       Type: String
       Description: "JSON mapping of reactions to statuses for purchase requests."
       # Value: '{}'
@@ -83,7 +91,7 @@ Resources:
   ReactionMapProblemReportParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /config/reaction-handler/problem-report
+      Name: /config/problem-report/reaction-handler
       Type: String
       Description: "JSON mapping of reactions to statuses for problem reports."
       # Value: '{}'
@@ -132,6 +140,14 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt PurchaseRequestStack.Outputs.SlackSlashReorderFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
+
+  PurchaseRequestReactionInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"

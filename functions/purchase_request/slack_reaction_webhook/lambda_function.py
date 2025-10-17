@@ -8,12 +8,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 ssm_client = boto3.client('ssm')
-
-# Fetch configuration from SSM Parameter Store
-REACTION_MAP_PARAMETER_NAME = os.environ.get("REACTION_MAP_PARAMETER_NAME")
-parameter = ssm_client.get_parameter(Name=REACTION_MAP_PARAMETER_NAME)
-REACTION_TO_STATUS = json.loads(parameter['Parameter']['Value'])
-
 SLACK_SECRET_NAME = 'slack-maintenance-bot-token'
 CLICKUP_SECRET_NAME = 'clickup/api/token'
 
@@ -21,13 +15,16 @@ def lambda_handler(event, context):
     """Handles purchase request reactions by calling the shared processor."""
     logger.info(f"Received event: {event}")
     try:
+        reaction_map_parameter_name = os.environ.get("REACTION_MAP_PARAMETER_NAME")
+        parameter = ssm_client.get_parameter(Name=reaction_map_parameter_name)
+        reaction_to_status = json.loads(parameter['Parameter']['Value'])
+
         body = json.loads(event.get("body", "{}"))
         if "challenge" in body:
             return {"statusCode": 200, "body": json.dumps({"challenge": body["challenge"]})}
 
-        # Call the shared logic
         result = reaction_processing.process_base_reaction(
-            body, REACTION_TO_STATUS, SLACK_SECRET_NAME, CLICKUP_SECRET_NAME
+            body, reaction_to_status, SLACK_SECRET_NAME, CLICKUP_SECRET_NAME
         )
 
         logger.info(f"Processing result: {result}")
