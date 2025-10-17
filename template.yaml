@@ -88,7 +88,7 @@ Resources:
   ReactionMapPurchaseRequestParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /config/reaction-handler/purchase-request
+      Name: !Sub "/config/${Stage}/reaction-handler/purchase-request"
       Type: String
       Description: "JSON mapping of reactions to statuses for purchase requests."
       Value:
@@ -105,7 +105,7 @@ Resources:
   ReactionMapProblemReportParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /config/reaction-handler/problem-report
+      Name: !Sub "/config/${Stage}/reaction-handler/problem-report"
       Type: String
       Description: "JSON mapping of reactions to statuses for problem reports."
       Value:
