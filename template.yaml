@@ -1,5 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform:
+  - AWS::LanguageExtensions
   - AWS::Serverless-2016-10-31
 Description: >
   A collection of Lambda functions for Asmbly automation tasks,
@@ -55,6 +56,14 @@ Resources:
                 uri:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn}/invocations"
               responses: {}
+          /problem-report/slack-reaction:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProblemReportStack.Outputs.ProblemReportReactionFunctionArn}/invocations"
+              responses: {}
 
   RequestsLambdaLayer:
     Type: AWS::Serverless::LayerVersion
@@ -79,10 +88,15 @@ Resources:
   ReactionMapPurchaseRequestParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /config/purchase-request/reaction-handler
+      Name: /config/reaction-handler/purchase-request
       Type: String
       Description: "JSON mapping of reactions to statuses for purchase requests."
-      # Value: '{}'
+      Value:
+        Fn::ToJsonString:
+          Fn::Transform:
+            Name: 'AWS::Include'
+            Parameters:
+              Location: ./configs/reactions_purchase_request.json
       Tags:
         Project: slack-reaction-purchase-request
         Workspace: facilities
@@ -91,10 +105,15 @@ Resources:
   ReactionMapProblemReportParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /config/problem-report/reaction-handler
+      Name: /config/reaction-handler/problem-report
       Type: String
       Description: "JSON mapping of reactions to statuses for problem reports."
-      # Value: '{}'
+      Value:
+        Fn::ToJsonString:
+          Fn::Transform:
+            Name: 'AWS::Include'
+            Parameters:
+              Location: ./configs/reactions_problem_report.json
       Tags:
         Project: slack-reaction-problem-report
         Workspace: facilities
@@ -127,14 +146,14 @@ Resources:
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
 
-  ProblemReportStack:
-    Type: AWS::Serverless::Application
-    Properties:
-      Location: ./templates/problem_report.yaml
-      Parameters:
-        Stage: !Ref Stage
-        CommonLayerARN: !Ref CommonLayer
-        RequestsLayerARN: !Ref RequestsLambdaLayer
+#  ProblemReportStack:
+#    Type: AWS::Serverless::Application
+#    Properties:
+#      Location: ./templates/problem_report.yaml
+#      Parameters:
+#        Stage: !Ref Stage
+#        CommonLayerARN: !Ref CommonLayer
+#        RequestsLayerARN: !Ref RequestsLambdaLayer
 
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
@@ -151,6 +170,14 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
+
+#  ProblemReportReactionInvokePermission:
+#    Type: AWS::Lambda::Permission
+#    Properties:
+#      FunctionName: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
+#      Action: lambda:InvokeFunction
+#      Principal: apigateway.amazonaws.com
+#      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
 
   CeramicsInvokePermission:
     Type: AWS::Lambda::Permission
