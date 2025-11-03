@@ -77,7 +77,7 @@ Resources:
           CLICKUP_LIST_ID: '901310894771'
           CLICKUP_SECRET_NAME: 'clickup/api/token'
           GENERAL_CHANNEL_NAME: 'stewards'
-          SLACK_MAINTENANCE_BOT_SECRET_NAME: !Sub 'slack-maintenance-bot-token'
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: !Sub '${Stage}/slack-maintenance-bot-token'
           WORKSPACES: '3d-printing,ceramics,electronics,lasers,metal-shop,textiles,woodshop'
           CLICKUP_ASSET_FIELD_ID: '487e2b73-8329-4ce2-a0a1-1b83a6069ed1'
           CLICKUP_FREQUENCY_FIELD_ID: 'b0d864da-9018-4935-ae65-7a9103bf70d2'
