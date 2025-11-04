@@ -5,16 +5,17 @@ from slack_sdk import WebClient
 def process_base_reaction(event_body, reaction_to_status, slack_secret_name, clickup_secret_name):
     """
     Handles the core logic shared by all reaction handlers.
-    - Fetches secrets
-    - Gets Slack message history
-    - Parses ClickUp task ID
-    - Updates ClickUp task status
+    - Validates the reaction is one we care about.
+    - Fetches the Slack message content.
+    - Parses the ClickUp task ID from the message.
+    - Does NOT update the task status anymore, returns info for the caller to handle.
+    - `reaction_to_status` can be a dict or a list of reaction names.
     Returns a dictionary with results for further processing.
     """
     slack_event = event_body.get("event", {})
     reaction = slack_event.get("reaction")
 
-    if reaction not in reaction_to_status:
+    if reaction not in reaction_to_status: # Works for lists and dict keys
         # Return a simple status if the reaction is irrelevant
         return {"status": "ignored", "reason": f"Irrelevant reaction: {reaction}"}
 
@@ -39,17 +40,11 @@ def process_base_reaction(event_body, reaction_to_status, slack_secret_name, cli
         return {"status": "ignored", "reason": "No ClickUp task URL found in the message."}
 
     task_id = match.group(1)
-    new_status_name = reaction_to_status[reaction]
-
-    # Update ClickUp task
-    payload = {"status": new_status_name}
-    clickup.update_task(clickup_api_token, task_id, payload)
 
     # Return useful data for any specific logic that follows
     return {
         "status": "success",
         "task_id": task_id,
-        "new_status": new_status_name,
         "reaction": reaction,
         "message_text": message_text
     }

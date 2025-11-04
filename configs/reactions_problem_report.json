@@ -1,5 +1,20 @@
 {
-  "loading": "in progress",
-  "truck": "parts ordered",
-  "white_check_mark": "Closed"
+  "loading": {
+    "clickup_status": "in progress",
+    "discourse_post_message": "Someone has started working on this.",
+    "discourse_mark_solution": false
+  },
+  "truck": {
+    "clickup_status": "parts ordered",
+    "discourse_post_message": "Parts have been ordered for this.",
+    "discourse_mark_solution": false
+  },
+  "white_check_mark": {
+    "clickup_status": "Closed",
+    "discourse_post_message": [
+      "Someone has finished work on this and called it done.",
+      "Thank you for reporting it and helping us keep track of what needs attention."
+    ],
+    "discourse_mark_solution": true
+  }
 }

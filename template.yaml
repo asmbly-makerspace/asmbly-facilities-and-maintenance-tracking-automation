@@ -56,14 +56,22 @@ Resources:
                 uri:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn}/invocations"
               responses: {}
-#          /problem-report/slack-reaction:
-#            post:
-#              x-amazon-apigateway-integration:
-#                httpMethod: POST
-#                type: aws_proxy
-#                uri:
-#                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProblemReportStack.Outputs.ProblemReportReactionFunctionArn}/invocations"
-#              responses: {}
+          /problem-report/slack-reaction:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProblemReportStack.Outputs.ProblemReportReactionFunctionArn}/invocations"
+              responses: {}
+          /slack/events:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoutersStack.Outputs.SlackEventSubscriptionsRouterFunctionArn}/invocations"
+              responses: {}
 
   RequestsLambdaLayer:
     Type: AWS::Serverless::LayerVersion
@@ -119,6 +127,23 @@ Resources:
         Workspace: facilities
         Stage: !Ref Stage
 
+  RouterConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${Stage}/config/router/slack-event-router"
+      Type: String
+      Description: "JSON configuration for the Slack event router, including channel IDs."
+      Value:
+        Fn::ToJsonString:
+          Fn::Transform:
+            Name: 'AWS::Include'
+            Parameters:
+              Location: ./configs/router_config.json
+      Tags:
+        Project: facilities-slack-event-router
+        Workspace: facilities
+        Stage: !Ref Stage
+
   FacilitiesStack:
     Type: AWS::Serverless::Application
     Properties:
@@ -146,14 +171,25 @@ Resources:
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
 
-#  ProblemReportStack:
-#    Type: AWS::Serverless::Application
-#    Properties:
-#      Location: ./templates/problem_report.yaml
-#      Parameters:
-#        Stage: !Ref Stage
-#        CommonLayerARN: !Ref CommonLayer
-#        RequestsLayerARN: !Ref RequestsLambdaLayer
+  ProblemReportStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./templates/problem_report.yaml
+      Parameters:
+        Stage: !Ref Stage
+        CommonLayerARN: !Ref CommonLayer
+        RequestsLayerARN: !Ref RequestsLambdaLayer
+
+  RoutersStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./templates/routers.yaml
+      Parameters:
+        Stage: !Ref Stage
+        CommonLayerARN: !Ref CommonLayer
+        PurchaseRequestReactionFunctionArn: !GetAtt PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn
+        ProblemReportReactionFunctionArn: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
+        RouterConfigParameterName: !Ref RouterConfigParameter
 
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
@@ -171,18 +207,26 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
 
-#  ProblemReportReactionInvokePermission:
-#    Type: AWS::Lambda::Permission
-#    Properties:
-#      FunctionName: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
-#      Action: lambda:InvokeFunction
-#      Principal: apigateway.amazonaws.com
-#      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
+  ProblemReportReactionInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
 
   CeramicsInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt CeramicsStack.Outputs.KilnDropoffViewerFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
+
+  SlackEventRouterInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt RoutersStack.Outputs.SlackEventSubscriptionsRouterFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"

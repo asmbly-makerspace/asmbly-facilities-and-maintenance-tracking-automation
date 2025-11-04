@@ -19,23 +19,37 @@ This repository contains serverless AWS Lambda functions that automate various t
 
 ## What's in this Repository?
 
-There are three primary, independent services running:
+This repository contains several independent services that automate various tasks for Asmbly. Each service is implemented as a serverless AWS Lambda function and managed via the AWS Serverless Application Model (SAM).
 
-1.  **Kiln Drop-Off Viewer (`KilnOpsDropoffRecentEntriesViewer`)**
-    * **What it does:** Creates a public web page that displays recent Kiln Drop Off entries. This lets members see their confirmation of submitting a kiln form easily.
-    * **How it's triggered:** An HTTP `GET` request via an AWS API Gateway endpoint.
+### Core Services
 
-2.  **PM Reminder Bot (`PMReminderBot`)**
-    * **What it does:** Automatically fetches upcoming and overdue maintenance tasks from ClickUp and posts them as weekly reminders in the relevant Slack channels.
-    * **How it's triggered:** A scheduled cron job that runs every Saturday morning (via Amazon EventBridge).
+The project is organized into several functional areas, with a core infrastructure service for routing Slack events.
 
-3.  **Facilities Slack Purchase Reorder (`FacilitiesSlackPurchaseReorderFunction`)**
-    * **What it does:** Handles the initial `/reorder` slash command from Slack and opens a modal, allowing users to select a standard inventory item for reordering.
-    * **How it's triggered:** An HTTP `POST` request via an AWS API Gateway endpoint, which is configured as the endpoint for a Slack slash command.
+#### Infrastructure
+These services provide core functionality used by other parts of the system.
+*   **Slack Event Router** (`SlackEventSubscriptionsRouterFunction`)
+    *   **What it does:** Acts as the single entry point for all Slack `reaction_added` events. It inspects the event and forwards it to the correct handler function based on the channel where the reaction occurred.
+    *   **How it's triggered:** An HTTP `POST` from a Slack Event Subscription to the `/slack/events` API Gateway endpoint.
 
-4.  **Facilities Slack Purchase Reorder Interaction Handler (`FacilitiesSlackPurchaseReorderInteractionHandler`)**
-    * **What it does:** Processes the submission from the purchase reorder Slack modal. It takes the user's selection and creates the actual purchase request task in ClickUp.
-    * **How it's triggered:** An HTTP `POST` request from Slack's Interactivity endpoint when a user submits the modal opened by the `/reorder` command.
+#### Ceramics
+*   **Kiln Drop-Off Viewer** (`KilnOpsDropoffRecentEntriesViewer`)
+    *   **What it does:** Creates a public web page that displays recent Kiln Drop Off entries. This lets members see their confirmation of submitting a kiln form easily.
+    *   **How it's triggered:** An HTTP `GET` request via an AWS API Gateway endpoint.
+
+#### Facilities & Maintenance
+These services automate tasks related to facilities management, problem reporting, and purchasing.
+*   **PM Reminder Bot** (`PMReminderBot`)
+    *   **What it does:** Automatically fetches upcoming and overdue maintenance tasks from ClickUp and posts them as weekly reminders in the relevant Slack channels.
+    *   **How it's triggered:** A scheduled cron job that runs every Saturday morning (via Amazon EventBridge).
+*   **Slack Purchase Reorder & Interaction Handler** (`FacilitiesSlackPurchaseReorderFunction`)
+    *   **What it does:** Handles the `/reorder` slash command to open a modal for creating purchase requests in ClickUp. It also processes interactions within that modal, like submissions.
+    *   **How it's triggered:** An HTTP `POST` from a Slack slash command to the `/SlackSlashReorder` API Gateway endpoint. This single endpoint handles both the initial command and subsequent user interactions (e.g., modal submissions).
+*   **Problem Report Reaction Handler** (`FacilitiesSlackProblemReportReactionWebhook`)
+    *   **What it does:** Allows facilities team members to update the status of a problem report task in ClickUp by adding an emoji reaction (e.g., `:eyes:`, `:white_check_mark:`) to a Slack message that contains the task link.
+    *   **How it's triggered:** Asynchronously invoked by the **Slack Event Router** when a reaction is added in a monitored channel.
+*   **Purchase Request Reaction Handler** (`FacilitiesSlackPurchaseReactionWebhook`)
+    *   **What it does:** Allows facilities team members to update the status of a purchase request task in ClickUp by adding an emoji reaction (e.g., `:truck:`, `:house:`) to a Slack message that contains the task link.
+    *   **How it's triggered:** Asynchronously invoked by the **Slack Event Router** when a reaction is added in a monitored channel.
 
 ## How It's Managed (The Important Part!)
 
