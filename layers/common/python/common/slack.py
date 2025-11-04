@@ -1,7 +1,6 @@
 import os
 import requests
 
-DRY_RUN = os.environ.get('DRY_RUN', 'false').lower() == 'true'
 TEST_CHANNEL_OVERRIDE = os.environ.get('TEST_CHANNEL_OVERRIDE')
 
 
@@ -24,11 +23,12 @@ class SlackState:
             return None
 
 
-def send_slack_message(token, channel_to_attempt, text, bot_name, icon_emoji, thread_ts=None):
+def send_slack_message(token, channel_to_attempt, text, bot_name, icon_emoji, *, dry_run=False, thread_ts=None):
     """
     Sends a message to a Slack channel, optionally as a threaded reply.
+    If dry_run is True, it prints the message instead of sending it.
     """
-    if DRY_RUN:
+    if dry_run:
         print("--- DRY RUN MODE ---")
         print(f"Would send to channel: {channel_to_attempt}")
         print(f"Message: {text}")

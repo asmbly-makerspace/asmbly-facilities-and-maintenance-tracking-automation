@@ -17,22 +17,36 @@ def test_send_slack_message_success(mock_requests_post):
     mock_response.json.return_value = {"ok": True, "ts": "123.456"}
     mock_requests_post.return_value = mock_response
 
-    response = slack.send_slack_message('slack-token', '#general', 'Hello', 'Bot', ':emoji:')
+    # Explicitly test the non-dry-run case
+    response = slack.send_slack_message('slack-token', '#general', 'Hello', 'Bot', ':emoji:', dry_run=False)
 
     assert response['ok'] is True
     assert response['ts'] == "123.456"
     mock_requests_post.assert_called_once()
     assert mock_requests_post.call_args.kwargs['json']['channel'] == 'general'
     assert mock_requests_post.call_args.kwargs['json']['text'] == 'Hello'
+    assert 'thread_ts' not in mock_requests_post.call_args.kwargs['json']
 
 
-def test_send_slack_message_dry_run(capsys):
-    """Test that DRY_RUN mode prints to console instead of sending."""
-    with patch('common.slack.DRY_RUN', True):
-        response = slack.send_slack_message('slack-token', '#general', 'Dry run message', 'Bot', ':emoji:')
+@patch('common.slack.requests.post')
+def test_send_slack_message_dry_run(mock_requests_post, capsys):
+    """Test that dry_run=True prints to console and does not send a request."""
+    response = slack.send_slack_message(
+        'slack-token',
+        '#general',
+        'Dry run message',
+        'Bot',
+        ':emoji:',
+        dry_run=True
+    )
 
     assert response['ok'] is True
     assert response['ts'] == "DRY_RUN_TIMESTAMP"
+
+    # Assert that no HTTP request was made
+    mock_requests_post.assert_not_called()
+
+    # Assert that the message was printed to stdout
     captured = capsys.readouterr()
     assert "--- DRY RUN MODE ---" in captured.out
     assert "Would send to channel: #general" in captured.out
