@@ -54,7 +54,8 @@ class TestSlackReactionWebhook(TestCase):
         }
 
         # 4. Execute the handler
-        response = lambda_function.lambda_handler(event, None)
+        event_body = json.loads(event['body'])
+        response = lambda_function.lambda_handler(event_body, None)
 
         # 5. Assert the results
         self.assertEqual(response["statusCode"], 200)
@@ -66,7 +67,7 @@ class TestSlackReactionWebhook(TestCase):
 
         # Assert that our shared helper was called with the correct arguments
         mock_reaction_processing.process_base_reaction.assert_called_once_with(
-            json.loads(event["body"]),
+            event_body,
             fake_reaction_map, # reaction_to_status
             'slack-maintenancebot-token', # slack_secret_name
             'clickup/api/token'
@@ -78,9 +79,11 @@ class TestSlackReactionWebhook(TestCase):
             'fake-clickup-token', 'abcde123', {"status": "purchased"}
         )
 
-    def test_lambda_handler_challenge(self):
-        event = {"body": json.dumps({"challenge": "test_challenge"})}
-        response = lambda_function.lambda_handler(event, None)
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_lambda_handler_challenge(self, mock_boto3_client):
+        # The router passes the body directly
+        event_body = {"challenge": "test_challenge"}
+        response = lambda_function.lambda_handler(event_body, None)
         self.assertEqual(response["statusCode"], 200)
         self.assertIn("test_challenge", response["body"])
 
@@ -114,7 +117,8 @@ class TestSlackReactionWebhook(TestCase):
         }
 
         # Execute
-        response = lambda_function.lambda_handler(event, None)
+        event_body = json.loads(event['body'])
+        response = lambda_function.lambda_handler(event_body, None)
 
         # Assert that the handler caught the exception and returned a 500 error
         self.assertEqual(response["statusCode"], 500)
@@ -125,12 +129,13 @@ class TestSlackReactionWebhook(TestCase):
         "SLACK_MAINTENANCE_BOT_SECRET_NAME": "slack-maintenancebot-token",
         "CLICKUP_SECRET_NAME": "clickup/api/token",
     }, clear=True) # Clear ensures only these are set
-    def test_lambda_handler_missing_reaction_map_env_var(self):
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_lambda_handler_missing_reaction_map_env_var(self, mock_boto3_client):
         """
         Tests that the handler fails gracefully if REACTION_MAP_PARAMETER_NAME is missing.
         """
-        event = {"body": json.dumps({"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}})}
-        response = lambda_function.lambda_handler(event, None)
+        event_body = {"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}}
+        response = lambda_function.lambda_handler(event_body, None) # noqa
         self.assertEqual(response["statusCode"], 500)
         self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", response["body"])
 
@@ -138,12 +143,13 @@ class TestSlackReactionWebhook(TestCase):
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
         "CLICKUP_SECRET_NAME": "clickup/api/token",
     }, clear=True)
-    def test_lambda_handler_missing_slack_secret_env_var(self):
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_lambda_handler_missing_slack_secret_env_var(self, mock_boto3_client):
         """
         Tests that the handler fails gracefully if SLACK_MAINTENANCE_BOT_SECRET_NAME is missing.
         """
-        event = {"body": json.dumps({"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}})}
-        response = lambda_function.lambda_handler(event, None)
+        event_body = {"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}}
+        response = lambda_function.lambda_handler(event_body, None)
         self.assertEqual(response["statusCode"], 500)
         self.assertIn("SLACK_MAINTENANCE_BOT_SECRET_NAME environment variable not set", response["body"])
 
@@ -151,11 +157,12 @@ class TestSlackReactionWebhook(TestCase):
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
         "SLACK_MAINTENANCE_BOT_SECRET_NAME": "slack-maintenancebot-token",
     }, clear=True)
-    def test_lambda_handler_missing_clickup_secret_env_var(self):
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_lambda_handler_missing_clickup_secret_env_var(self, mock_boto3_client):
         """
         Tests that the handler fails gracefully if CLICKUP_SECRET_NAME is missing.
         """
-        event = {"body": json.dumps({"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}})}
-        response = lambda_function.lambda_handler(event, None)
+        event_body = {"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}}
+        response = lambda_function.lambda_handler(event_body, None)
         self.assertEqual(response["statusCode"], 500)
         self.assertIn("CLICKUP_SECRET_NAME environment variable not set", response["body"])

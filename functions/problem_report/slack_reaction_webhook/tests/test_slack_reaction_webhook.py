@@ -32,7 +32,12 @@ class TestProblemReportReactionWebhook(TestCase):
             })
         }
 
-    @patch.dict(os.environ, {"REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param"})
+    @patch.dict(os.environ, {
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param",
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake-slack-secret",
+        "CLICKUP_SECRET_NAME": "fake-clickup-secret",
+        "DISCOURSE_SECRET_NAME": "fake-discourse-secret"
+    })
     @patch(f"{LAMBDA_FUNCTION_PATH}.discourse")
     @patch(f"{LAMBDA_FUNCTION_PATH}.clickup")
     @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
@@ -68,13 +73,14 @@ class TestProblemReportReactionWebhook(TestCase):
         mock_discourse.post_reply.return_value = {"id": 987} # New post ID
 
         # --- Execute ---
-        response = lambda_function.lambda_handler(self.base_event, None)
+        event_body = json.loads(self.base_event['body'])
+        response = lambda_function.lambda_handler(event_body, None)
 
         # --- Assertions ---
         self.assertEqual(response["statusCode"], 200)
         mock_reaction_processing.process_base_reaction.assert_called_once()
 
-        # ClickUp update
+        # ClickUp update - The body is now the raw event, not json.loads(event['body'])
         mock_clickup.update_task.assert_called_once_with(
             'fake-clickup-token', 'abcde123', {"status": "Closed"}
         )
@@ -98,12 +104,17 @@ class TestProblemReportReactionWebhook(TestCase):
 
         # Secrets were fetched
         mock_aws.get_secret.assert_has_calls([
-            call('clickup/api/token', 'CLICKUP_API_TOKEN'),
-            call('prod/discourse-facilities-bot', 'DISCOURSE_FACILITIES_BOT_API_KEY'),
-            call('prod/discourse-facilities-bot', 'DISCOURSE_FACILITIES_BOT_API_USERNAME')
+            call('fake-clickup-secret', 'CLICKUP_API_TOKEN'),
+            call('fake-discourse-secret', 'DISCOURSE_FACILITIES_BOT_API_KEY'),
+            call('fake-discourse-secret', 'DISCOURSE_FACILITIES_BOT_API_USERNAME')
         ])
 
-    @patch.dict(os.environ, {"REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param"})
+    @patch.dict(os.environ, {
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param",
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake-slack-secret",
+        "CLICKUP_SECRET_NAME": "fake-clickup-secret",
+        "DISCOURSE_SECRET_NAME": "fake-discourse-secret"
+    })
     @patch(f"{LAMBDA_FUNCTION_PATH}.discourse")
     @patch(f"{LAMBDA_FUNCTION_PATH}.clickup")
     @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
@@ -126,7 +137,8 @@ class TestProblemReportReactionWebhook(TestCase):
         mock_discourse.parse_discourse_url.return_value = None
 
         # --- Execute ---
-        response = lambda_function.lambda_handler(self.base_event, None)
+        event_body = json.loads(self.base_event['body'])
+        response = lambda_function.lambda_handler(event_body, None)
 
         # --- Assertions ---
         self.assertEqual(response["statusCode"], 200)
@@ -136,7 +148,12 @@ class TestProblemReportReactionWebhook(TestCase):
         mock_discourse.post_reply.assert_not_called()
         mock_discourse.mark_solution.assert_not_called()
 
-    @patch.dict(os.environ, {"REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param"})
+    @patch.dict(os.environ, {
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param",
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake-slack-secret",
+        "CLICKUP_SECRET_NAME": "fake-clickup-secret",
+        "DISCOURSE_SECRET_NAME": "fake-discourse-secret"
+    })
     @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     def test_handler_ignored_reaction(self, mock_boto3_client, mock_reaction_processing):
@@ -151,16 +168,19 @@ class TestProblemReportReactionWebhook(TestCase):
         }
 
         # --- Execute ---
-        response = lambda_function.lambda_handler(self.base_event, None)
+        event_body = json.loads(self.base_event['body'])
+        response = lambda_function.lambda_handler(event_body, None)
 
         # --- Assertions ---
         self.assertEqual(response["statusCode"], 200)
         # Ensure no further processing happened
         # (The mocks for clickup, aws, discourse are not patched, so a call would raise an error)
 
-    def test_handler_slack_challenge(self):
-        event = {"body": json.dumps({"challenge": "test_challenge_string"})}
-        response = lambda_function.lambda_handler(event, None)
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_handler_slack_challenge(self, mock_boto3_client):
+        # The router passes the body directly
+        event_body = {"challenge": "test_challenge_string"}
+        response = lambda_function.lambda_handler(event_body, None)
         self.assertEqual(response["statusCode"], 200)
         self.assertIn("test_challenge_string", response["body"])
 
@@ -168,12 +188,19 @@ class TestProblemReportReactionWebhook(TestCase):
     def test_handler_missing_env_var(self, mock_boto3_client):
         # Use an empty patch.dict to ensure the env var is not set
         with patch.dict(os.environ, {}, clear=True):
-            response = lambda_function.lambda_handler(self.base_event, None)
+            # The lambda now receives the raw body, not the full API Gateway event
+            event = json.loads(self.base_event['body'])
+            response = lambda_function.lambda_handler(event, None)
 
         self.assertEqual(response["statusCode"], 500)
         self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", response["body"])
 
-    @patch.dict(os.environ, {"REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param"})
+    @patch.dict(os.environ, {
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param",
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake-slack-secret",
+        "CLICKUP_SECRET_NAME": "fake-clickup-secret",
+        "DISCOURSE_SECRET_NAME": "fake-discourse-secret"
+    })
     @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     def test_handler_general_exception(self, mock_boto3_client, mock_reaction_processing):
@@ -187,7 +214,8 @@ class TestProblemReportReactionWebhook(TestCase):
         mock_reaction_processing.process_base_reaction.side_effect = Exception("Something broke!")
 
         # --- Execute ---
-        response = lambda_function.lambda_handler(self.base_event, None)
+        event = json.loads(self.base_event['body'])
+        response = lambda_function.lambda_handler(event, None)
 
         # --- Assertions ---
         self.assertEqual(response["statusCode"], 500)
