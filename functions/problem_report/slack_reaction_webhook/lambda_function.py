@@ -7,11 +7,6 @@ from common import reaction_processing, aws, clickup, discourse
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-SLACK_SECRET_NAME = 'slack-maintenance-bot-token'
-CLICKUP_SECRET_NAME = 'clickup/api/token'
-# The secret name is the same across all stages as requested.
-DISCOURSE_SECRET_NAME = 'prod/discourse-facilities-bot'
-
 
 def lambda_handler(event, context):
     """Handles problem report reactions, including Discourse integration."""
@@ -29,6 +24,18 @@ def lambda_handler(event, context):
         reaction_map_param_name = os.environ.get("REACTION_MAP_PARAMETER_NAME")
         if not reaction_map_param_name:
             raise ValueError("REACTION_MAP_PARAMETER_NAME environment variable not set.")
+        
+        slack_secret_name = os.environ.get("SLACK_MAINTENANCE_BOT_SECRET_NAME")
+        if not slack_secret_name:
+            raise ValueError("SLACK_MAINTENANCE_BOT_SECRET_NAME environment variable not set.")
+
+        clickup_secret_name = os.environ.get("CLICKUP_SECRET_NAME")
+        if not clickup_secret_name:
+            raise ValueError("CLICKUP_SECRET_NAME environment variable not set.")
+
+        discourse_secret_name = os.environ.get("DISCOURSE_SECRET_NAME")
+        if not discourse_secret_name:
+            raise ValueError("DISCOURSE_SECRET_NAME environment variable not set.")
 
         parameter = ssm_client.get_parameter(Name=reaction_map_param_name)
         # This map is more complex: {"reaction": {"clickup_status": "...", "discourse_post_message": "...", ...}}
@@ -40,8 +47,8 @@ def lambda_handler(event, context):
             body,
             # Pass the keys of the config map so the base processor knows which reactions are valid.
             list(reaction_config_map.keys()),
-            SLACK_SECRET_NAME,
-            CLICKUP_SECRET_NAME
+            slack_secret_name,
+            clickup_secret_name
         )
         logger.info(f"Base processing result: {result}")
 
@@ -56,7 +63,7 @@ def lambda_handler(event, context):
             clickup_status = config.get("clickup_status")
             if clickup_status:
                 logger.info(f"Updating ClickUp task {task_id} to status '{clickup_status}'")
-                clickup_api_token = aws.get_secret(CLICKUP_SECRET_NAME, "CLICKUP_API_TOKEN")
+                clickup_api_token = aws.get_secret(clickup_secret_name, "CLICKUP_API_TOKEN")
                 clickup.update_task(clickup_api_token, task_id, {"status": clickup_status})
             else:
                 logger.warning(f"No 'clickup_status' defined for reaction '{reaction}'")
@@ -73,8 +80,8 @@ def lambda_handler(event, context):
 
             if discourse_info and discourse_message:
                 logger.info(f"Found Discourse link. Preparing to post reply. Info: {discourse_info}")
-                discourse_api_key = aws.get_secret(DISCOURSE_SECRET_NAME, "DISCOURSE_FACILITIES_BOT_API_KEY")
-                discourse_api_user = aws.get_secret(DISCOURSE_SECRET_NAME, "DISCOURSE_FACILITIES_BOT_API_USERNAME")
+                discourse_api_key = aws.get_secret(discourse_secret_name, "DISCOURSE_FACILITIES_BOT_API_KEY")
+                discourse_api_user = aws.get_secret(discourse_secret_name, "DISCOURSE_FACILITIES_BOT_API_USERNAME")
 
                 # Post the reply message
                 reply_response = discourse.post_reply(

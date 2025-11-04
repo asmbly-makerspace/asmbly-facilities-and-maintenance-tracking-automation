@@ -12,6 +12,8 @@ LAMBDA_FUNCTION_PATH = "functions.purchase_request.slack_reaction_webhook.lambda
 class TestSlackReactionWebhook(TestCase):
 
     @patch.dict(os.environ, {
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "slack-maintenancebot-token",
+        "CLICKUP_SECRET_NAME": "clickup/api/token",
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
     })
     @patch(f"{LAMBDA_FUNCTION_PATH}.clickup")
@@ -65,8 +67,8 @@ class TestSlackReactionWebhook(TestCase):
         # Assert that our shared helper was called with the correct arguments
         mock_reaction_processing.process_base_reaction.assert_called_once_with(
             json.loads(event["body"]),
-            fake_reaction_map,
-            'slack-maintenance-bot-token',
+            fake_reaction_map, # reaction_to_status
+            'slack-maintenancebot-token', # slack_secret_name
             'clickup/api/token'
         )
 
@@ -83,6 +85,8 @@ class TestSlackReactionWebhook(TestCase):
         self.assertIn("test_challenge", response["body"])
 
     @patch.dict(os.environ, {
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "slack-maintenancebot-token",
+        "CLICKUP_SECRET_NAME": "clickup/api/token",
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
     })
     @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
@@ -116,25 +120,42 @@ class TestSlackReactionWebhook(TestCase):
         self.assertEqual(response["statusCode"], 500)
         self.assertIn("Internal server error", response["body"])
 
-    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
-    def test_lambda_handler_missing_env_var(self, mock_boto3_client):
+    # Test cases for missing environment variables
+    @patch.dict(os.environ, {
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "slack-maintenancebot-token",
+        "CLICKUP_SECRET_NAME": "clickup/api/token",
+    }, clear=True) # Clear ensures only these are set
+    def test_lambda_handler_missing_reaction_map_env_var(self):
         """
         Tests that the handler fails gracefully if REACTION_MAP_PARAMETER_NAME is missing.
         """
-        # Event
-        event = {
-            "body": json.dumps({
-                "event": {
-                    "type": "reaction_added", "reaction": "truck",
-                    "item": {"channel": "C123", "ts": "12345.678"}
-                }
-            })
-        }
-
-        # Use an empty patch.dict to ensure the env var is not set
-        with patch.dict(os.environ, {}, clear=True):
-            response = lambda_function.lambda_handler(event, None)
-
-        # Assert
+        event = {"body": json.dumps({"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}})}
+        response = lambda_function.lambda_handler(event, None)
         self.assertEqual(response["statusCode"], 500)
         self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", response["body"])
+
+    @patch.dict(os.environ, {
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
+        "CLICKUP_SECRET_NAME": "clickup/api/token",
+    }, clear=True)
+    def test_lambda_handler_missing_slack_secret_env_var(self):
+        """
+        Tests that the handler fails gracefully if SLACK_MAINTENANCE_BOT_SECRET_NAME is missing.
+        """
+        event = {"body": json.dumps({"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}})}
+        response = lambda_function.lambda_handler(event, None)
+        self.assertEqual(response["statusCode"], 500)
+        self.assertIn("SLACK_MAINTENANCE_BOT_SECRET_NAME environment variable not set", response["body"])
+
+    @patch.dict(os.environ, {
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "slack-maintenancebot-token",
+    }, clear=True)
+    def test_lambda_handler_missing_clickup_secret_env_var(self):
+        """
+        Tests that the handler fails gracefully if CLICKUP_SECRET_NAME is missing.
+        """
+        event = {"body": json.dumps({"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}})}
+        response = lambda_function.lambda_handler(event, None)
+        self.assertEqual(response["statusCode"], 500)
+        self.assertIn("CLICKUP_SECRET_NAME environment variable not set", response["body"])

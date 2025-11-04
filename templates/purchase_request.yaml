@@ -139,6 +139,8 @@ Resources:
       Environment:
         Variables:
           REACTION_MAP_PARAMETER_NAME: !Sub "/${Stage}/config/reaction-handler/purchase-request"
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
       Tags:
         Project: slack-reaction-purchase-request
         Workspace: facilities

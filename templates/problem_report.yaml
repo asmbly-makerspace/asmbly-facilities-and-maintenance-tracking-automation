@@ -72,6 +72,9 @@ Resources:
       Environment:
         Variables:
           REACTION_MAP_PARAMETER_NAME: !Sub "/${Stage}/config/reaction-handler/problem-report"
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
+          DISCOURSE_SECRET_NAME: 'prod/discourse-facilities-bot'
       Tags:
         Project: slack-reaction-problem-report
         Workspace: facilities
