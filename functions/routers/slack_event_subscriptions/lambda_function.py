@@ -2,8 +2,6 @@ import json
 import logging
 import os
 import boto3
-from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -28,6 +26,20 @@ def lambda_handler(event, context):
             logger.info("Ignoring event that is not 'reaction_added'.")
             return {"statusCode": 200, "body": json.dumps("Event ignored.")}
 
+        # --- Load Configuration from SSM ---
+        ssm_client = boto3.client('ssm')
+        config_param_name = os.environ.get("ROUTER_CONFIG_PARAMETER_NAME")
+        if not config_param_name:
+            # Log an error but return 200 to Slack to prevent retries.
+            logger.error("ROUTER_CONFIG_PARAMETER_NAME environment variable not set.")
+            return {"statusCode": 200, "body": json.dumps("Internal configuration error.")}
+
+        parameter = ssm_client.get_parameter(Name=config_param_name)
+        router_config = json.loads(parameter['Parameter']['Value'])
+
+        purchase_request_channel_id = router_config.get("purchase_request_channel_id")
+        problem_report_channel_id = router_config.get("problem_report_channel_id")
+
         # --- Determine Target Function ---
         item = event_data.get("item", {})
         channel_id = item.get("channel")
@@ -37,9 +49,9 @@ def lambda_handler(event, context):
             return {"statusCode": 200, "body": json.dumps("Event ignored.")}
 
         target_lambda_arn = None
-        if channel_id == os.environ.get("PURCHASE_REQUEST_CHANNEL_ID"):
+        if channel_id == purchase_request_channel_id:
             target_lambda_arn = os.environ.get("PURCHASE_REQUEST_LAMBDA_ARN")
-        elif channel_id == os.environ.get("PROBLEM_REPORT_CHANNEL_ID"):
+        elif channel_id == problem_report_channel_id:
             target_lambda_arn = os.environ.get("PROBLEM_REPORT_LAMBDA_ARN")
 
         if not target_lambda_arn:

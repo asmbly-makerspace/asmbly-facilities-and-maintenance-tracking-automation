@@ -8,14 +8,9 @@ Parameters:
     Type: String
   CommonLayerARN:
     Type: String
-  PurchaseRequestReactionFunctionArn:
-    Type: String
-  ProblemReportReactionFunctionArn:
-    Type: String
-  PurchaseRequestChannelId:
-    Type: String
-  ProblemReportChannelId:
-    Type: String
+  PurchaseRequestReactionFunctionArn: { Type: String }
+  ProblemReportReactionFunctionArn: { Type: String }
+  RouterConfigParameterName: { Type: String }
 
 Resources:
   SlackEventSubscriptionsRouterFunction:
@@ -30,16 +25,15 @@ Resources:
       Environment:
         Variables:
           PURCHASE_REQUEST_LAMBDA_ARN: !Ref PurchaseRequestReactionFunctionArn
-          PURCHASE_REQUEST_CHANNEL_ID: !Ref PurchaseRequestChannelId
           PROBLEM_REPORT_LAMBDA_ARN: !Ref ProblemReportReactionFunctionArn
-          PROBLEM_REPORT_CHANNEL_ID: !Ref ProblemReportChannelId
+          ROUTER_CONFIG_PARAMETER_NAME: !Ref RouterConfigParameterName
       Policies:
-        - Statement:
-            - Effect: Allow
-              Action: lambda:InvokeFunction
-              Resource:
-                - !Ref PurchaseRequestReactionFunctionArn
-                - !Ref ProblemReportReactionFunctionArn
+        - LambdaInvokePolicy:
+            FunctionName: !Ref PurchaseRequestReactionFunctionArn
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ProblemReportReactionFunctionArn
+        - SSMReadPolicy:
+            ParameterName: !Ref RouterConfigParameterName
       Tags:
         Project: facilities-slack-event-router
         Workspace: facilities

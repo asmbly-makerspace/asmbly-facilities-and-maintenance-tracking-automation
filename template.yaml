@@ -20,14 +20,6 @@ Parameters:
       - dev
       - stage
       - prod
-  PurchaseRequestChannelId:
-    Type: String
-    Description: "The Slack channel ID for Purchase Requests."
-    Default: "C026YVA7TK3"
-  ProblemReportChannelId:
-    Type: String
-    Description: "The Slack channel ID for Problem Reports."
-    Default: "C063LH7MB45"
 
 Resources:
   FacilitiesApi:
@@ -135,6 +127,23 @@ Resources:
         Workspace: facilities
         Stage: !Ref Stage
 
+  RouterConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${Stage}/config/router/slack-event-router"
+      Type: String
+      Description: "JSON configuration for the Slack event router, including channel IDs."
+      Value:
+        Fn::ToJsonString:
+          Fn::Transform:
+            Name: 'AWS::Include'
+            Parameters:
+              Location: ./functions/routers/slack_event_subscriptions/configs/router_config.json
+      Tags:
+        Project: facilities-slack-event-router
+        Workspace: facilities
+        Stage: !Ref Stage
+
   FacilitiesStack:
     Type: AWS::Serverless::Application
     Properties:
@@ -180,8 +189,7 @@ Resources:
         CommonLayerARN: !Ref CommonLayer
         PurchaseRequestReactionFunctionArn: !GetAtt PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn
         ProblemReportReactionFunctionArn: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
-        PurchaseRequestChannelId: !Ref PurchaseRequestChannelId
-        ProblemReportChannelId: !Ref ProblemReportChannelId
+        RouterConfigParameterName: !Ref RouterConfigParameter
 
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
