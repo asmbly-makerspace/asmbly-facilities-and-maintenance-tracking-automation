@@ -77,17 +77,17 @@ This diagram illustrates the secure, serverless workflow for the automated task 
 2.  **Fetch Secrets**
     * **Source:** AWS Lambda
     * **Destination:** AWS Secrets Manager
-    * **Action:** The function makes a secure, internal call to retrieve the ClickUp and Slack API tokens.
+    * **Action:** The function makes a secure, internal AWS API call to retrieve the ClickUp and Slack API tokens.
 
 3.  **Fetch Tasks from ClickUp**
     * **Source:** AWS Lambda
     * **Destination:** ClickUp API
-    * **Action:** The Lambda function makes two server-to-server API requests to ClickUp to get all tasks that are either overdue or due in the upcoming week.
+    * **Action:** The Lambda function makes two separate server-to-server API requests to ClickUp: one to get all tasks that are **overdue**, and another to get all tasks due in the **upcoming week**.
 
 4.  **Process Tasks**
     * **Source:** AWS Lambda
     * **Destination:** AWS Lambda
-    * **Action:** The script processes the list of tasks, extracting key details like the task name, description, and the designated Slack channel from a custom field.
+    * **Action:** The script combines and processes the list of tasks, extracting key details like the task name, description, asset, and the designated Slack channel from custom fields. It then sorts the tasks to ensure a consistent posting order.
 
 5.  **Send Slack Notifications**
     * **Source:** AWS Lambda

@@ -95,7 +95,8 @@ def test_lambda_handler_no_tasks(mock_send_slack, mock_get_tasks, mock_get_secre
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
 @patch(f'{LAMBDA_FUNCTION_PATH}.send_slack_message')
-def test_lambda_handler_with_tasks(mock_send_slack, mock_get_tasks, mock_get_secret, reload_lambda_function):
+@patch(f'{LAMBDA_FUNCTION_PATH}.time.sleep')
+def test_lambda_handler_with_tasks(mock_time_sleep, mock_send_slack, mock_get_tasks, mock_get_secret, reload_lambda_function):
     """Test the full lambda handler flow with tasks and threaded replies."""
     # --- Mocks Setup ---
     mock_get_secret.side_effect = ['clickup-token', 'slack-token']
@@ -188,8 +189,10 @@ def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, cap
 
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
-@patch('functions.facilities.pm_bot_reminder.lambda_function.requests.post')
-def test_lambda_handler_dry_run_mode(mock_requests_post, mock_get_tasks, mock_get_secret, monkeypatch, reload_lambda_function, capsys):
+@patch(f'{LAMBDA_FUNCTION_PATH}.time.sleep')
+# We patch requests.post here to ensure no real network calls are made, but we DO NOT patch send_slack_message
+@patch('common.slack.requests.post')
+def test_lambda_handler_dry_run_mode(mock_requests_post, mock_time_sleep, mock_get_tasks, mock_get_secret, monkeypatch, reload_lambda_function, capsys):
     """Test that DRY_RUN=true prevents actual Slack API calls and prints to stdout."""
     # --- Mocks & Fixture Setup ---
     # Instead of reloading the module, directly patch the DRY_RUN flag within it.
@@ -217,7 +220,7 @@ def test_lambda_handler_dry_run_mode(mock_requests_post, mock_get_tasks, mock_ge
     assert result['statusCode'] == 200
     assert "Successfully processed 1 tasks" in result['body']
 
-    # Crucially, assert that no web requests were made
+    # Crucially, assert that no actual web requests were made to Slack
     mock_requests_post.assert_not_called()
 
     # Check that the dry run output was printed to the console

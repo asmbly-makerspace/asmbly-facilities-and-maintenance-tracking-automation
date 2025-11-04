@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Stack for router functions that direct traffic to other services.
+
+Parameters:
+  Stage:
+    Type: String
+  CommonLayerARN:
+    Type: String
+  PurchaseRequestReactionFunctionArn: { Type: String }
+  ProblemReportReactionFunctionArn: { Type: String }
+  RouterConfigParameterName: { Type: String }
+
+Resources:
+  SlackEventSubscriptionsRouterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "facilities-slack-event-router-${Stage}"
+      Description: "Routes incoming Slack events to the correct handler function."
+      CodeUri: ../functions/routers/slack_event_subscriptions/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Layers:
+        - !Ref CommonLayerARN
+      Environment:
+        Variables:
+          PURCHASE_REQUEST_LAMBDA_ARN: !Ref PurchaseRequestReactionFunctionArn
+          PROBLEM_REPORT_LAMBDA_ARN: !Ref ProblemReportReactionFunctionArn
+          ROUTER_CONFIG_PARAMETER_NAME: !Ref RouterConfigParameterName
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource:
+                - !Ref PurchaseRequestReactionFunctionArn
+                - !Ref ProblemReportReactionFunctionArn
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RouterConfigParameterName}"
+      Tags:
+        Project: facilities-slack-event-router
+        Workspace: facilities
+        Stage: !Ref Stage
+
+Outputs:
+  SlackEventSubscriptionsRouterFunctionArn:
+    Description: "ARN of the Slack Event Subscriptions Router Lambda function"
+    Value: !GetAtt SlackEventSubscriptionsRouterFunction.Arn
+  SlackEventSubscriptionsRouterFunctionName:
+    Description: "Name of the Slack Event Subscriptions Router Lambda function"
+    Value: !Ref SlackEventSubscriptionsRouterFunction
