@@ -20,6 +20,7 @@ Resources:
       Description: "Routes incoming Slack events to the correct handler function."
       CodeUri: ../functions/routers/slack_event_subscriptions/
       Handler: lambda_function.lambda_handler
+      Runtime: python3.12
       Layers:
         - !Ref CommonLayerARN
       Environment:
@@ -28,12 +29,16 @@ Resources:
           PROBLEM_REPORT_LAMBDA_ARN: !Ref ProblemReportReactionFunctionArn
           ROUTER_CONFIG_PARAMETER_NAME: !Ref RouterConfigParameterName
       Policies:
-        - LambdaInvokePolicy:
-            FunctionName: !Ref PurchaseRequestReactionFunctionArn
-        - LambdaInvokePolicy:
-            FunctionName: !Ref ProblemReportReactionFunctionArn
-        - SSMReadPolicy:
-            ParameterName: !Ref RouterConfigParameterName
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource:
+                - !Ref PurchaseRequestReactionFunctionArn
+                - !Ref ProblemReportReactionFunctionArn
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RouterConfigParameterName}"
       Tags:
         Project: facilities-slack-event-router
         Workspace: facilities

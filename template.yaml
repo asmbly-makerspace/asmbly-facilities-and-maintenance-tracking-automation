@@ -138,7 +138,7 @@ Resources:
           Fn::Transform:
             Name: 'AWS::Include'
             Parameters:
-              Location: ./functions/routers/slack_event_subscriptions/configs/router_config.json
+              Location: ./configs/router_config.json
       Tags:
         Project: facilities-slack-event-router
         Workspace: facilities
