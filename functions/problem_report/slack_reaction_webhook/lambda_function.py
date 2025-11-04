@@ -17,7 +17,8 @@ def lambda_handler(event, context):
     """Handles problem report reactions, including Discourse integration."""
     logger.info(f"Received event: {event}")
     try:
-        body = json.loads(event.get("body", "{}"))
+        # The router function passes the body of the original request directly.
+        body = event
 
         # Handle Slack's URL verification challenge
         if "challenge" in body:

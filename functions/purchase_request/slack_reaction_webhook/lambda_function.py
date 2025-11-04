@@ -15,7 +15,8 @@ def lambda_handler(event, context):
     """Handles purchase request reactions by calling the shared processor."""
     logger.info(f"Received event: {event}")
     try:
-        body = json.loads(event.get("body", "{}"))
+        # The router function passes the body of the original request directly.
+        body = event
 
         # Immediately handle the challenge before doing anything else
         if "challenge" in body:
