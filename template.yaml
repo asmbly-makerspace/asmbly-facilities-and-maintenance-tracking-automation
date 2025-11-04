@@ -20,6 +20,14 @@ Parameters:
       - dev
       - stage
       - prod
+  PurchaseRequestChannelId:
+    Type: String
+    Description: "The Slack channel ID for Purchase Requests."
+    Default: "C026YVA7TK3"
+  ProblemReportChannelId:
+    Type: String
+    Description: "The Slack channel ID for Problem Reports."
+    Default: "C063LH7MB45"
 
 Resources:
   FacilitiesApi:
@@ -63,6 +71,14 @@ Resources:
                 type: aws_proxy
                 uri:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProblemReportStack.Outputs.ProblemReportReactionFunctionArn}/invocations"
+              responses: {}
+          /slack/events:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoutersStack.Outputs.SlackEventSubscriptionsRouterFunctionArn}/invocations"
               responses: {}
 
   RequestsLambdaLayer:
@@ -155,6 +171,18 @@ Resources:
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
 
+  RoutersStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./templates/routers.yaml
+      Parameters:
+        Stage: !Ref Stage
+        CommonLayerARN: !Ref CommonLayer
+        PurchaseRequestReactionFunctionArn: !GetAtt PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn
+        ProblemReportReactionFunctionArn: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
+        PurchaseRequestChannelId: !Ref PurchaseRequestChannelId
+        ProblemReportChannelId: !Ref ProblemReportChannelId
+
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -183,6 +211,14 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt CeramicsStack.Outputs.KilnDropoffViewerFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
+
+  SlackEventRouterInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt RoutersStack.Outputs.SlackEventSubscriptionsRouterFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
