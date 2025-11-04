@@ -1,7 +1,7 @@
 import json
 import os
 from unittest import TestCase
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 
 # The lambda_function import remains the same
 from functions.purchase_request.slack_reaction_webhook import lambda_function
@@ -14,10 +14,12 @@ class TestSlackReactionWebhook(TestCase):
     @patch.dict(os.environ, {
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
     })
+    @patch(f"{LAMBDA_FUNCTION_PATH}.clickup")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
     @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
     # CORRECTED: Patch the client where it is used in the lambda_function module
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
-    def test_lambda_handler_success(self, mock_boto3_client, mock_reaction_processing):
+    def test_lambda_handler_success(self, mock_boto3_client, mock_reaction_processing, mock_aws, mock_clickup):
         # 1. Mock the SSM Parameter Store call
         mock_ssm_instance = MagicMock()
         mock_boto3_client.return_value = mock_ssm_instance
@@ -29,8 +31,15 @@ class TestSlackReactionWebhook(TestCase):
             }
         }
 
+        # Mock secret fetching
+        mock_aws.get_secret.return_value = 'fake-clickup-token'
+
         # 2. Mock the result of the shared helper function
-        mock_reaction_processing.process_base_reaction.return_value = {"status": "success"}
+        mock_reaction_processing.process_base_reaction.return_value = {
+            "status": "success",
+            "task_id": "abcde123",
+            "reaction": "truck"
+        }
 
         # 3. Define the test event
         event = {
@@ -59,6 +68,12 @@ class TestSlackReactionWebhook(TestCase):
             fake_reaction_map,
             'slack-maintenance-bot-token',
             'clickup/api/token'
+        )
+
+        # Assert that the ClickUp task was updated
+        mock_aws.get_secret.assert_called_once_with('clickup/api/token', 'CLICKUP_API_TOKEN')
+        mock_clickup.update_task.assert_called_once_with(
+            'fake-clickup-token', 'abcde123', {"status": "purchased"}
         )
 
     def test_lambda_handler_challenge(self):
