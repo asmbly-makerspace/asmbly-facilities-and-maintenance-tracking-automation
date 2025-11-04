@@ -19,7 +19,11 @@ This repository contains serverless AWS Lambda functions that automate various t
 
 ## What's in this Repository?
 
-There are three primary, independent services running:
+This repository contains several independent services that automate various tasks for Asmbly. Each service is implemented as a serverless AWS Lambda function and managed via the AWS Serverless Application Model (SAM).
+
+### Core Services
+
+There are five primary, independent services running:
 
 1.  **Kiln Drop-Off Viewer (`KilnOpsDropoffRecentEntriesViewer`)**
     * **What it does:** Creates a public web page that displays recent Kiln Drop Off entries. This lets members see their confirmation of submitting a kiln form easily.
@@ -36,6 +40,12 @@ There are three primary, independent services running:
 4.  **Facilities Slack Purchase Reorder Interaction Handler (`FacilitiesSlackPurchaseReorderInteractionHandler`)**
     * **What it does:** Processes the submission from the purchase reorder Slack modal. It takes the user's selection and creates the actual purchase request task in ClickUp.
     * **How it's triggered:** An HTTP `POST` request from Slack's Interactivity endpoint when a user submits the modal opened by the `/reorder` command.
+
+5.  **Facilities Slack Problem Report Reaction Handler (`FacilitiesSlackProblemReportReactionWebhook`)**
+    *   **What it does:** Allows facilities team members to update the status of a problem report task in ClickUp by adding an emoji reaction (e.g., `:eyes:`, `:white_check_mark:`) to a Slack message that contains the task link.
+    *   **How it's triggered:** A `reaction_added` event from a Slack Event Subscription, which sends an HTTP `POST` request to an AWS API Gateway endpoint.
+
+
 
 ## How It's Managed (The Important Part!)
 
