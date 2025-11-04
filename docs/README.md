@@ -42,16 +42,14 @@ These services automate tasks related to facilities management, problem reportin
     *   **What it does:** Automatically fetches upcoming and overdue maintenance tasks from ClickUp and posts them as weekly reminders in the relevant Slack channels.
     *   **How it's triggered:** A scheduled cron job that runs every Saturday morning (via Amazon EventBridge).
 *   **Slack Purchase Reorder & Interaction Handler** (`FacilitiesSlackPurchaseReorderFunction`)
-    *   **What it does:** Handles the `/reorder` slash command to open a modal, manages user interactions within that modal (like filtering), and processes the final submission to create a purchase request task in ClickUp.
-    *   **How it's triggered:** An HTTP `POST` from a Slack slash command (to open) and from Slack's Interactivity endpoint (for modal updates and submission).
+    *   **What it does:** Handles the `/reorder` slash command to open a modal for creating purchase requests in ClickUp. It also processes interactions within that modal, like submissions.
+    *   **How it's triggered:** An HTTP `POST` from a Slack slash command to the `/SlackSlashReorder` API Gateway endpoint. This single endpoint handles both the initial command and subsequent user interactions (e.g., modal submissions).
 *   **Problem Report Reaction Handler** (`FacilitiesSlackProblemReportReactionWebhook`)
     *   **What it does:** Allows facilities team members to update the status of a problem report task in ClickUp by adding an emoji reaction (e.g., `:eyes:`, `:white_check_mark:`) to a Slack message that contains the task link.
     *   **How it's triggered:** Asynchronously invoked by the **Slack Event Router** when a reaction is added in a monitored channel.
 *   **Purchase Request Reaction Handler** (`FacilitiesSlackPurchaseReactionWebhook`)
     *   **What it does:** Allows facilities team members to update the status of a purchase request task in ClickUp by adding an emoji reaction (e.g., `:truck:`, `:house:`) to a Slack message that contains the task link.
     *   **How it's triggered:** Asynchronously invoked by the **Slack Event Router** when a reaction is added in a monitored channel.
-
-
 
 ## How It's Managed (The Important Part!)
 
