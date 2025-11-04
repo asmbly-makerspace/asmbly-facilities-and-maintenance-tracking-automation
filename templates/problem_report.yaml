@@ -15,6 +15,69 @@ Parameters:
     Description: The ARN of the shared Common Utilities Lambda Layer.
 
 Resources:
-  # This is a harmless placeholder to make the template valid
-  Placeholder:
-    Type: AWS::CloudFormation::WaitConditionHandle
+  ProblemReportReactionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [lambda.amazonaws.com]
+            Action: [sts:AssumeRole]
+      Policies:
+        - PolicyName: ProblemReportReactionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  # Note: The Discourse secret does not follow the stage prefix pattern
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:prod/discourse-facilities-bot-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenance-bot-token-*'
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/config/reaction-handler/problem-report'
+      Tags:
+        - Key: Project
+          Value: slack-reaction-problem-report
+        - Key: Workspace
+          Value: facilities
+        - Key: Stage
+          Value: !Ref Stage
+
+  ProblemReportReactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "ProblemReport-ReactionFunction-${Stage}"
+      Description: "Handles a Slack reaction on a problem report to update ClickUp and Discourse."
+      CodeUri: ../functions/problem_report/slack_reaction_webhook/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      MemorySize: 512
+      Timeout: 20 # Increased timeout for multiple API calls
+      Role: !GetAtt ProblemReportReactionRole.Arn
+      Layers:
+        - !Ref RequestsLayerARN
+        - !Ref CommonLayerARN
+      Environment:
+        Variables:
+          REACTION_MAP_PARAMETER_NAME: !Sub "/${Stage}/config/reaction-handler/problem-report"
+      Tags:
+        Project: slack-reaction-problem-report
+        Workspace: facilities
+        Stage: !Ref Stage
+
+Outputs:
+  ProblemReportReactionFunctionArn:
+    Description: "The ARN of the Slack Reaction Webhook Lambda Function for Problem Reports"
+    Value: !GetAtt ProblemReportReactionFunction.Arn

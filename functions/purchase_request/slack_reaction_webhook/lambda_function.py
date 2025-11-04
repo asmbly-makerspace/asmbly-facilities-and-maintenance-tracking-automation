@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import boto3
-from common import reaction_processing
+from common import reaction_processing, aws, clickup
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -32,10 +32,19 @@ def lambda_handler(event, context):
         parameter = ssm_client.get_parameter(Name=reaction_map_parameter_name)
         reaction_to_status = json.loads(parameter['Parameter']['Value'])
 
-        # Call the shared logic with the freshly loaded config
+        # Call the shared logic to parse the event
         result = reaction_processing.process_base_reaction(
             body, reaction_to_status, SLACK_SECRET_NAME, CLICKUP_SECRET_NAME
         )
+
+        # If the base processing was successful, perform the ClickUp update
+        if result.get("status") == "success":
+            task_id = result["task_id"]
+            reaction = result["reaction"]
+            new_status = reaction_to_status[reaction]
+
+            clickup_api_token = aws.get_secret(CLICKUP_SECRET_NAME, "CLICKUP_API_TOKEN")
+            clickup.update_task(clickup_api_token, task_id, {"status": new_status})
 
         logger.info(f"Processing result: {result}")
         return {"statusCode": 200, "body": json.dumps("Request processed successfully.")}

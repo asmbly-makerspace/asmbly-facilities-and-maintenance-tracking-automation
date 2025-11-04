@@ -56,14 +56,14 @@ Resources:
                 uri:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn}/invocations"
               responses: {}
-#          /problem-report/slack-reaction:
-#            post:
-#              x-amazon-apigateway-integration:
-#                httpMethod: POST
-#                type: aws_proxy
-#                uri:
-#                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProblemReportStack.Outputs.ProblemReportReactionFunctionArn}/invocations"
-#              responses: {}
+          /problem-report/slack-reaction:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProblemReportStack.Outputs.ProblemReportReactionFunctionArn}/invocations"
+              responses: {}
 
   RequestsLambdaLayer:
     Type: AWS::Serverless::LayerVersion
@@ -146,14 +146,14 @@ Resources:
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
 
-#  ProblemReportStack:
-#    Type: AWS::Serverless::Application
-#    Properties:
-#      Location: ./templates/problem_report.yaml
-#      Parameters:
-#        Stage: !Ref Stage
-#        CommonLayerARN: !Ref CommonLayer
-#        RequestsLayerARN: !Ref RequestsLambdaLayer
+  ProblemReportStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./templates/problem_report.yaml
+      Parameters:
+        Stage: !Ref Stage
+        CommonLayerARN: !Ref CommonLayer
+        RequestsLayerARN: !Ref RequestsLambdaLayer
 
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
@@ -171,13 +171,13 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
 
-#  ProblemReportReactionInvokePermission:
-#    Type: AWS::Lambda::Permission
-#    Properties:
-#      FunctionName: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
-#      Action: lambda:InvokeFunction
-#      Principal: apigateway.amazonaws.com
-#      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
+  ProblemReportReactionInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
 
   CeramicsInvokePermission:
     Type: AWS::Lambda::Permission
