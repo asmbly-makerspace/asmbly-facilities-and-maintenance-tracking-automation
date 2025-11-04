@@ -30,8 +30,12 @@ There are three primary, independent services running:
     * **How it's triggered:** A scheduled cron job that runs every Saturday morning (via Amazon EventBridge).
 
 3.  **Facilities Slack Purchase Reorder (`FacilitiesSlackPurchaseReorderFunction`)**
-    * **What it does:** Provides a Slack command that opens a modal, allowing users to select a standard inventory item and create a purchase request for it in ClickUp.
+    * **What it does:** Handles the initial `/reorder` slash command from Slack and opens a modal, allowing users to select a standard inventory item for reordering.
     * **How it's triggered:** An HTTP `POST` request via an AWS API Gateway endpoint, which is configured as the endpoint for a Slack slash command.
+
+4.  **Facilities Slack Purchase Reorder Interaction Handler (`FacilitiesSlackPurchaseReorderInteractionHandler`)**
+    * **What it does:** Processes the submission from the purchase reorder Slack modal. It takes the user's selection and creates the actual purchase request task in ClickUp.
+    * **How it's triggered:** An HTTP `POST` request from Slack's Interactivity endpoint when a user submits the modal opened by the `/reorder` command.
 
 ## How It's Managed (The Important Part!)
 
