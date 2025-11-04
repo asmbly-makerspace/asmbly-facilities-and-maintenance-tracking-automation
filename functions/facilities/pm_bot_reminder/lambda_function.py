@@ -137,7 +137,8 @@ def lambda_handler(event, context):
                 channel_to_attempt=task.channel,
                 text=message,
                 bot_name=BOT_NAME,
-                icon_emoji=BOT_ICON_EMOJI
+                icon_emoji=BOT_ICON_EMOJI,
+                dry_run=DRY_RUN
             )
 
             # Check if the main message was sent successfully and if a description exists
@@ -158,7 +159,8 @@ def lambda_handler(event, context):
                     text=task.task_description,
                     bot_name=BOT_NAME,
                     icon_emoji=BOT_ICON_EMOJI,
-                    thread_ts=parent_message_ts
+                    thread_ts=parent_message_ts,
+                    dry_run=DRY_RUN
                 )
 
             # Main rate-limiting delay between processing each task

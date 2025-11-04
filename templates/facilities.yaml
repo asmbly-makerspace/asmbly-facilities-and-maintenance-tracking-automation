@@ -13,6 +13,9 @@ Parameters:
     Type: String
     Description: The ARN of the shared Common Utilities Lambda Layer.
 
+Conditions:
+  IsProd: !Equals [!Ref Stage, 'prod']
+
 Resources:
   # --- Facilities: PM Reminder Bot ---
   PMReminderBotLambdaRole:
@@ -71,7 +74,7 @@ Resources:
         - !Ref CommonLayerARN
       Environment:
         Variables:
-          DRY_RUN: 'false'
+          DRY_RUN: !If [IsProd, 'false', 'true']
           BOT_ICON_EMOJI: ':hammer_and_wrench:'
           BOT_NAME: 'PM Bot'
           CLICKUP_LIST_ID: '901310894771'

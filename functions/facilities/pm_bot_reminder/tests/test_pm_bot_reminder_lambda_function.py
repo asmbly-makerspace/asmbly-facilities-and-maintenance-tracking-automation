@@ -1,8 +1,7 @@
 import json
-import os
 import importlib
 import pathlib
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -185,3 +184,46 @@ def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, cap
     captured = capsys.readouterr()
     assert "--- FATAL ERROR in handler:" in captured.out
     assert "Traceback (most recent call last):" in captured.err
+
+
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
+@patch('functions.facilities.pm_bot_reminder.lambda_function.requests.post')
+def test_lambda_handler_dry_run_mode(mock_requests_post, mock_get_tasks, mock_get_secret, monkeypatch, reload_lambda_function, capsys):
+    """Test that DRY_RUN=true prevents actual Slack API calls and prints to stdout."""
+    # --- Mocks & Fixture Setup ---
+    # Instead of reloading the module, directly patch the DRY_RUN flag within it.
+    monkeypatch.setattr(lambda_function, 'DRY_RUN', True)
+ 
+    overdue_tasks = [{
+        'id': 't1', 'name': 'Overdue Task', 'text_content': 'Overdue Description', 'time_status': 'Overdue',
+        'custom_fields': [
+            {'id': 'ws-field-id', 'type': 'drop_down', 'value': 0, 'type_config': {'options': [{'name': 'Woodshop', 'orderindex': 0}]}},
+            {'id': 'asset-field-id', 'value': 'Table Saw'},
+            {'id': 'freq-field-id', 'value': 'Weekly'}
+        ]
+    }]
+ 
+    # Configure mocks (now passed in as arguments)
+    mock_get_secret.side_effect = ['clickup-token', 'slack-token']
+    # The handler calls get_tasks twice (overdue, upcoming).
+    # Provide the data for the first call and an empty list for the second.
+    mock_get_tasks.side_effect = [overdue_tasks, []]
+
+    # --- Execute ---
+    result = lambda_function.lambda_handler({}, None)
+
+    # --- Assertions ---
+    assert result['statusCode'] == 200
+    assert "Successfully processed 1 tasks" in result['body']
+
+    # Crucially, assert that no web requests were made
+    mock_requests_post.assert_not_called()
+
+    # Check that the dry run output was printed to the console
+    captured = capsys.readouterr()
+    stdout = captured.out
+    assert "--- DRY RUN MODE ---" in stdout
+    assert "Would send to channel: woodshop" in stdout
+    assert "[OVERDUE] woodshop - Table Saw" in stdout # Check main message
+    assert "Overdue Description" in stdout # Check threaded reply
