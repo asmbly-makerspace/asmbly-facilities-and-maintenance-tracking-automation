@@ -1,19 +1,6 @@
 import json
 import os
-import boto3
-from common import clickup, slack
-
-
-def get_secret(secret_name):
-    """Retrieve a secret from AWS Secrets Manager."""
-    try:
-        session = boto3.session.Session()
-        client = session.client(service_name='secretsmanager')
-        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-        return get_secret_value_response['SecretString']
-    except Exception as e:
-        print(f"Error retrieving secret {secret_name}: {e}")
-        raise e
+from common import clickup, slack, aws
 
 
 def get_slack_post_url(channel_id, message_ts):
@@ -51,8 +38,8 @@ def lambda_handler(event, context):
     slack_post_field_id = os.environ.get('SLACK_POST_FIELD_ID')
 
     # --- Get API Tokens ---
-    clickup_api_token = get_secret(clickup_secret_name)
-    slack_api_token = get_secret(slack_secret_name)
+    clickup_api_token = aws.get_secret(clickup_secret_name, "CLICKUP_API_TOKEN")
+    slack_api_token = aws.get_secret(slack_secret_name, "SLACK_MAINTENANCE_BOT_TOKEN")
 
     try:
         body = json.loads(event.get('body', '{}'))
