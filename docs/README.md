@@ -50,6 +50,9 @@ These services automate tasks related to facilities management, problem reportin
 *   **Purchase Request Reaction Handler** (`FacilitiesSlackPurchaseReactionWebhook`)
     *   **What it does:** Allows facilities team members to update the status of a purchase request task in ClickUp by adding an emoji reaction (e.g., `:truck:`, `:house:`) to a Slack message that contains the task link.
     *   **How it's triggered:** Asynchronously invoked by the **Slack Event Router** when a reaction is added in a monitored channel.
+*   **New Purchase Request Handler** (`NewPurchaseRequestReceivedFunction`)
+    *   **What it does:** Listens for new purchase request tasks created in ClickUp. It then posts a detailed notification to a Slack channel and updates the original ClickUp task with a permalink to the Slack message.
+    *   **How it's triggered:** An HTTP `POST` from a ClickUp webhook to its dedicated API Gateway endpoint.
 
 ## How It's Managed (The Important Part!)
 

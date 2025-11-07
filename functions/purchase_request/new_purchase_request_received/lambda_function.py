@@ -37,18 +37,18 @@ def lambda_handler(event, context):
     item_type_field_id = os.environ.get('ITEM_TYPE_FIELD_ID')
     slack_post_field_id = os.environ.get('SLACK_POST_FIELD_ID')
 
-    # --- Get API Tokens ---
-    clickup_api_token = aws.get_secret(clickup_secret_name, "CLICKUP_API_TOKEN")
-    slack_api_token = aws.get_secret(slack_secret_name, "SLACK_MAINTENANCE_BOT_TOKEN")
-
     try:
         body = json.loads(event.get('body', '{}'))
         task = body.get('payload')
 
         if not task:
-            return {'statusCode': 400, 'body': json.dumps('Invalid payload: missing task.')}
+            # Fail early if the payload is invalid, before making any API calls.
+            return {'statusCode': 400, 'body': json.dumps('Invalid payload: missing payload.')}
 
         task_id = task.get('id')
+        if not task_id:
+            return {'statusCode': 400, 'body': json.dumps('Invalid payload: missing task ID.')}
+
         task_name = task.get('name')
         task_url = f"https://app.clickup.com/t/{task_id}"
         task_description = task.get('text_content', 'No description provided.')
@@ -56,6 +56,10 @@ def lambda_handler(event, context):
         # --- Fetch Full Task Details to get Custom Field Values ---
         # The webhook payload has a different structure for custom fields.
         # We fetch the task again to get the standard format.
+        # Now that we have a valid task ID, we can fetch secrets.
+        clickup_api_token = aws.get_secret(clickup_secret_name, "CLICKUP_API_TOKEN")
+        slack_api_token = aws.get_secret(slack_secret_name, "SLACK_MAINTENANCE_BOT_TOKEN")
+
         full_task = clickup.get_task(clickup_api_token, task_id)
 
         # --- Extract Custom Field Values ---
