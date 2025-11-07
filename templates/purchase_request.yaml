@@ -146,6 +146,74 @@ Resources:
         Workspace: facilities
         Stage: !Ref Stage
 
+  NewPurchaseRequestReceivedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [lambda.amazonaws.com]
+            Action: [sts:AssumeRole]
+      Policies:
+        - PolicyName: NewPurchaseRequestReceivedPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
+      Tags:
+        - Key: Project
+          Value: new-purchase-request-received
+        - Key: Workspace
+          Value: facilities
+        - Key: Stage
+          Value: !Ref Stage
+
+  NewPurchaseRequestReceivedFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "NewPurchaseRequestReceivedFunction-${Stage}"
+      Description: "Handles a ClickUp webhook for new purchase requests, posts to Slack, and updates the task."
+      CodeUri: ../functions/purchase_request/new_purchase_request_received/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      MemorySize: 512
+      Timeout: 15
+      Role: !GetAtt NewPurchaseRequestReceivedRole.Arn
+      Layers:
+        - !Ref RequestsLayerARN
+        - !Ref CommonLayerARN
+      Environment:
+        Variables:
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
+          SLACK_CHANNEL: 'purchase_request'
+          SLACK_BOT_NAME: 'Purchase Bot'
+          SLACK_BOT_EMOJI: ':moneybag:'
+          SLACK_WORKSPACE_URL: 'https://asmbly-makerspace.slack.com'
+          ASSET_NAME_FIELD_ID: '487e2b73-8329-4ce2-a0a1-1b83a6069ed1'
+          REQUESTOR_NAME_FIELD_ID: '6ec94778-d4a6-4f54-94a6-59769db1ba57'
+          SUPPLIER_LINK_FIELD_ID: 'c25e5cb5-e38f-4ae7-adae-d3620d9157bc'
+          WORKSPACE_FIELD_ID: 'f4923783-74db-42ca-bda3-82bbca58abfe'
+          ITEM_TYPE_FIELD_ID: 'f73725e4-d2fa-4187-9241-712af6fadb89'
+          SLACK_POST_FIELD_ID: '5bfc5aac-d5cd-44d5-ac27-71016046e63c'
+      Tags:
+        Project: new-purchase-request-received
+        Workspace: facilities
+        Stage: !Ref Stage
+
 Outputs:
   SlackSlashReorderFunctionArn:
     Description: "The ARN of the Slack Slash Reorder Lambda Function"
@@ -153,3 +221,6 @@ Outputs:
   PurchaseRequestReactionFunctionArn:
     Description: "The ARN of the Slack Reaction Webhook Lambda Function"
     Value: !GetAtt PurchaseRequestReactionFunction.Arn
+  NewPurchaseRequestReceivedFunctionArn:
+    Description: "The ARN of the New Purchase Request Received Lambda Function"
+    Value: !GetAtt NewPurchaseRequestReceivedFunction.Arn
