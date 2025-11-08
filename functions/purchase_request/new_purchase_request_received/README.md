@@ -95,7 +95,7 @@ This function relies on several environment variables for its configuration, whi
 
 ### Slack Configuration
 
-*   `SLACK_CHANNEL`: The target Slack channel for notifications (e.g., `purchase_request`).
+*   `SLACK_CHANNEL_ID`: The ID of the target Slack channel for notifications (e.g., `C012AB34CD`).
 *   `SLACK_BOT_NAME`: The display name for the bot when it posts a message.
 *   `SLACK_BOT_EMOJI`: The emoji icon for the bot.
 *   `SLACK_WORKSPACE_URL`: The base URL of the Slack workspace, required for generating permalinks.

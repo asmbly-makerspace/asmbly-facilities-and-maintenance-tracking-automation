@@ -23,27 +23,44 @@ def lambda_handler(event, context):
     the ClickUp task with a link to the Slack notification.
     """
     # --- Environment Variables ---
-    clickup_secret_name = os.environ.get('CLICKUP_SECRET_NAME')
-    slack_secret_name = os.environ.get('SLACK_MAINTENANCE_BOT_SECRET_NAME')
-    slack_channel = os.environ.get('SLACK_CHANNEL', 'purchase_request')
+    # Fail fast if any required environment variables are missing.
+    required_env_vars = {
+        'CLICKUP_SECRET_NAME',
+        'SLACK_MAINTENANCE_BOT_SECRET_NAME',
+        'SLACK_CHANNEL_ID',
+        'SLACK_WORKSPACE_URL',
+        'ASSET_NAME_FIELD_ID',
+        'REQUESTOR_NAME_FIELD_ID',
+        'SUPPLIER_LINK_FIELD_ID',
+        'WORKSPACE_FIELD_ID',
+        'ITEM_TYPE_FIELD_ID',
+        'SLACK_POST_FIELD_ID'
+    }
+    missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
+    if missing_vars:
+        error_message = f"Missing required environment variables: {', '.join(missing_vars)}"
+        print(error_message)
+        return {'statusCode': 500, 'body': json.dumps(error_message)}
+
+    clickup_secret_name = os.environ['CLICKUP_SECRET_NAME']
+    slack_secret_name = os.environ['SLACK_MAINTENANCE_BOT_SECRET_NAME']
+    slack_channel_id = os.environ['SLACK_CHANNEL_ID']
     slack_bot_name = os.environ.get('SLACK_BOT_NAME', 'Purchase Bot')
     slack_bot_emoji = os.environ.get('SLACK_BOT_EMOJI', ':moneybag:')
-
-    # --- Custom Field IDs ---
-    asset_name_field_id = os.environ.get('ASSET_NAME_FIELD_ID')
-    requestor_name_field_id = os.environ.get('REQUESTOR_NAME_FIELD_ID')
-    supplier_link_field_id = os.environ.get('SUPPLIER_LINK_FIELD_ID')
-    workspace_field_id = os.environ.get('WORKSPACE_FIELD_ID')
-    item_type_field_id = os.environ.get('ITEM_TYPE_FIELD_ID')
-    slack_post_field_id = os.environ.get('SLACK_POST_FIELD_ID')
+    slack_post_field_id = os.environ['SLACK_POST_FIELD_ID']
 
     try:
         body = json.loads(event.get('body', '{}'))
-        task = body.get('payload')
 
-        if not task:
-            # Fail early if the payload is invalid, before making any API calls.
-            return {'statusCode': 400, 'body': json.dumps('Invalid payload: missing payload.')}
+        # ClickUp sends a test payload that is just a string.
+        # Real events have a 'trigger_id'. If it's missing, it's either a test
+        # or an event we don't care about. Respond with 200 to satisfy the test.
+        if 'trigger_id' not in body:
+            print("Received a request without a 'trigger_id'. Likely a ClickUp test. Responding with 200 OK.")
+            return {'statusCode': 200, 'body': json.dumps('Webhook test successful or unhandled event type.')}
+
+        task = body.get('payload')
+        if not task: return {'statusCode': 400, 'body': json.dumps('Invalid payload: missing task payload.')}
 
         task_id = task.get('id')
         if not task_id:
@@ -63,11 +80,11 @@ def lambda_handler(event, context):
         full_task = clickup.get_task(clickup_api_token, task_id)
 
         # --- Extract Custom Field Values ---
-        asset_name = clickup.get_custom_field_value(full_task, asset_name_field_id)
-        requestor_name = clickup.get_custom_field_value(full_task, requestor_name_field_id)
-        supplier_link = clickup.get_custom_field_value(full_task, supplier_link_field_id)
-        workspace = clickup.get_custom_field_value(full_task, workspace_field_id)
-        item_type = clickup.get_custom_field_value(full_task, item_type_field_id)
+        asset_name = clickup.get_custom_field_value(full_task, os.environ['ASSET_NAME_FIELD_ID'])
+        requestor_name = clickup.get_custom_field_value(full_task, os.environ['REQUESTOR_NAME_FIELD_ID'])
+        supplier_link = clickup.get_custom_field_value(full_task, os.environ['SUPPLIER_LINK_FIELD_ID'])
+        workspace = clickup.get_custom_field_value(full_task, os.environ['WORKSPACE_FIELD_ID'])
+        item_type = clickup.get_custom_field_value(full_task, os.environ['ITEM_TYPE_FIELD_ID'])
 
         # --- 1. Send Slack Notification ---
         message_lines = [
@@ -85,7 +102,7 @@ def lambda_handler(event, context):
 
         slack_response = slack.send_slack_message(
             token=slack_api_token,
-            channel_to_attempt=slack_channel,
+            channel_to_attempt=slack_channel_id,
             text=slack_message_text,
             bot_name=slack_bot_name,
             icon_emoji=slack_bot_emoji
@@ -98,10 +115,12 @@ def lambda_handler(event, context):
 
         # --- 2. Update ClickUp Task with Slack Post URL ---
         slack_post_url = get_slack_post_url(slack_response['channel'], slack_response['ts'])
-        if slack_post_url and slack_post_field_id:
-            update_payload = {"custom_fields": [{"id": slack_post_field_id, "value": slack_post_url}]}
-            clickup.update_task(clickup_api_token, task_id, update_payload)
-            print(f"Successfully updated task {task_id} with Slack post URL.")
+        print(f"Generated Slack permalink: {slack_post_url}")
+
+        print(f"Attempting to set custom field '{slack_post_field_id}' on task {task_id}.")
+        update_response = clickup.set_custom_field_value(clickup_api_token, task_id, slack_post_field_id, slack_post_url)
+        print(f"Received response from ClickUp update API: {json.dumps(update_response)}")
+        print(f"Successfully updated task {task_id} with Slack post URL.")
 
         return {'statusCode': 200, 'body': json.dumps('Successfully processed purchase request.')}
 

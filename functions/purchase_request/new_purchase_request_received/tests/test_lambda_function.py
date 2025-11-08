@@ -39,7 +39,7 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
         self.mock_env_vars = {
             'CLICKUP_SECRET_NAME': 'test_clickup_secret',
             'SLACK_MAINTENANCE_BOT_SECRET_NAME': 'test_slack_secret',
-            'SLACK_CHANNEL': 'test_purchases',
+            'SLACK_CHANNEL_ID': 'C12345',
             'SLACK_BOT_NAME': 'Test Purchase Bot',
             'SLACK_BOT_EMOJI': ':test_tube:',
             'SLACK_WORKSPACE_URL': 'https://test-workspace.slack.com',
@@ -121,24 +121,30 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
         mock_clickup.update_task.assert_called_once_with('fake-clickup-token', '86ad43ft6', expected_update_payload)
 
     @patch.dict(os.environ, {})
+    def test_lambda_handler_clickup_test_webhook(self):
+        """Test that the handler correctly processes ClickUp's test webhook payload."""
+        os.environ.update(self.mock_env_vars)
+
+        # ClickUp's test payload is a simple JSON object without a 'trigger_id'
+        test_payload = {"body": "Test message from ClickUp Webhooks Service"}
+        event = {'body': json.dumps(test_payload)}
+
+        result = lambda_handler(event, None)
+
+        self.assertEqual(result['statusCode'], 200)
+        self.assertEqual(json.loads(result['body']), 'Webhook test successful or unhandled event type.')
+
+    @patch.dict(os.environ, {})
     @patch('functions.purchase_request.new_purchase_request_received.lambda_function.aws')
     def test_lambda_handler_invalid_payload(self, mock_aws):
-        """Test handler response when the event payload is missing or invalid."""
+        """Test handler response when a real event payload is missing required keys."""
         os.environ.update(self.mock_env_vars)
-        # This test should not make any external calls.
-        # We patch 'aws' to ensure get_secret is not called.
-        
-        # Test with empty body
-        event_empty = {'body': '{}'}
-        result_empty = lambda_handler(event_empty, None)
-        self.assertEqual(result_empty['statusCode'], 400)
-        self.assertIn('Invalid payload', result_empty['body'])
 
-        # Test with body missing 'payload' key
-        event_no_payload = {'body': json.dumps({"some_other_key": "value"})}
+        # A real event will have a trigger_id but might be missing the task payload
+        event_no_payload = {'body': json.dumps({"trigger_id": "some-trigger-id"})}
         result_no_payload = lambda_handler(event_no_payload, None)
         self.assertEqual(result_no_payload['statusCode'], 400)
-        self.assertIn('Invalid payload', result_no_payload['body'])
+        self.assertIn('Invalid payload: missing task payload.', result_no_payload['body'])
 
         # Verify no secrets were fetched
         mock_aws.get_secret.assert_not_called()

@@ -199,7 +199,7 @@ Resources:
         Variables:
           CLICKUP_SECRET_NAME: 'clickup/api/token'
           SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
-          SLACK_CHANNEL: 'purchase_request'
+          SLACK_CHANNEL_ID: 'C026YVA7TK3' # <-- Replace with your actual channel ID
           SLACK_BOT_NAME: 'Purchase Bot'
           SLACK_BOT_EMOJI: ':moneybag:'
           SLACK_WORKSPACE_URL: 'https://asmbly-makerspace.slack.com'
