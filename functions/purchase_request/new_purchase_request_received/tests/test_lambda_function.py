@@ -86,7 +86,7 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
             'channel': 'C12345',
             'ts': '1234567890.123456'
         }
-        mock_clickup.update_task.return_value = {'ok': True}
+        mock_clickup.set_custom_field_value.return_value = {'id': '86ad43ft6'} # Mock a successful response
 
         # --- Create the event ---
         event = {'body': json.dumps(self.clickup_webhook_payload)}
@@ -117,8 +117,7 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
 
         # Verify ClickUp task was updated with the Slack permalink
         expected_slack_url = "https://test-workspace.slack.com/archives/C12345/p1234567890123456"
-        expected_update_payload = {"custom_fields": [{"id": "SLACK_POST_FIELD_ID", "value": expected_slack_url}]}
-        mock_clickup.update_task.assert_called_once_with('fake-clickup-token', '86ad43ft6', expected_update_payload)
+        mock_clickup.set_custom_field_value.assert_called_once_with('fake-clickup-token', '86ad43ft6', 'SLACK_POST_FIELD_ID', expected_slack_url)
 
     @patch.dict(os.environ, {})
     def test_lambda_handler_clickup_test_webhook(self):
@@ -170,7 +169,7 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
         self.assertEqual(json.loads(result['body']), 'Failed to send Slack message.')
         
         # Ensure we did not try to update the ClickUp task
-        mock_clickup.update_task.assert_not_called()
+        mock_clickup.set_custom_field_value.assert_not_called()
 
     @patch('functions.purchase_request.new_purchase_request_received.lambda_function.aws')
     @patch('functions.purchase_request.new_purchase_request_received.lambda_function.clickup')
@@ -194,35 +193,19 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
         # Ensure Slack message was not sent
         mock_slack.send_slack_message.assert_not_called()
 
-    @patch('functions.purchase_request.new_purchase_request_received.lambda_function.aws')
-    @patch('functions.purchase_request.new_purchase_request_received.lambda_function.clickup')
-    @patch('functions.purchase_request.new_purchase_request_received.lambda_function.slack')
     @patch.dict(os.environ, {})
-    def test_no_slack_url_update_if_env_var_missing(self, mock_slack, mock_clickup, mock_aws):
-        """Test that ClickUp is not updated if SLACK_WORKSPACE_URL is missing."""
+    def test_missing_environment_variable(self):
+        """Test that the function fails fast if a required environment variable is missing."""
         # Remove the specific env var for this test
         test_vars = self.mock_env_vars.copy()
         del test_vars['SLACK_WORKSPACE_URL']
         os.environ.update(test_vars)
 
-        # --- Mock external calls ---
-        mock_aws.get_secret.return_value = 'fake-token'
-        mock_clickup.get_task.return_value = self.mock_full_task_details
-        mock_slack.send_slack_message.return_value = {
-            'ok': True,
-            'channel': 'C12345',
-            'ts': '1234567890.123456'
-        }
-
         event = {'body': json.dumps(self.clickup_webhook_payload)}
         result = lambda_handler(event, None)
 
-        # --- Assertions ---
-        self.assertEqual(result['statusCode'], 200) # The function should still succeed
-        
-        # Verify ClickUp task was NOT updated
-        mock_clickup.update_task.assert_not_called()
-
+        self.assertEqual(result['statusCode'], 500)
+        self.assertIn("Missing required environment variables: SLACK_WORKSPACE_URL", result['body'])
 
 if __name__ == '__main__':
     unittest.main()
