@@ -48,6 +48,16 @@ Resources:
                 uri:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CeramicsStack.Outputs.KilnDropoffViewerFunctionArn}/invocations"
               responses: {}
+
+          /purchase-request/new:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PurchaseRequestStack.Outputs.NewPurchaseRequestReceivedFunctionArn}/invocations"
+              responses: {}
+
           /purchase-request/slack-reaction:
             post:
               x-amazon-apigateway-integration:
@@ -203,6 +213,14 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
+
+  NewPurchaseRequestInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt PurchaseRequestStack.Outputs.NewPurchaseRequestReceivedFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"

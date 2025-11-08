@@ -54,8 +54,28 @@ def create_task(api_token, list_id, payload):
 
 def update_task(api_token, task_id, payload):
     """Updates a ClickUp task."""
-    return _make_clickup_request(api_token, "PUT", f"task/{task_id}", json=payload)
+    response_data = _make_clickup_request(api_token, "PUT", f"task/{task_id}", json=payload)
 
+    # ClickUp can return 200 OK but include an error in the body.
+    # A successful update returns the full task object. A failure might return
+    # a different structure or an error message.
+    if 'id' not in response_data or response_data.get('id') != task_id:
+        error_message = f"ClickUp task update for {task_id} returned 200 OK but the response body indicates a failure. Response: {json.dumps(response_data)}"
+        print(error_message)
+        # We can also check for a specific error key if ClickUp uses one.
+        if 'err' in response_data:
+            error_message += f" | ClickUp Error: {response_data['err']}"
+        
+        raise ValueError(error_message)
+
+    return response_data
+
+def set_custom_field_value(api_token, task_id, field_id, value):
+    """Sets the value of a single custom field on a task."""
+    endpoint = f"task/{task_id}/field/{field_id}"
+    payload = {"value": value}
+    # This endpoint returns 200 OK with the task object on success.
+    return _make_clickup_request(api_token, "POST", endpoint, json=payload)
 
 def get_custom_field_value(task, field_id):
     """
