@@ -4,8 +4,9 @@
 
 - [Prerequisites](#prerequisites)
 - [Architecture Overview](#architecture-overview)
-- [Building the Project](#building-the-project)
-- [Deployment Workflow](#deployment-workflow)
+- [Automated Production Deployment (via GitHub Actions)](#automated-production-deployment-via-github-actions)
+  - [The Deployment Pipeline](#the-deployment-pipeline)
+- [Manual Deployment (for Dev & Stage)](#manual-deployment-for-dev--stage)
 
 ## Prerequisites
 
@@ -27,9 +28,28 @@ The logical IDs for the stacks are defined in the root `template.yaml` file:
 *   `CeramicsStack`
 *   `ProblemReportStack`
 
-## Building the Project
+## Automated Production Deployment (via GitHub Actions)
 
-Before deploying, you must build the project from the **root directory**. The `sam build` command processes all templates (root and nested) and prepares the code and dependencies for deployment.
+The `prod` environment is deployed automatically. **Any push or merge to the `main` branch will trigger the `Deploy Production Pipeline` workflow.** This ensures that the production environment is always in sync with the `main` branch.
+
+You should not need to deploy to `prod` manually.
+
+### The Deployment Pipeline
+
+The automated workflow consists of two main jobs:
+
+1.  **Deploy to AWS:**
+    *   This job builds the SAM application inside a Docker container that mimics the Lambda environment.
+    *   It then deploys all the AWS resources defined in the templates to the `prod` environment.
+
+2.  **Update Slack Event URL:**
+    *   This job runs only after the AWS deployment succeeds.
+    *   It executes the `scripts/update_slack_manifest.py` Python script.
+    *   This script fetches the newly deployed API Gateway URL from the CloudFormation stack outputs and programmatically updates the Slack App's "Event Subscription URL" via the Slack API. This keeps the Slack integration pointing to the correct live endpoint without any manual intervention.
+
+## Manual Deployment (for Dev & Stage)
+
+Before deploying manually, you must build the project from the **root directory**. The `sam build` command processes all templates (root and nested) and prepares the code and dependencies for deployment.
 
 ```bash
 sam build
@@ -37,7 +57,7 @@ sam build
 
 This command only needs to be run once, even if you plan to deploy individual stacks.
 
-## Deployment Workflow
+### Manual Deployment Workflow
 
 This project is configured to deploy to multiple stages (e.g., `dev`, `stage`, `prod`). The deployment process uses the AWS SAM CLI.
 
@@ -45,7 +65,7 @@ The `samconfig.toml` file is pre-configured for `dev`, `stage`, and `prod` envir
 
 ### Environment Strategy
 
-Each environment serves a specific purpose in our development lifecycle.
+Each environment serves a specific purpose in our development lifecycle. Manual deployments should be targeted at `dev` and `stage`.
 
 *   **`dev` (Development)**
     *   **Purpose:** The `dev` environment is for active development and rapid iteration.
@@ -59,7 +79,7 @@ Each environment serves a specific purpose in our development lifecycle.
     *   **Purpose:** This is the live environment used by end-users.
     *   **Expectations:** Deployments to `prod` are the most critical. Code should only be deployed to production after it has been thoroughly verified in `stage`, all automated tests are passing, and manual workflow tests have been completed. **Do not deploy to `prod` if there is any risk of breaking existing functionality.**
 
-### Deploying All Stacks
+### Deploying All Stacks Manually
 
 To deploy the entire application, including all nested stacks, run the `sam deploy` command from the root directory without specifying a stack.
 

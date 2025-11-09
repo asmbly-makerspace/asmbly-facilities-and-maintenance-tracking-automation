@@ -1,8 +1,7 @@
 import json
-import os
 import importlib
 import pathlib
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -16,7 +15,7 @@ LAMBDA_FUNCTION_PATH = "functions.ceramics.kiln_dropoff_recent_entries_viewer.la
 def mock_env_vars(monkeypatch):
     """Mock environment variables for the Lambda function."""
     monkeypatch.setenv('SECRET_NAME', 'test/clickup/token')
-    monkeypatch.setenv('CLICKUP_LIST_KILNDROP_ID', '123456789')
+    monkeypatch.setenv('CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME', '/test/config/clickup/ceramics')
 
 
 @pytest.fixture
@@ -78,11 +77,13 @@ def test_generate_error_page():
 
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
-def test_lambda_handler_success(mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function, mock_tasks_from_file):
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+def test_lambda_handler_success(mock_get_json_param, mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function, mock_tasks_from_file):
     """Test the full success path of the lambda_handler."""
     # Arrange
     mock_get_secret.return_value = 'fake-token'
     mock_data = mock_tasks_from_file() # Get a fresh copy of the data
+    mock_get_json_param.return_value = '123456789' # Mock the list ID
 
     # We need to add date_created to all tasks for this to work because the fixture lacks it.
     for i, task in enumerate(mock_data['tasks']):
@@ -91,6 +92,9 @@ def test_lambda_handler_success(mock_get_all_clickup_tasks, mock_get_secret, rel
 
     # Act
     result = lambda_function.lambda_handler({}, None)
+
+    # Assert mocks were called
+    mock_get_json_param.assert_called_with('/test/config/clickup/ceramics', 'list_id')
 
     # Assert
     assert result['statusCode'] == 200
@@ -106,10 +110,12 @@ def test_lambda_handler_success(mock_get_all_clickup_tasks, mock_get_secret, rel
 
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
-def test_lambda_handler_clickup_api_error(mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function):
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+def test_lambda_handler_clickup_api_error(mock_get_json_param, mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function):
     """Test the handler's response to a ClickUp API error."""
     # Arrange
     mock_get_secret.return_value = 'fake-token'
+    mock_get_json_param.return_value = '123456789'
     mock_get_all_clickup_tasks.side_effect = ValueError("401 Client Error: Unauthorized for url")
 
     # Act
@@ -123,7 +129,7 @@ def test_lambda_handler_clickup_api_error(mock_get_all_clickup_tasks, mock_get_s
 def test_lambda_handler_missing_env_var(reload_lambda_function, monkeypatch):
     """Test the handler's response when a required environment variable is missing."""
     # Arrange
-    monkeypatch.delenv('CLICKUP_LIST_KILNDROP_ID')
+    monkeypatch.delenv('CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME')
     importlib.reload(lambda_function) # Reload to pick up the deleted env var
 
     # Act
@@ -132,13 +138,16 @@ def test_lambda_handler_missing_env_var(reload_lambda_function, monkeypatch):
     # Assert
     assert result['statusCode'] == 500
     assert "<h2>An Error Occurred</h2>" in result['body']
-    assert "Server configuration error: Missing List ID" in result['body']
+    assert "Server configuration error: Missing ClickUp config parameter name." in result['body']
 
 
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
-def test_lambda_handler_secret_manager_error(mock_get_secret, reload_lambda_function):
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+def test_lambda_handler_secret_manager_error(mock_get_json_param, mock_get_secret, reload_lambda_function):
     """Test the handler's response to a Secrets Manager error."""
     # Arrange
+    # We need to mock the SSM call so the function can proceed to the secrets call
+    mock_get_json_param.return_value = '123456789'
     mock_get_secret.side_effect = Exception("Could not connect to Secrets Manager")
 
     # Act

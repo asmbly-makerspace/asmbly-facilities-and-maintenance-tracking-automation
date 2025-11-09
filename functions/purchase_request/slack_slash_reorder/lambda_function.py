@@ -5,8 +5,8 @@ from datetime import timezone
 import urllib.parse
 from datetime import datetime
 
-from common.aws import get_secret
-from common.clickup import get_all_clickup_tasks, get_task, create_task, get_custom_field_value
+from common.aws import get_secret, get_json_parameter
+from common.clickup import get_all_clickup_tasks, get_task, create_task
 from common.slack import SlackState, get_slack_user_info
 
 class Config:
@@ -14,12 +14,14 @@ class Config:
     def __init__(self):
         self.clickup_api_token_secret_name = os.environ["CLICKUP_SECRET_NAME"]
         self.slack_bot_token_secret_name = os.environ["SLACK_MAINTENANCE_BOT_SECRET_NAME"]
-        self.clickup_list_id = os.environ["LIST_ID"]
-        self.purchase_request_list_id = os.environ["PURCHASE_REQUEST_LIST_ID"]
-        self.workspace_field_id = os.environ["WORKSPACE_FIELD_ID"]
-        self.supplier_link_field_id = os.environ["SUPPLIER_LINK_FIELD_ID"]
-        self.requestor_name_field_id = os.environ["REQUESTOR_NAME_FIELD_ID"]
-        self.item_type_field_id = os.environ["ITEM_TYPE_FIELD_ID"]
+        self.master_items_list_config_param_name = os.environ["CLICKUP_MASTER_ITEMS_LIST_CONFIG_PARAM_NAME"]
+        self.purchase_requests_config_param_name = os.environ["CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME"]
+        self.workspace_field_id_param_name = os.environ["CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME"]
+
+        # These will be populated after fetching from SSM
+        self.master_items_list_id = None
+        self.purchase_requests_config = {}
+        self.workspace_field_id = None  # This will be populated after fetching from SSM
 
 def get_all_workspaces_from_tasks(tasks, workspace_field_id):
     '''Extracts all unique workspace names from tasks.'''
@@ -137,9 +139,9 @@ def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_t
         "name": original_item_details["name"], "description": description_text,
         "custom_fields": [
             {"id": config.workspace_field_id, "value": get_raw_custom_field_value(original_item_details, config.workspace_field_id)},
-            {"id": config.supplier_link_field_id, "value": get_raw_custom_field_value(original_item_details, config.supplier_link_field_id)},
-            {"id": config.requestor_name_field_id, "value": requestor_real_name},
-            {"id": config.item_type_field_id, "value": get_raw_custom_field_value(original_item_details, config.item_type_field_id)},
+            {"id": config.purchase_requests_config['supplier_link_field_id'], "value": get_raw_custom_field_value(original_item_details, config.purchase_requests_config['supplier_link_field_id'])},
+            {"id": config.purchase_requests_config['requestor_name_field_id'], "value": requestor_real_name},
+            {"id": config.purchase_requests_config['item_type_field_id'], "value": get_raw_custom_field_value(original_item_details, config.purchase_requests_config['item_type_field_id'])},
         ]
     }
 
@@ -148,14 +150,14 @@ def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_t
         dt_object = datetime.strptime(delivery_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
         new_task_payload["due_date"] = int(dt_object.timestamp() * 1000)
 
-    create_task(clickup_api_token, config.purchase_request_list_id, new_task_payload)
+    create_task(clickup_api_token, config.purchase_requests_config['list_id'], new_task_payload)
 
     success_view = {"type": "modal", "title": {"type": "plain_text", "text": "Success!"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Your purchase request was created successfully."}}], "close": {"type": "plain_text", "text": "Close"}}
     return {"statusCode": 200, "body": json.dumps({"response_action": "update", "view": success_view})}
 
 def handle_initial_open(trigger_id, http_session, clickup_api_token, slack_headers, config):
     """Handles the initial slash command to open the modal."""
-    all_tasks_full = get_all_clickup_tasks(config.clickup_list_id, clickup_api_token)
+    all_tasks_full = get_all_clickup_tasks(config.master_items_list_id, clickup_api_token)
 
     if not all_tasks_full:
         error_view = {"type": "modal", "title": {"type": "plain_text", "text": "No Items Found"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Sorry, no reorderable items were found in the ClickUp list."}}], "close": {"type": "plain_text", "text": "Close"}}
@@ -180,6 +182,10 @@ def lambda_handler(event, context):
 
         clickup_api_token = get_secret(config.clickup_api_token_secret_name, 'CLICKUP_API_TOKEN')
         slack_bot_token = get_secret(config.slack_bot_token_secret_name, 'SLACK_MAINTENANCE_BOT_TOKEN')
+        # Fetch the workspace ID and assign it back to the config object
+        config.workspace_field_id = get_json_parameter(config.workspace_field_id_param_name, expected_key='workspace_field_id')
+        config.master_items_list_id = get_json_parameter(config.master_items_list_config_param_name, expected_key='list_id')
+        config.purchase_requests_config = get_json_parameter(config.purchase_requests_config_param_name)
         slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
 
         parsed_body = urllib.parse.parse_qs(event["body"])
