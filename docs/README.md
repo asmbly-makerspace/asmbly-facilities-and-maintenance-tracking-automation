@@ -36,6 +36,12 @@ These services provide core functionality used by other parts of the system.
     *   **What it does:** Creates a public web page that displays recent Kiln Drop Off entries. This lets members see their confirmation of submitting a kiln form easily.
     *   **How it's triggered:** An HTTP `GET` request via an AWS API Gateway endpoint.
 
+#### Administrative
+These services automate administrative tasks, such as member data synchronization.
+*   **New Waiver Completed Handler** (`NewWaiverCompletedFunction`)
+    *   **What it does:** Receives a webhook from Smartwaiver when a new waiver is signed. It parses the member's email and signature date, then updates the `WaverDate` custom field in the corresponding NeonCRM account.
+    *   **How it's triggered:** An HTTP `POST` from a Smartwaiver webhook to the `/waiver/new` API Gateway endpoint.
+
 #### Facilities & Maintenance
 These services automate tasks related to facilities management, problem reporting, and purchasing.
 *   **PM Reminder Bot** (`PMReminderBot`)
