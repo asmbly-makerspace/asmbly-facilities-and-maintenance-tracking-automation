@@ -56,24 +56,24 @@ class NeonCRM:
             logger.error(f"Error searching for NeonCRM account by email: {e}")
             return None
 
-    def update_account_custom_field(self, account_id, field_name, field_value):
+    def update_account_custom_field(self, account_id, field_id, field_value):
         """
         Updates a custom field for a given account.
 
         Args:
             account_id (str): The ID of the account to update.
-            field_name (str): The name of the custom field to update.
+            field_id (str): The ID of the custom field to update.
             field_value (str): The new value for the custom field.
         """
         url = f"{self.base_url}/accounts/{account_id}"
         update_payload = {
             "individualAccount": {
-                "accountCustomFields": [{"name": field_name, "value": field_value}]
+                "accountCustomFields": [{"id": field_id, "value": field_value}]
             }
         }
         try:
             response = requests.patch(url, headers=self.headers, json=update_payload)
             response.raise_for_status()
-            logger.info(f"Successfully updated custom field '{field_name}' for account ID: {account_id}")
+            logger.info(f"Successfully updated custom field for account ID: {account_id}")
         except requests.exceptions.RequestException as e:
             logger.error(f"Error updating NeonCRM account {account_id}: {e}")

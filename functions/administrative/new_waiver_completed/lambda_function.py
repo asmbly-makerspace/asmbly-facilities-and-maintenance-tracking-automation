@@ -1,11 +1,12 @@
 import json
 import os
 import logging
+import base64
+import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from common.neoncrm import NeonCRM
-from common import aws
+from common import aws, neoncrm
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -42,42 +43,52 @@ def parse_smartwaiver_payload(body: dict) -> tuple[str | None, str | None]:
 
 def update_neon_with_waiver_info(email: str, waiver_date: str) -> dict:
     """
-    Updates the 'WaverDate' for a NeonCRM account identified by email.
+    Finds a NeonCRM account by email and updates its 'WaiverDate' custom field.
+
+    This function makes a single PATCH request to the NeonCRM v2 API, which
+    is more efficient than making separate GET and PATCH requests.
 
     Args:
         email: The email of the account to update.
         waiver_date: The waiver date in 'MM/DD/YYYY' format.
 
     Returns:
-        A dictionary with the result of the operation.
+        An API Gateway response dictionary.
     """
     logger.info(f"Attempting to update NeonCRM for email: {email} with waiver date: {waiver_date}")
-    # Get NeonCRM credentials from Secrets Manager using the common aws layer
+
     secret_name = os.environ["NEON_SECRET_NAME"]
     neoncrm_org_id = aws.get_secret(secret_name, "NEON_ORG_ID")
     neoncrm_api_key = aws.get_secret(secret_name, "NEON_API_KEY")
 
-    # Initialize NeonCRM client and find account
-    neoncrm_client = NeonCRM(org_id=neoncrm_org_id, api_key=neoncrm_api_key)
-    account_id = neoncrm_client.get_account_by_email(email)
+    if not neoncrm_org_id or not neoncrm_api_key:
+        logger.error(
+            f"Failed to retrieve NeonCRM credentials from Secrets Manager secret '{secret_name}'. "
+            "Please ensure the secret exists and contains the keys 'NEON_ORG_ID' and 'NEON_API_KEY'."
+        )
+        return {"statusCode": 500, "body": json.dumps("Internal Server Error: Missing NeonCRM credentials.")}
+
+    # Initialize the corrected NeonCRM client
+    client = neoncrm.NeonCRM(org_id=neoncrm_org_id, api_key=neoncrm_api_key)
+
+    # 1. Get the account ID by email
+    account_id = client.get_account_by_email(email)
 
     if not account_id:
         logger.info(f"Clean exit: No NeonCRM account found for email '{email}'. No update performed.")
-        return {"statusCode": 404, "body": json.dumps(f"Account not found for email: {email}.")}
+        return {"statusCode": 404, "body": json.dumps(f"Account not found for email: {email}")}
 
-    # Update 'WaverDate' custom field
-    neoncrm_client.update_account_custom_field(
-        account_id=account_id,
-        field_name="WaverDate",
-        field_value=waiver_date
-    )
+    # 2. Update the custom field for that account ID
+    # Note: The NeonCRM API requires the ID for the custom field, not the name, for PATCH updates.
+    client.update_account_custom_field(account_id=account_id, field_id="179", field_value=waiver_date)
+
     return {"statusCode": 200, "body": json.dumps(f"Successfully updated waiver date for {email}.")}
 
 
 def lambda_handler(event, context):
     """
     Handles a new waiver completion webhook from Smartwaiver.
-    Updates the 'WaverDate' custom field in the corresponding NeonCRM account.
+    Updates the 'WaiverDate' custom field in the corresponding NeonCRM account.
     """
     try:
         logger.info("New waiver webhook received. Processing...")

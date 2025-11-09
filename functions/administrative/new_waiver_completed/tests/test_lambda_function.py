@@ -52,7 +52,7 @@ class TestNewWaiverCompleted(TestCase):
 
     # --- Test `update_neon_with_waiver_info` ---
 
-    @patch(f"{LAMBDA_FUNCTION_PATH}.NeonCRM")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.NeonCRM")
     @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
     def test_update_neon_success(self, mock_aws, mock_neoncrm_class):
         """Tests the happy path for updating a NeonCRM account."""
@@ -71,11 +71,11 @@ class TestNewWaiverCompleted(TestCase):
         mock_neon_client.get_account_by_email.assert_called_once_with("test@example.com")
         mock_neon_client.update_account_custom_field.assert_called_once_with(
             account_id="12345",
-            field_name="WaverDate",
+            field_id="179",
             field_value="10/26/2023"
         )
 
-    @patch(f"{LAMBDA_FUNCTION_PATH}.NeonCRM")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.NeonCRM")
     @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
     def test_update_neon_account_not_found(self, mock_aws, mock_neoncrm_class):
         """Tests the case where the NeonCRM account does not exist."""
