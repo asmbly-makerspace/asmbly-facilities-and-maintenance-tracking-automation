@@ -73,7 +73,6 @@ jobs:
     name: Update Slack Event URL
     environment: prod
     needs: deploy
-    if: ${{ secrets.SLACK_MAINTENANCE_BOT_APP_ID != '' && secrets.SLACK_APP_CONFIG_TOKEN != '' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -97,6 +96,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Run Slack Manifest Update Script
+        if: ${{ secrets.SLACK_MAINTENANCE_BOT_APP_ID != '' && secrets.SLACK_APP_CONFIG_TOKEN != '' }}
         env:
           SLACK_MAINTENANCE_BOT_APP_ID: ${{ secrets.SLACK_MAINTENANCE_BOT_APP_ID }}
           SLACK_APP_CONFIG_TOKEN: ${{ secrets.SLACK_APP_CONFIG_TOKEN }}
