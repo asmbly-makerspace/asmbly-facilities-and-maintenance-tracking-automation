@@ -171,7 +171,7 @@ Resources:
     Properties:
       Name: !Sub "/${Stage}/config/clickup/field/workspace"
       Type: String
-      Description: "JSON configuration for ClickUp, including the workspace field ID."
+      Description: "JSON configuration for ClickUp, including the workspace field ID. This parameter is created and managed by the root template.yaml."
       Value:
         Fn::ToJsonString:
           Fn::Transform:
