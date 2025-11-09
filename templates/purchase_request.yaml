@@ -12,6 +12,8 @@ Parameters:
   CommonLayerARN:
     Type: String
     Description: The ARN of the shared Common Utilities Lambda Layer.
+  ClickUpWorkspaceFieldIdParameterName:
+    Type: String
 
 Resources:
   SlackSlashReorderLambdaRole:
@@ -47,6 +49,9 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}'
       Tags:
         - Key: Project
           Value: slack-slash-reorder
@@ -75,7 +80,7 @@ Resources:
           SLACK_MAINTENANCE_BOT_SECRET_NAME: !Sub 'slack-maintenancebot-token'
           LIST_ID: '901320662208'
           PURCHASE_REQUEST_LIST_ID: '901310302436'
-          WORKSPACE_FIELD_ID: 'f4923783-74db-42ca-bda3-82bbca58abfe'
+          WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
           SUPPLIER_LINK_FIELD_ID: 'c25e5cb5-e38f-4ae7-adae-d3620d9157bc'
           REQUESTOR_NAME_FIELD_ID: '6ec94778-d4a6-4f54-94a6-59769db1ba57'
           ITEM_TYPE_FIELD_ID: 'f73725e4-d2fa-4187-9241-712af6fadb89'
@@ -173,6 +178,9 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}'
       Tags:
         - Key: Project
           Value: new-purchase-request-received
@@ -206,7 +214,7 @@ Resources:
           ASSET_NAME_FIELD_ID: '487e2b73-8329-4ce2-a0a1-1b83a6069ed1'
           REQUESTOR_NAME_FIELD_ID: '6ec94778-d4a6-4f54-94a6-59769db1ba57'
           SUPPLIER_LINK_FIELD_ID: 'c25e5cb5-e38f-4ae7-adae-d3620d9157bc'
-          WORKSPACE_FIELD_ID: 'f4923783-74db-42ca-bda3-82bbca58abfe'
+          WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
           ITEM_TYPE_FIELD_ID: 'f73725e4-d2fa-4187-9241-712af6fadb89'
           SLACK_POST_FIELD_ID: '5bfc5aac-d5cd-44d5-ac27-71016046e63c'
       Tags:
