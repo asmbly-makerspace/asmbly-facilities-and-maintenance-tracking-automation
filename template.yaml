@@ -120,7 +120,7 @@ Resources:
     Properties:
       Name: !Sub "/${Stage}/config/reaction-handler/purchase-request"
       Type: String
-      Description: "JSON mapping of reactions to statuses for purchase requests."
+      Description: "JSON mapping of reactions to statuses for purchase requests. This parameter is created and managed by the root template.yaml."
       Value:
         Fn::ToJsonString:
           Fn::Transform:
@@ -137,7 +137,7 @@ Resources:
     Properties:
       Name: !Sub "/${Stage}/config/reaction-handler/problem-report"
       Type: String
-      Description: "JSON mapping of reactions to statuses for problem reports."
+      Description: "JSON mapping of reactions to statuses for problem reports. This parameter is created and managed by the root template.yaml."
       Value:
         Fn::ToJsonString:
           Fn::Transform:
@@ -154,7 +154,7 @@ Resources:
     Properties:
       Name: !Sub "/${Stage}/config/router/slack-event-router"
       Type: String
-      Description: "JSON configuration for the Slack event router, including channel IDs."
+      Description: "JSON configuration for the Slack event router, including channel IDs. This parameter is created and managed by the root template.yaml."
       Value:
         Fn::ToJsonString:
           Fn::Transform:
