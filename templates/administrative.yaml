@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Stack for administrative automation functions.
+
+Parameters:
+  Stage:
+    Type: String
+  CommonLayerARN:
+    Type: String
+  RequestsLayerARN:
+    Type: String
+  NeonSecretName:
+    Type: String
+
+Resources:
+  NewWaiverCompletedFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "facilities-new-waiver-completed-${Stage}"
+      Description: "Receives new waiver completion webhooks and updates NeonCRM."
+      CodeUri: ../functions/administrative/new_wavier_completed/
+      Handler: lambda_function.lambda_handler
+      Layers:
+        - !Ref CommonLayerARN
+        - !Ref RequestsLayerARN
+      Environment:
+        Variables:
+          STAGE: !Ref Stage
+          NEON_SECRET_NAME: !Ref NeonSecretName
+      Policies:
+        - SecretsManagerReadPolicy:
+            SecretName: !Ref NeonSecretName
+      Tags:
+        Project: new-waiver-completed
+        Workspace: administrative
+        Stage: !Ref Stage
+
+Outputs:
+  NewWaiverCompletedFunctionArn:
+    Description: "ARN for the New Waiver Completed function"
+    Value: !GetAtt NewWaiverCompletedFunction.Arn
+  NewWaiverCompletedFunctionIamRole:
+    Description: "Implicit IAM Role created for New Waiver Completed function"
+    Value: !GetAtt NewWaiverCompletedFunctionRole.Arn
