@@ -194,14 +194,16 @@ def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, cap
     assert "Traceback (most recent call last):" in captured.err
 
 
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
 @patch(f'{LAMBDA_FUNCTION_PATH}.time.sleep')
 # We patch requests.post here to ensure no real network calls are made, but we DO NOT patch send_slack_message
 @patch('common.slack.requests.post')
-def test_lambda_handler_dry_run_mode(mock_requests_post, mock_time_sleep, mock_get_tasks, mock_get_secret, monkeypatch, reload_lambda_function, capsys):
+def test_lambda_handler_dry_run_mode(mock_requests_post, mock_time_sleep, mock_get_tasks, mock_get_secret, mock_get_json_param, monkeypatch, reload_lambda_function, capsys):
     """Test that DRY_RUN=true prevents actual Slack API calls and prints to stdout."""
     # --- Mocks & Fixture Setup ---
+    mock_get_json_param.return_value = 'ws-field-id'
     # Instead of reloading the module, directly patch the DRY_RUN flag within it.
     monkeypatch.setattr(lambda_function, 'DRY_RUN', True)
  

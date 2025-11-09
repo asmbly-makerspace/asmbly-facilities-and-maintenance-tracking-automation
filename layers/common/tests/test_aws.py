@@ -89,7 +89,7 @@ def test_get_json_parameter_with_expected_key_success(mock_boto3_client):
     assert value == 'value1'
     mock_ssm_client.get_parameter.assert_called_once_with(Name='/my/param', WithDecryption=True)
 
-@patch('common.aws.botoo3.session.Session.client')
+@patch('common.aws.boto3.session.Session.client')
 def test_get_json_parameter_with_missing_key(mock_boto3_client):
     """Test that a KeyError is raised if the expected key is not found."""
     mock_ssm_client = MagicMock()
