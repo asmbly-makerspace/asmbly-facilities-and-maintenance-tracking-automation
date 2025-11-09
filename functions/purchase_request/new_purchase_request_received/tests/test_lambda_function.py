@@ -69,7 +69,7 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
             "slack_post_field_id": "SLACK_POST_FIELD_ID"
         }
         mock_aws.get_json_parameter.side_effect = [
-            'WORKSPACE_FIELD_ID', purchase_requests_config
+            'CLICKUP_WORKSPACE_FIELD_ID', purchase_requests_config
         ]
         mock_clickup.get_task.return_value = self.mock_full_task_details
 
@@ -81,7 +81,7 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
                 return 'Robert S'
             if field_id == 'SUPPLIER_LINK_FIELD_ID':
                 return 'https://www.airstrike.com'
-            if field_id == 'WORKSPACE_FIELD_ID':
+            if field_id == 'CLICKUP_WORKSPACE_FIELD_ID':
                 return 'Woodshop'
             if field_id == 'ITEM_TYPE_FIELD_ID':
                 return 'Consumable'

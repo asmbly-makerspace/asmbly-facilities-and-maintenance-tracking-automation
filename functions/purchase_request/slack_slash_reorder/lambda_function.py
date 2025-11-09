@@ -16,7 +16,7 @@ class Config:
         self.slack_bot_token_secret_name = os.environ["SLACK_MAINTENANCE_BOT_SECRET_NAME"]
         self.master_items_list_config_param_name = os.environ["CLICKUP_MASTER_ITEMS_LIST_CONFIG_PARAM_NAME"]
         self.purchase_requests_config_param_name = os.environ["CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME"]
-        self.workspace_field_id_param_name = os.environ["WORKSPACE_FIELD_ID_PARAM_NAME"]
+        self.workspace_field_id_param_name = os.environ["CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME"]
 
         # These will be populated after fetching from SSM
         self.master_items_list_id = None

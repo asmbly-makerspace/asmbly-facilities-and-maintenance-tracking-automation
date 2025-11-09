@@ -119,7 +119,7 @@ Resources:
           SLACK_MAINTENANCE_BOT_SECRET_NAME: !Sub 'slack-maintenancebot-token'
           CLICKUP_MASTER_ITEMS_LIST_CONFIG_PARAM_NAME: !Ref ClickUpMasterItemsListParameter
           CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME: !Ref ClickUpPurchaseRequestsConfigParameter
-          WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
+          CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
       Tags:
         Project: slack-slash-reorder
         Workspace: facilities
