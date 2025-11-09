@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import time
 from datetime import datetime, timezone, timedelta
 
-from common.aws import get_secret
+from common.aws import get_secret, get_json_parameter
 from common.clickup import get_all_clickup_tasks, get_custom_field_value, ClickUpTask
 from common.slack import send_slack_message
 
@@ -14,7 +14,7 @@ from common.slack import send_slack_message
 CLICKUP_SECRET_NAME = os.environ.get('CLICKUP_SECRET_NAME')
 SLACK_SECRET_NAME = os.environ.get('SLACK_MAINTENANCE_BOT_SECRET_NAME')
 CLICKUP_LIST_ID = os.environ.get('CLICKUP_LIST_ID')
-CLICKUP_WORKSPACE_FIELD_ID = os.environ.get('CLICKUP_WORKSPACE_FIELD_ID')
+CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME = os.environ.get('CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME')
 CLICKUP_ASSET_FIELD_ID = os.environ.get('CLICKUP_ASSET_FIELD_ID')
 CLICKUP_FREQUENCY_FIELD_ID = os.environ.get('CLICKUP_FREQUENCY_FIELD_ID')
 BOT_NAME = os.environ.get('BOT_NAME', 'ClickUp Task Bot')
@@ -79,13 +79,16 @@ def lambda_handler(event, context):
 
     try:
         # --- 1. Load Configuration and Secrets ---
-        if not all([CLICKUP_SECRET_NAME, SLACK_SECRET_NAME, CLICKUP_LIST_ID, CLICKUP_WORKSPACE_FIELD_ID, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID]):
+        if not all([CLICKUP_SECRET_NAME, SLACK_SECRET_NAME, CLICKUP_LIST_ID, CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID]):
             raise ValueError("Missing critical environment variables...")
 
         print("Fetching secrets from AWS Secrets Manager...")
         clickup_api_token = get_secret(CLICKUP_SECRET_NAME, secret_key='CLICKUP_API_TOKEN')
         slack_bot_token = get_secret(SLACK_SECRET_NAME, secret_key='SLACK_MAINTENANCE_BOT_TOKEN')
         print("Secrets loaded successfully.")
+
+        print(f"Fetching ClickUp config from SSM Parameter '{CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME}'...")
+        clickup_workspace_field_id = get_json_parameter(CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME, expected_key='workspace_field_id')
 
         # --- 2. Fetch and Process Tasks from ClickUp ---
         now_utc = datetime.now(timezone.utc)
@@ -120,7 +123,7 @@ def lambda_handler(event, context):
 
         print("Processing all tasks for Slack...")
         unique_channels, processed_tasks = process_tasks_for_slack(
-            all_tasks, CLICKUP_WORKSPACE_FIELD_ID, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID
+            all_tasks, clickup_workspace_field_id, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID
         )
         print(f"Found {len(unique_channels)} unique channels and {len(processed_tasks)} tasks with valid workspace data.")
 
