@@ -30,17 +30,20 @@ These services provide core functionality used by other parts of the system.
 *   **Slack Event Router** (`SlackEventSubscriptionsRouterFunction`)
     *   **What it does:** Acts as the single entry point for all Slack `reaction_added` events. It inspects the event and forwards it to the correct handler function based on the channel where the reaction occurred.
     *   **How it's triggered:** An HTTP `POST` from a Slack Event Subscription to the `/slack/events` API Gateway endpoint.
+    *   **Webhook Location:** Slack Bot - Maintenance Bot -> Event Subscriptions -> Request URL https://api.slack.com/apps/A08S6EP1A7J/event-subscriptions
 
 #### Ceramics
 *   **Kiln Drop-Off Viewer** (`KilnOpsDropoffRecentEntriesViewer`)
     *   **What it does:** Creates a public web page that displays recent Kiln Drop Off entries. This lets members see their confirmation of submitting a kiln form easily.
     *   **How it's triggered:** An HTTP `GET` request via an AWS API Gateway endpoint.
+    *   **Webhook Location:** ClickUp Form (Ceramics - Drop Off Requests) https://app.clickup.com/90131034630/v/fm/2ky3mwg6-2053 -> Settings -> Redirect URL
 
 #### Administrative
 These services automate administrative tasks, such as member data synchronization.
 *   **New Waiver Completed Handler** (`NewWaiverCompletedFunction`)
     *   **What it does:** Receives a webhook from Smartwaiver when a new waiver is signed. It parses the member's email and signature date, then updates the `WaverDate` custom field in the corresponding NeonCRM account.
     *   **How it's triggered:** An HTTP `POST` from a Smartwaiver webhook to the `/waiver/new` API Gateway endpoint.
+    *   **Webhook Location:** "new waiver signed" at https://app.cleverwaiver.com/v2profile/webhook
 
 #### Facilities & Maintenance
 These services automate tasks related to facilities management, problem reporting, and purchasing.
@@ -50,6 +53,7 @@ These services automate tasks related to facilities management, problem reportin
 *   **Slack Purchase Reorder & Interaction Handler** (`FacilitiesSlackPurchaseReorderFunction`)
     *   **What it does:** Handles the `/reorder` slash command to open a modal for creating purchase requests in ClickUp. It also processes interactions within that modal, like submissions.
     *   **How it's triggered:** An HTTP `POST` from a Slack slash command to the `/SlackSlashReorder` API Gateway endpoint. This single endpoint handles both the initial command and subsequent user interactions (e.g., modal submissions).
+    *   **Webhook Location:** Slack Bot - Maintenance Bot -> Slash Commands -> `/reorder` https://api.slack.com/apps/A08S6EP1A7J/slash-commands Also for now in Interactivity & Shortcuts https://api.slack.com/apps/A08S6EP1A7J/interactive-messages
 *   **Problem Report Reaction Handler** (`FacilitiesSlackProblemReportReactionWebhook`)
     *   **What it does:** Allows facilities team members to update the status of a problem report task in ClickUp by adding an emoji reaction (e.g., `:eyes:`, `:white_check_mark:`) to a Slack message that contains the task link.
     *   **How it's triggered:** Asynchronously invoked by the **Slack Event Router** when a reaction is added in a monitored channel.
@@ -59,6 +63,7 @@ These services automate tasks related to facilities management, problem reportin
 *   **New Purchase Request Handler** (`NewPurchaseRequestReceivedFunction`)
     *   **What it does:** Listens for new purchase request tasks created in ClickUp. It then posts a detailed notification to a Slack channel and updates the original ClickUp task with a permalink to the Slack message.
     *   **How it's triggered:** An HTTP `POST` from a ClickUp webhook to its dedicated API Gateway endpoint.
+    *   **Webhook Location:** https://app.clickup.com/90131034630/v/l/6-901310302436-1?pr=90134243830 ClickUp Webhooks (Facilities - Purchase Requests) -> Automations -> Webhooks -> New Purchase Request -> Edit -> URL
 
 ## How It's Managed (The Important Part!)
 

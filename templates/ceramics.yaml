@@ -1,5 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
+Transform:
+  - AWS::LanguageExtensions
+  - AWS::Serverless-2016-10-31
 Description: Resources for Ceramics-focused Lambda functions.
 
 Parameters:
@@ -14,6 +16,23 @@ Parameters:
     Description: The ARN of the shared Common Utilities Lambda Layer.
 
 Resources:
+  ClickUpCeramicsConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${Stage}/config/clickup/ceramics/dropOffRequests"
+      Type: String
+      Description: "JSON configuration for Ceramics ClickUp IDs, like the drop-off request list ID."
+      Value:
+        Fn::ToJsonString:
+          Fn::Transform:
+            Name: 'AWS::Include'
+            Parameters:
+              Location: ../configs/clickup_ceramics_dropOffRequests.json
+      Tags:
+        Project: kilnops-dropoff-viewer
+        Workspace: ceramics
+        Stage: !Ref Stage
+
   KilnDropoffViewerLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -46,6 +65,11 @@ Resources:
                   - secretsmanager:GetSecretValue
                 Resource:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/config/clickup/ceramics/dropOffRequests'
       Tags:
         - Key: Project
           Value: kilnops-dropoff-viewer
@@ -69,8 +93,8 @@ Resources:
         - !Ref CommonLayerARN
       Environment:
         Variables:
-          SECRET_NAME: 'clickup/api/token'
-          CLICKUP_LIST_KILNDROP_ID: 901318902829
+          SECRET_NAME: "clickup/api/token"
+          CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME: !Ref ClickUpCeramicsConfigParameter
       Tags:
         Project: kilnops-dropoff-viewer
         Workspace: ceramics

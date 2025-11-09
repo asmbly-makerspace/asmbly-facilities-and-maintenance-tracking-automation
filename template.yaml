@@ -120,7 +120,7 @@ Resources:
     Properties:
       Name: !Sub "/${Stage}/config/reaction-handler/purchase-request"
       Type: String
-      Description: "JSON mapping of reactions to statuses for purchase requests."
+      Description: "JSON mapping of reactions to statuses for purchase requests. This parameter is created and managed by the root template.yaml."
       Value:
         Fn::ToJsonString:
           Fn::Transform:
@@ -137,7 +137,7 @@ Resources:
     Properties:
       Name: !Sub "/${Stage}/config/reaction-handler/problem-report"
       Type: String
-      Description: "JSON mapping of reactions to statuses for problem reports."
+      Description: "JSON mapping of reactions to statuses for problem reports. This parameter is created and managed by the root template.yaml."
       Value:
         Fn::ToJsonString:
           Fn::Transform:
@@ -154,7 +154,7 @@ Resources:
     Properties:
       Name: !Sub "/${Stage}/config/router/slack-event-router"
       Type: String
-      Description: "JSON configuration for the Slack event router, including channel IDs."
+      Description: "JSON configuration for the Slack event router, including channel IDs. This parameter is created and managed by the root template.yaml."
       Value:
         Fn::ToJsonString:
           Fn::Transform:
@@ -166,12 +166,30 @@ Resources:
         Workspace: facilities
         Stage: !Ref Stage
 
+  ClickUpWorkspaceFieldIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${Stage}/config/clickup/field/workspace"
+      Type: String
+      Description: "JSON configuration for ClickUp, including the workspace field ID. This parameter is created and managed by the root template.yaml."
+      Value:
+        Fn::ToJsonString:
+          Fn::Transform:
+            Name: 'AWS::Include'
+            Parameters:
+              Location: ./configs/clickup_field_workspace.json
+      Tags:
+        Project: facilities-clickup-config
+        Workspace: facilities
+        Stage: !Ref Stage
+
   FacilitiesStack:
     Type: AWS::Serverless::Application
     Properties:
       Location: ./templates/facilities.yaml
       Parameters:
         Stage: !Ref Stage
+        ClickUpWorkspaceFieldIdParameterName: !Ref ClickUpWorkspaceFieldIdParameter
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
 
@@ -181,6 +199,7 @@ Resources:
       Location: ./templates/purchase_request.yaml
       Parameters:
         Stage: !Ref Stage
+        ClickUpWorkspaceFieldIdParameterName: !Ref ClickUpWorkspaceFieldIdParameter
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
 
