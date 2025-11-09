@@ -20,6 +20,10 @@ Parameters:
       - dev
       - stage
       - prod
+  NeonSecretName:
+    Type: String
+    Description: The name of the AWS Secrets Manager secret containing NeonCRM credentials.
+    Default: "prod/neon_token"
 
 Resources:
   FacilitiesApi:
@@ -83,6 +87,14 @@ Resources:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RoutersStack.Outputs.SlackEventSubscriptionsRouterFunctionArn}/invocations"
               responses: {}
 
+          /waiver/new:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AdministrativeStack.Outputs.NewWaiverCompletedFunctionArn}/invocations"
+              responses: {}
   RequestsLambdaLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
@@ -201,6 +213,15 @@ Resources:
         ProblemReportReactionFunctionArn: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
         RouterConfigParameterName: !Ref RouterConfigParameter
 
+  AdministrativeStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./templates/administrative.yaml
+      Parameters:
+        Stage: !Ref Stage
+        CommonLayerARN: !Ref CommonLayer
+        RequestsLayerARN: !Ref RequestsLambdaLayer
+        NeonSecretName: !Ref NeonSecretName
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -245,6 +266,14 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt RoutersStack.Outputs.SlackEventSubscriptionsRouterFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
+
+  NewWaiverCompletedInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AdministrativeStack.Outputs.NewWaiverCompletedFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
