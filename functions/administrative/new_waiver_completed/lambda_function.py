@@ -2,6 +2,7 @@ import json
 import os
 import logging
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from common.neoncrm import NeonCRM
 from common import aws
@@ -18,7 +19,7 @@ def parse_smartwaiver_payload(body: dict) -> tuple[str | None, str | None]:
         body: The parsed JSON body of the webhook.
 
     Returns:
-        A tuple containing (email, waiver_date in YYYY-MM-DD format) or (None, None) if parsing fails.
+        A tuple containing (email, waiver_date in MM/DD/YYYY format) or (None, None) if parsing fails.
     """
     email = body.get("email")
     signed_date_str = body.get("signed_date")
@@ -28,8 +29,11 @@ def parse_smartwaiver_payload(body: dict) -> tuple[str | None, str | None]:
         return None, None
     
     try:
-        # Format date to MM/DD/YYYY
-        waiver_date = datetime.fromisoformat(signed_date_str.replace("Z", "+00:00")).strftime("%m/%d/%Y")
+        # Parse the UTC timestamp
+        utc_time = datetime.fromisoformat(signed_date_str.replace("Z", "+00:00"))
+        # Convert to Central Time and then format the date
+        central_time = utc_time.astimezone(ZoneInfo("America/Chicago"))
+        waiver_date = central_time.strftime("%m/%d/%Y")
         return email, waiver_date
     except (ValueError, TypeError) as e:
         logger.error(f"Could not parse date string '{signed_date_str}': {e}")
@@ -47,6 +51,7 @@ def update_neon_with_waiver_info(email: str, waiver_date: str) -> dict:
     Returns:
         A dictionary with the result of the operation.
     """
+    logger.info(f"Attempting to update NeonCRM for email: {email} with waiver date: {waiver_date}")
     # Get NeonCRM credentials from Secrets Manager using the common aws layer
     secret_name = os.environ["NEON_SECRET_NAME"]
     neoncrm_org_id = aws.get_secret(secret_name, "NEON_ORG_ID")
@@ -75,6 +80,7 @@ def lambda_handler(event, context):
     Updates the 'WaverDate' custom field in the corresponding NeonCRM account.
     """
     try:
+        logger.info("New waiver webhook received. Processing...")
         body = json.loads(event.get("body", "{}"))
 
         # --- Platform-Specific Parsing ---
@@ -83,10 +89,14 @@ def lambda_handler(event, context):
         email, waiver_date = parse_smartwaiver_payload(body)
 
         if not email or not waiver_date:
+            logger.warning("Webhook parsing failed. Could not extract required fields.")
             return {"statusCode": 400, "body": json.dumps("Could not parse required fields from webhook.")}
 
+        logger.info(f"Successfully parsed waiver for email: {email}")
         # --- Agnostic Business Logic ---
-        return update_neon_with_waiver_info(email, waiver_date)
+        response = update_neon_with_waiver_info(email, waiver_date)
+        logger.info(f"Webhook processing completed with status code: {response.get('statusCode')}")
+        return response
 
     except Exception as e:
         logger.error(f"An error occurred: {e}")

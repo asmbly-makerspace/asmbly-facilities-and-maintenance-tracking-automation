@@ -20,6 +20,10 @@ Parameters:
       - dev
       - stage
       - prod
+  NeonSecretName:
+    Type: String
+    Description: The name of the AWS Secrets Manager secret containing NeonCRM credentials.
+    Default: "prod/neon_token"
 
 Resources:
   FacilitiesApi:
@@ -162,18 +166,6 @@ Resources:
         Workspace: facilities
         Stage: !Ref Stage
 
-  NeonCRMSecret:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: "prod/neon_token"
-      Description: "Stores the NeonCRM Organization ID and API Key."
-      SecretString: !Sub
-        - '{"NEON_ORG_ID": "${OrgId}", "NEON_API_KEY": "${ApiKey}"}'
-        - OrgId: "asmbly"
-          ApiKey: "afd6688642841578db8415ed5467413e"
-      Tags:
-        Project: neoncrm-integration
-        Workspace: facilities
   FacilitiesStack:
     Type: AWS::Serverless::Application
     Properties:
@@ -229,7 +221,7 @@ Resources:
         Stage: !Ref Stage
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
-        NeonSecretName: !Ref NeonCRMSecret
+        NeonSecretName: !Ref NeonSecretName
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:

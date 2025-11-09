@@ -3,9 +3,9 @@ import os
 from unittest import TestCase
 from unittest.mock import patch, MagicMock
 
-from functions.administrative.new_wavier_completed import lambda_function
+from functions.administrative.new_waiver_completed import lambda_function
 
-LAMBDA_FUNCTION_PATH = "functions.administrative.new_wavier_completed.lambda_function"
+LAMBDA_FUNCTION_PATH = "functions.administrative.new_waiver_completed.lambda_function"
 
 
 class TestNewWaiverCompleted(TestCase):
@@ -26,7 +26,15 @@ class TestNewWaiverCompleted(TestCase):
         """Tests successful parsing of a valid Smartwaiver payload."""
         email, waiver_date = lambda_function.parse_smartwaiver_payload(self.valid_payload)
         self.assertEqual(email, "test@example.com")
-        self.assertEqual(waiver_date, "10/27/2023")
+        self.assertEqual(waiver_date, "10/26/2023") # 10:00 UTC is 05:00 CDT on the previous day
+
+    def test_parse_smartwaiver_payload_timezone_conversion(self):
+        """Tests that a UTC timestamp is correctly converted to Central Time."""
+        # This timestamp is 00:52 UTC on Nov 9, which is 19:52 CT on Nov 8 (during CDT)
+        payload = {"email": "test@example.com", "signed_date": "2025-11-09T00:52:12.007Z"}
+        email, waiver_date = lambda_function.parse_smartwaiver_payload(payload)
+        self.assertEqual(email, "test@example.com")
+        self.assertEqual(waiver_date, "11/08/2025")
 
     def test_parse_smartwaiver_payload_missing_email(self):
         """Tests payload parsing when 'email' is missing."""
@@ -55,7 +63,7 @@ class TestNewWaiverCompleted(TestCase):
         mock_neoncrm_class.return_value = mock_neon_client
 
         with patch.dict(os.environ, self.env_vars):
-            response = lambda_function.update_neon_with_waiver_info("test@example.com", "10/27/2023")
+            response = lambda_function.update_neon_with_waiver_info("test@example.com", "10/26/2023")
 
         # Assertions
         self.assertEqual(response["statusCode"], 200)
@@ -64,7 +72,7 @@ class TestNewWaiverCompleted(TestCase):
         mock_neon_client.update_account_custom_field.assert_called_once_with(
             account_id="12345",
             field_name="WaverDate",
-            field_value="10/27/2023"
+            field_value="10/26/2023"
         )
 
     @patch(f"{LAMBDA_FUNCTION_PATH}.NeonCRM")
@@ -78,7 +86,7 @@ class TestNewWaiverCompleted(TestCase):
         mock_neoncrm_class.return_value = mock_neon_client
 
         with patch.dict(os.environ, self.env_vars):
-            response = lambda_function.update_neon_with_waiver_info("notfound@example.com", "10/27/2023")
+            response = lambda_function.update_neon_with_waiver_info("notfound@example.com", "10/26/2023")
 
         # Assertions
         self.assertEqual(response["statusCode"], 404)
@@ -93,7 +101,7 @@ class TestNewWaiverCompleted(TestCase):
     def test_lambda_handler_success(self, mock_parse, mock_update):
         """Tests the main handler's success path."""
         # Mocks
-        mock_parse.return_value = ("test@example.com", "10/27/2023")
+        mock_parse.return_value = ("test@example.com", "10/26/2023")
         mock_update.return_value = {"statusCode": 200, "body": "Success"}
 
         event = {"body": json.dumps(self.valid_payload)}
@@ -103,7 +111,7 @@ class TestNewWaiverCompleted(TestCase):
         self.assertEqual(response["statusCode"], 200)
         self.assertEqual(response["body"], "Success")
         mock_parse.assert_called_once_with(self.valid_payload)
-        mock_update.assert_called_once_with("test@example.com", "10/27/2023")
+        mock_update.assert_called_once_with("test@example.com", "10/26/2023")
 
     @patch(f"{LAMBDA_FUNCTION_PATH}.update_neon_with_waiver_info")
     @patch(f"{LAMBDA_FUNCTION_PATH}.parse_smartwaiver_payload")
