@@ -1,0 +1,213 @@
+{
+  "auto_id": "460a91b0-ea16-4171-8371-b2a4d2c764bc:main",
+  "trigger_id": "41097abf-0a99-4e25-a708-524f7546c29b",
+  "date": "2025-11-07T20:58:10.069Z",
+  "payload": {
+    "id": "86ad43ft6",
+    "name": "New HVAC Parts",
+    "content": "{\"ops\":[{\"insert\":\"We need some new parts for the HVAC equipment. Call Aisrtrike and get it setup.\"},{\"attributes\":{\"block-id\":\"block-867ed315-ea19-47a0-9fcf-9702b99db87a\"},\"insert\":\"\\n\"}]}",
+    "lower_name": "new hvac parts",
+    "html_content": null,
+    "text_content": "We need some new parts for the HVAC equipment. Call Aisrtrike and get it setup.",
+    "content_size": "small",
+    "sprint_points": null,
+    "coverimage": null,
+    "priority": null,
+    "personal_priority": [],
+    "draft_uuid": null,
+    "custom_id": null,
+    "custom_type": 1006,
+    "status_id": "sc901310302436_dRqLTDZE",
+    "workspace_id": "90131034630",
+    "subcategory": "901310302436",
+    "direct_parent": null,
+    "root_parent": null,
+    "merged_to": null,
+    "subtask_sort": null,
+    "subtask_sort_dir": null,
+    "reccurence": {
+      "v1": {
+        "recurring": false,
+        "recur_type": null,
+        "recur_next": null,
+        "recur_new_status": null,
+        "recur_due_date": null,
+        "recur_data": null,
+        "recur_rule": null,
+        "recur_task": null,
+        "recur_skip_missed": false,
+        "recur_on_status": null,
+        "recur_on": null,
+        "recur_copy_original": false,
+        "recur_time": false,
+        "recur_immediately": false,
+        "recur_until": null,
+        "recur_dst": null,
+        "recur_tz_offset": null,
+        "recur_tz": null,
+        "recur_daily": false,
+        "recur_ignore_today": false
+      },
+      "v2": {
+        "set_time": false,
+        "create_new_task": false,
+        "periodically": false,
+        "simple_settings": false,
+        "ignore_weekends": false,
+        "recur_on_schedule": false
+      }
+    },
+    "privacy": {
+      "private": false,
+      "public": false,
+      "public_token": null,
+      "public_permission_level": null,
+      "public_fields": null,
+      "public_share_expires_on": null,
+      "public_sharing": false,
+      "seo_optimized": false,
+      "made_public_by": null,
+      "made_public_time": null
+    },
+    "templating": {
+      "template": false,
+      "original_subcat": null,
+      "template_name": null,
+      "team_id": null,
+      "template_field_ids": null,
+      "permanent_template_id": null,
+      "visibility": null
+    },
+    "states": {
+      "is_archived": false,
+      "is_deleted": false,
+      "is_encrypted": false
+    },
+    "time_mgmt": {
+      "is_summary_task": false,
+      "start_date": null,
+      "start_date_time": false,
+      "date_closed": null,
+      "date_created": "1762549087532",
+      "date_updated": "1762549087645",
+      "due_date": "1763114400000",
+      "due_date_time": false,
+      "date_deleted": null,
+      "date_active": null,
+      "date_unstarted": null,
+      "date_done": null,
+      "date_delegated": null,
+      "time_estimate": null,
+      "time_estimate_string": null,
+      "time_spent": null,
+      "sent_due_date_notif": false,
+      "duration": {},
+      "duration_is_elapsed": false
+    },
+    "checklists": [],
+    "ownership": {
+      "created_by_email": null,
+      "owner": 132255286,
+      "creator": 132255286,
+      "deleted_by": null,
+      "source": "form",
+      "delegator": null,
+      "form_id": "2ky3mwg6-2613",
+      "merged_to": null
+    },
+    "subtask_ids": [],
+    "tags": [],
+    "fields": [
+      {
+        "field_id": "487e2b73-8329-4ce2-a0a1-1b83a6069ed1",
+        "value": "HVACs",
+        "value_options": null,
+        "value_deleted": false,
+        "value_richtext": null,
+        "reasoning": null,
+        "task_id": "86ad43ft6",
+        "type": 15
+      },
+      {
+        "field_id": "6ec94778-d4a6-4f54-94a6-59769db1ba57",
+        "value": "Robert S",
+        "value_options": null,
+        "value_deleted": false,
+        "value_richtext": null,
+        "reasoning": null,
+        "task_id": "86ad43ft6",
+        "type": 15
+      },
+      {
+        "field_id": "c25e5cb5-e38f-4ae7-adae-d3620d9157bc",
+        "value": "https://www.airstrike.com",
+        "value_options": null,
+        "value_deleted": false,
+        "value_richtext": null,
+        "reasoning": null,
+        "task_id": "86ad43ft6",
+        "type": 0
+      },
+      {
+        "field_id": "f4923783-74db-42ca-bda3-82bbca58abfe",
+        "value": "2e446678-e3ba-4fc8-8b92-c15a8879fc2b",
+        "value_options": null,
+        "value_deleted": false,
+        "value_richtext": null,
+        "reasoning": null,
+        "task_id": "86ad43ft6",
+        "type": 1
+      },
+      {
+        "field_id": "f73725e4-d2fa-4187-9241-712af6fadb89",
+        "value": "297a5d80-b207-475a-b617-4f6dcf8e2603",
+        "value_options": null,
+        "value_deleted": false,
+        "value_richtext": null,
+        "reasoning": null,
+        "task_id": "86ad43ft6",
+        "type": 1
+      }
+    ],
+    "lists": [
+      {
+        "list_id": "901310302436",
+        "type": "home"
+      }
+    ],
+    "users": [
+      {
+        "userid": 132255286,
+        "type": "watcher"
+      },
+      {
+        "userid": 132255286,
+        "type": "owner"
+      },
+      {
+        "userid": 132255286,
+        "type": "creator"
+      }
+    ],
+    "groups": [],
+    "related_tasks": [],
+    "related_tasks_count": {
+      "dependsOn": 0,
+      "dependedBy": 0
+    },
+    "attachments": [],
+    "docs": [],
+    "_version_vector": {
+      "workspace_id": 90131034630,
+      "object_type": "task",
+      "object_id": "86ad43ft6",
+      "vector": [
+        {
+          "master_id": 17,
+          "version": 1762549087736000,
+          "deleted": false
+        }
+      ]
+    }
+  }
+}
