@@ -46,7 +46,7 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
             'ASSET_NAME_FIELD_ID': 'ASSET_NAME_FIELD_ID',
             'REQUESTOR_NAME_FIELD_ID': 'REQUESTOR_NAME_FIELD_ID',
             'SUPPLIER_LINK_FIELD_ID': 'SUPPLIER_LINK_FIELD_ID',
-            'WORKSPACE_FIELD_ID': 'WORKSPACE_FIELD_ID',
+            'CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME': '/test/param/workspace_field_id',
             'ITEM_TYPE_FIELD_ID': 'ITEM_TYPE_FIELD_ID',
             'SLACK_POST_FIELD_ID': 'SLACK_POST_FIELD_ID'
         }
@@ -64,6 +64,7 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
             'fake-clickup-token',  # CLICKUP_API_TOKEN
             'fake-slack-token'     # SLACK_MAINTENANCE_BOT_TOKEN
         ]
+        mock_aws.get_json_parameter.return_value = 'WORKSPACE_FIELD_ID'
         mock_clickup.get_task.return_value = self.mock_full_task_details
 
         # Configure the mock for get_custom_field_value to return specific values based on the field ID
@@ -100,6 +101,7 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
 
         # Verify secrets were fetched
         mock_aws.get_secret.assert_any_call('test_clickup_secret', 'CLICKUP_API_TOKEN')
+        mock_aws.get_json_parameter.assert_called_once_with('/test/param/workspace_field_id', expected_key='workspace_field_id')
         mock_aws.get_secret.assert_any_call('test_slack_secret', 'SLACK_MAINTENANCE_BOT_TOKEN')
 
         # Verify ClickUp task was fetched

@@ -32,7 +32,7 @@ def lambda_handler(event, context):
         'ASSET_NAME_FIELD_ID',
         'REQUESTOR_NAME_FIELD_ID',
         'SUPPLIER_LINK_FIELD_ID',
-        'WORKSPACE_FIELD_ID',
+        'CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME',
         'ITEM_TYPE_FIELD_ID',
         'SLACK_POST_FIELD_ID'
     }
@@ -76,6 +76,7 @@ def lambda_handler(event, context):
         # Now that we have a valid task ID, we can fetch secrets.
         clickup_api_token = aws.get_secret(clickup_secret_name, "CLICKUP_API_TOKEN")
         slack_api_token = aws.get_secret(slack_secret_name, "SLACK_MAINTENANCE_BOT_TOKEN")
+        workspace_field_id = aws.get_json_parameter(os.environ['CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME'], expected_key='workspace_field_id')
 
         full_task = clickup.get_task(clickup_api_token, task_id)
 
@@ -83,7 +84,7 @@ def lambda_handler(event, context):
         asset_name = clickup.get_custom_field_value(full_task, os.environ['ASSET_NAME_FIELD_ID'])
         requestor_name = clickup.get_custom_field_value(full_task, os.environ['REQUESTOR_NAME_FIELD_ID'])
         supplier_link = clickup.get_custom_field_value(full_task, os.environ['SUPPLIER_LINK_FIELD_ID'])
-        workspace = clickup.get_custom_field_value(full_task, os.environ['WORKSPACE_FIELD_ID'])
+        workspace = clickup.get_custom_field_value(full_task, workspace_field_id)
         item_type = clickup.get_custom_field_value(full_task, os.environ['ITEM_TYPE_FIELD_ID'])
 
         # --- 1. Send Slack Notification ---
