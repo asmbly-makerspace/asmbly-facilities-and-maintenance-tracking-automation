@@ -13,7 +13,7 @@ from common.slack import send_slack_message
 # These are set in the Lambda function's configuration (template.yaml)
 CLICKUP_SECRET_NAME = os.environ.get('CLICKUP_SECRET_NAME')
 SLACK_SECRET_NAME = os.environ.get('SLACK_MAINTENANCE_BOT_SECRET_NAME')
-CLICKUP_LIST_ID = os.environ.get('CLICKUP_LIST_ID')
+CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME = os.environ.get('CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME')
 CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME = os.environ.get('CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME')
 CLICKUP_ASSET_FIELD_ID = os.environ.get('CLICKUP_ASSET_FIELD_ID')
 CLICKUP_FREQUENCY_FIELD_ID = os.environ.get('CLICKUP_FREQUENCY_FIELD_ID')
@@ -79,7 +79,7 @@ def lambda_handler(event, context):
 
     try:
         # --- 1. Load Configuration and Secrets ---
-        if not all([CLICKUP_SECRET_NAME, SLACK_SECRET_NAME, CLICKUP_LIST_ID, CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID]):
+        if not all([CLICKUP_SECRET_NAME, SLACK_SECRET_NAME, CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME, CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID]):
             raise ValueError("Missing critical environment variables...")
 
         print("Fetching secrets from AWS Secrets Manager...")
@@ -89,6 +89,8 @@ def lambda_handler(event, context):
 
         print(f"Fetching ClickUp config from SSM Parameter '{CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME}'...")
         clickup_workspace_field_id = get_json_parameter(CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME, expected_key='workspace_field_id')
+        print(f"Fetching ClickUp PM Schedule List ID from SSM Parameter '{CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME}'...")
+        clickup_list_id = get_json_parameter(CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME, expected_key='list_id')
 
         # --- 2. Fetch and Process Tasks from ClickUp ---
         now_utc = datetime.now(timezone.utc)
@@ -97,14 +99,14 @@ def lambda_handler(event, context):
         one_week_ms = int(one_week_from_now_utc.timestamp() * 1000)
 
         print("Fetching overdue tasks...")
-        overdue_tasks = get_all_clickup_tasks(CLICKUP_LIST_ID, clickup_api_token, due_date_lt_ms=now_ms)
+        overdue_tasks = get_all_clickup_tasks(clickup_list_id, clickup_api_token, due_date_lt_ms=now_ms)
         for task in overdue_tasks:
             task['time_status'] = 'Overdue'
         print(f"Found {len(overdue_tasks)} overdue tasks.")
 
         print("Fetching upcoming tasks for the next 7 days...")
         upcoming_tasks = get_all_clickup_tasks(
-            CLICKUP_LIST_ID, clickup_api_token,
+            clickup_list_id, clickup_api_token,
             due_date_gt_ms=now_ms,
             due_date_lt_ms=one_week_ms
         )

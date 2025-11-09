@@ -20,6 +20,23 @@ Conditions:
 
 Resources:
   # --- Facilities: PM Reminder Bot ---
+  ClickUpPMScheduleParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${Stage}/clickup/cmms/pmSchedule"
+      Type: String
+      Description: "JSON configuration for the ClickUp PM Schedule List ID."
+      Value:
+        Fn::ToJsonString:
+          Fn::Transform:
+            Name: 'AWS::Include'
+            Parameters:
+              Location: ../configs/clickup_cmms_pmSchedule.json
+      Tags:
+        Project: pm-reminder-bot
+        Workspace: facilities
+        Stage: !Ref Stage
+
   PMReminderBotLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -55,7 +72,9 @@ Resources:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
               - Effect: Allow
                 Action: ssm:GetParameter
-                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}'
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/cmms/pmSchedule'
 
       Tags:
         - Key: Project
@@ -83,13 +102,13 @@ Resources:
           DRY_RUN: !If [IsProd, 'false', 'true']
           BOT_ICON_EMOJI: ':hammer_and_wrench:'
           BOT_NAME: 'PM Bot'
-          CLICKUP_LIST_ID: '901310894771'
           CLICKUP_SECRET_NAME: 'clickup/api/token'
           GENERAL_CHANNEL_NAME: 'stewards'
           SLACK_MAINTENANCE_BOT_SECRET_NAME: !Sub 'slack-maintenancebot-token'
           WORKSPACES: '3d-printing,ceramics,electronics,lasers,metal-shop,textiles,woodshop'
           CLICKUP_ASSET_FIELD_ID: '487e2b73-8329-4ce2-a0a1-1b83a6069ed1'
           CLICKUP_FREQUENCY_FIELD_ID: 'b0d864da-9018-4935-ae65-7a9103bf70d2'
+          CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME: !Ref ClickUpPMScheduleParameter
           CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
           STARTER_MESSAGE_TEXT: |
             Weekly task update!

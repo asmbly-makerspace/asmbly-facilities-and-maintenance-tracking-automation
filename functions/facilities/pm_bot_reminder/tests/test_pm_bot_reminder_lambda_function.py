@@ -16,7 +16,7 @@ def mock_env_vars(monkeypatch):
     """Mock environment variables for the Lambda function."""
     monkeypatch.setenv('CLICKUP_SECRET_NAME', 'test/clickup/token')
     monkeypatch.setenv('SLACK_MAINTENANCE_BOT_SECRET_NAME', 'test/slack/token')
-    monkeypatch.setenv('CLICKUP_LIST_ID', '12345')
+    monkeypatch.setenv('CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME', '/test/config/clickup/cmms/pmSchedule')
     monkeypatch.setenv('CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME', '/test/config/clickup/field/workspace')
     monkeypatch.setenv('CLICKUP_ASSET_FIELD_ID', 'asset-field-id')
     monkeypatch.setenv('CLICKUP_FREQUENCY_FIELD_ID', 'freq-field-id')
@@ -82,7 +82,11 @@ def test_process_tasks_for_slack():
 @patch(f'{LAMBDA_FUNCTION_PATH}.send_slack_message')
 def test_lambda_handler_no_tasks(mock_send_slack, mock_get_tasks, mock_get_secret, mock_get_json_param, reload_lambda_function):
     """Test the lambda handler when no tasks are found."""
-    mock_get_json_param.return_value = 'ws-field-id'
+    # Mock the two calls to get_json_parameter
+    mock_get_json_param.side_effect = [
+        'ws-field-id',  # for workspace field id
+        '12345'         # for list id
+    ]
     mock_get_secret.side_effect = ['clickup-token', 'slack-token']
     mock_get_tasks.return_value = []
 
@@ -103,7 +107,10 @@ def test_lambda_handler_with_tasks(mock_time_sleep, mock_send_slack, mock_get_ta
     """Test the full lambda handler flow with tasks and threaded replies."""
     # --- Mocks Setup ---
     mock_get_secret.side_effect = ['clickup-token', 'slack-token']
-    mock_get_json_param.return_value = 'ws-field-id'
+    mock_get_json_param.side_effect = [
+        'ws-field-id',  # for workspace field id
+        '12345'         # for list id
+    ]
 
     # This test requires mock *tasks*, not field definitions.
     overdue_tasks = [{
@@ -147,7 +154,9 @@ def test_lambda_handler_with_tasks(mock_time_sleep, mock_send_slack, mock_get_ta
     assert mock_get_secret.call_count == 2
 
     # Check SSM param was fetched
-    mock_get_json_param.assert_called_once_with('/test/config/clickup/field/workspace', expected_key='workspace_field_id')
+    mock_get_json_param.assert_any_call('/test/config/clickup/field/workspace', expected_key='workspace_field_id')
+    mock_get_json_param.assert_any_call('/test/config/clickup/cmms/pmSchedule', expected_key='list_id')
+    assert mock_get_json_param.call_count == 2
 
     # Check ClickUp tasks were fetched for overdue and upcoming
     assert mock_get_tasks.call_count == 2
