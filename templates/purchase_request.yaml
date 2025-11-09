@@ -214,7 +214,7 @@ Resources:
           ASSET_NAME_FIELD_ID: '487e2b73-8329-4ce2-a0a1-1b83a6069ed1'
           REQUESTOR_NAME_FIELD_ID: '6ec94778-d4a6-4f54-94a6-59769db1ba57'
           SUPPLIER_LINK_FIELD_ID: 'c25e5cb5-e38f-4ae7-adae-d3620d9157bc'
-          WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
+          CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
           ITEM_TYPE_FIELD_ID: 'f73725e4-d2fa-4187-9241-712af6fadb89'
           SLACK_POST_FIELD_ID: '5bfc5aac-d5cd-44d5-ac27-71016046e63c'
       Tags:
