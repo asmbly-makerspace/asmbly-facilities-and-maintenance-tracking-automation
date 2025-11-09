@@ -12,7 +12,7 @@
 
 This AWS Lambda function acts as a webhook receiver for new waiver completions from Smartwaiver. Its primary role is to automate the administrative task of updating a member's record in NeonCRM after they have signed a new waiver.
 
-When a waiver is signed, this function is triggered. It parses the user's email and the signature date from the webhook payload. It then searches for a matching account in NeonCRM and, if found, updates a custom field (`WaverDate`) with the correctly formatted date of the signature. This ensures that member records are always up-to-date with their latest waiver status.
+When a waiver is signed, this function is triggered. It parses the user's email and the signature date from the webhook payload. It then searches for a matching account in NeonCRM and, if found, updates a custom field (`WaiverDate`) with the correctly formatted date of the signature. This ensures that member records are always up-to-date with their latest waiver status.
 
 ## How It Works
 
@@ -56,7 +56,7 @@ The automation follows a clear, sequential process triggered by a Smartwaiver we
 5.  **Fetch Secrets**: The function makes a secure, internal call to AWS Secrets Manager to retrieve the NeonCRM credentials.
 6.  **Search NeonCRM Account**: Using the extracted email, the function makes an API call to NeonCRM to search for a matching account.
 7.  **Update NeonCRM Account**: If an account is found, the function formats the signature date to `MM/DD/YYYY` and makes a `PATCH` request to the NeonCRM API to update the `WaverDate` custom field for that account.
-8.  **Return Response**: The function returns a `200 OK` status to the webhook source to acknowledge receipt and successful processing. If the account is not found, it returns a `404`.
+8.  **Return Response**: The function returns a `200 OK` status to the webhook source to acknowledge receipt and successful processing. If the account is not found, it returns a `404` to indicate this.
 
 ## AWS Infrastructure
 

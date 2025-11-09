@@ -26,7 +26,7 @@ class TestNewWaiverCompleted(TestCase):
         """Tests successful parsing of a valid Smartwaiver payload."""
         email, waiver_date = lambda_function.parse_smartwaiver_payload(self.valid_payload)
         self.assertEqual(email, "test@example.com")
-        self.assertEqual(waiver_date, "10/26/2023") # 10:00 UTC is 05:00 CDT on the previous day
+        self.assertEqual(waiver_date, "10/27/2023") # 10:00 UTC is 05:00 CDT on the same day
 
     def test_parse_smartwaiver_payload_timezone_conversion(self):
         """Tests that a UTC timestamp is correctly converted to Central Time."""

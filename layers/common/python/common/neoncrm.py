@@ -1,5 +1,5 @@
-import os
 import requests
+import base64
 import logging
 
 logger = logging.getLogger()
@@ -19,9 +19,12 @@ class NeonCRM:
         self.org_id = org_id
         self.api_key = api_key
         self.base_url = "https://api.neoncrm.com/v2"
+        # NeonCRM v2 API requires Basic Authentication.
+        auth_string = f"{self.org_id}:{self.api_key}"
+        auth_header = base64.b64encode(auth_string.encode("utf-8")).decode("utf-8")
         self.headers = {
             "Content-Type": "application/json",
-            "NEON-API-KEY": self.api_key,
+            "Authorization": f"Basic {auth_header}",
         }
 
     def get_account_by_email(self, email):
