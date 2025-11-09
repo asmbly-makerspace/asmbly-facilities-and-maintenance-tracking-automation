@@ -43,13 +43,9 @@ jobs:
 
       - name: Deploy SAM Application
         run: |
-          sam deploy \
-            --stack-name ${{ env.SAM_STACK_NAME }} \
-            --parameter-overrides Stage=prod \
-            --no-fail-on-empty-changeset \
-            --resolve-s3 \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
-            --region ${{ env.AWS_REGION }}
+          # Use the 'prod' environment config from samconfig.toml
+          # --no-confirm-changeset is required for automation
+          sam deploy --config-env prod --no-confirm-changeset
 
       - name: Get API Gateway URL Output
         id: get-api-url
