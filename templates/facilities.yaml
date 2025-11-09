@@ -120,7 +120,6 @@ Resources:
         ScheduledRun:
           Type: Schedule
           Properties:
-            Name: !Sub "pm-reminder-bot-schedule-${Stage}"
             Schedule: "cron(30 4 ? * SAT *)"
             Description: "Triggers the lambda task fetcher every Saturday morning"
       Tags:
