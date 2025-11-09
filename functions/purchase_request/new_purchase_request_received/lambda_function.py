@@ -29,12 +29,8 @@ def lambda_handler(event, context):
         'SLACK_MAINTENANCE_BOT_SECRET_NAME',
         'SLACK_CHANNEL_ID',
         'SLACK_WORKSPACE_URL',
-        'ASSET_NAME_FIELD_ID',
-        'REQUESTOR_NAME_FIELD_ID',
-        'SUPPLIER_LINK_FIELD_ID',
         'CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME',
-        'ITEM_TYPE_FIELD_ID',
-        'SLACK_POST_FIELD_ID'
+        'CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME'
     }
     missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
     if missing_vars:
@@ -47,7 +43,8 @@ def lambda_handler(event, context):
     slack_channel_id = os.environ['SLACK_CHANNEL_ID']
     slack_bot_name = os.environ.get('SLACK_BOT_NAME', 'Purchase Bot')
     slack_bot_emoji = os.environ.get('SLACK_BOT_EMOJI', ':moneybag:')
-    slack_post_field_id = os.environ['SLACK_POST_FIELD_ID']
+    workspace_field_id_param_name = os.environ['CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME']
+    purchase_requests_config_param_name = os.environ['CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME']
 
     try:
         body = json.loads(event.get('body', '{}'))
@@ -76,16 +73,17 @@ def lambda_handler(event, context):
         # Now that we have a valid task ID, we can fetch secrets.
         clickup_api_token = aws.get_secret(clickup_secret_name, "CLICKUP_API_TOKEN")
         slack_api_token = aws.get_secret(slack_secret_name, "SLACK_MAINTENANCE_BOT_TOKEN")
-        workspace_field_id = aws.get_json_parameter(os.environ['CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME'], expected_key='workspace_field_id')
+        workspace_field_id = aws.get_json_parameter(workspace_field_id_param_name, expected_key='workspace_field_id')
+        purchase_requests_config = aws.get_json_parameter(purchase_requests_config_param_name)
 
         full_task = clickup.get_task(clickup_api_token, task_id)
 
         # --- Extract Custom Field Values ---
-        asset_name = clickup.get_custom_field_value(full_task, os.environ['ASSET_NAME_FIELD_ID'])
-        requestor_name = clickup.get_custom_field_value(full_task, os.environ['REQUESTOR_NAME_FIELD_ID'])
-        supplier_link = clickup.get_custom_field_value(full_task, os.environ['SUPPLIER_LINK_FIELD_ID'])
+        asset_name = clickup.get_custom_field_value(full_task, purchase_requests_config['asset_name_field_id'])
+        requestor_name = clickup.get_custom_field_value(full_task, purchase_requests_config['requestor_name_field_id'])
+        supplier_link = clickup.get_custom_field_value(full_task, purchase_requests_config['supplier_link_field_id'])
         workspace = clickup.get_custom_field_value(full_task, workspace_field_id)
-        item_type = clickup.get_custom_field_value(full_task, os.environ['ITEM_TYPE_FIELD_ID'])
+        item_type = clickup.get_custom_field_value(full_task, purchase_requests_config['item_type_field_id'])
 
         # --- 1. Send Slack Notification ---
         message_lines = [
@@ -118,6 +116,7 @@ def lambda_handler(event, context):
         slack_post_url = get_slack_post_url(slack_response['channel'], slack_response['ts'])
         print(f"Generated Slack permalink: {slack_post_url}")
 
+        slack_post_field_id = purchase_requests_config['slack_post_field_id']
         print(f"Attempting to set custom field '{slack_post_field_id}' on task {task_id}.")
         update_response = clickup.set_custom_field_value(clickup_api_token, task_id, slack_post_field_id, slack_post_url)
         print(f"Received response from ClickUp update API: {json.dumps(update_response)}")

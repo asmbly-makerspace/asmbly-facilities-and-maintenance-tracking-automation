@@ -43,12 +43,8 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
             'SLACK_BOT_NAME': 'Test Purchase Bot',
             'SLACK_BOT_EMOJI': ':test_tube:',
             'SLACK_WORKSPACE_URL': 'https://test-workspace.slack.com',
-            'ASSET_NAME_FIELD_ID': 'ASSET_NAME_FIELD_ID',
-            'REQUESTOR_NAME_FIELD_ID': 'REQUESTOR_NAME_FIELD_ID',
-            'SUPPLIER_LINK_FIELD_ID': 'SUPPLIER_LINK_FIELD_ID',
             'CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME': '/test/param/workspace_field_id',
-            'ITEM_TYPE_FIELD_ID': 'ITEM_TYPE_FIELD_ID',
-            'SLACK_POST_FIELD_ID': 'SLACK_POST_FIELD_ID'
+            'CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME': '/test/param/purchase_requests'
         }
 
     @patch('functions.purchase_request.new_purchase_request_received.lambda_function.aws')
@@ -64,7 +60,17 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
             'fake-clickup-token',  # CLICKUP_API_TOKEN
             'fake-slack-token'     # SLACK_MAINTENANCE_BOT_TOKEN
         ]
-        mock_aws.get_json_parameter.return_value = 'WORKSPACE_FIELD_ID'
+
+        purchase_requests_config = {
+            "asset_name_field_id": "ASSET_NAME_FIELD_ID",
+            "requestor_name_field_id": "REQUESTOR_NAME_FIELD_ID",
+            "supplier_link_field_id": "SUPPLIER_LINK_FIELD_ID",
+            "item_type_field_id": "ITEM_TYPE_FIELD_ID",
+            "slack_post_field_id": "SLACK_POST_FIELD_ID"
+        }
+        mock_aws.get_json_parameter.side_effect = [
+            'WORKSPACE_FIELD_ID', purchase_requests_config
+        ]
         mock_clickup.get_task.return_value = self.mock_full_task_details
 
         # Configure the mock for get_custom_field_value to return specific values based on the field ID
@@ -101,7 +107,9 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
 
         # Verify secrets were fetched
         mock_aws.get_secret.assert_any_call('test_clickup_secret', 'CLICKUP_API_TOKEN')
-        mock_aws.get_json_parameter.assert_called_once_with('/test/param/workspace_field_id', expected_key='workspace_field_id')
+        mock_aws.get_json_parameter.assert_any_call('/test/param/workspace_field_id', expected_key='workspace_field_id')
+        mock_aws.get_json_parameter.assert_any_call('/test/param/purchase_requests')
+
         mock_aws.get_secret.assert_any_call('test_slack_secret', 'SLACK_MAINTENANCE_BOT_TOKEN')
 
         # Verify ClickUp task was fetched
@@ -119,7 +127,7 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
 
         # Verify ClickUp task was updated with the Slack permalink
         expected_slack_url = "https://test-workspace.slack.com/archives/C12345/p1234567890123456"
-        mock_clickup.set_custom_field_value.assert_called_once_with('fake-clickup-token', '86ad43ft6', 'SLACK_POST_FIELD_ID', expected_slack_url)
+        mock_clickup.set_custom_field_value.assert_called_once_with('fake-clickup-token', '86ad43ft6', purchase_requests_config['slack_post_field_id'], expected_slack_url)
 
     @patch.dict(os.environ, {})
     def test_lambda_handler_clickup_test_webhook(self):
