@@ -1,7 +1,6 @@
 import json
 import os
 import requests # type: ignore
-from dataclasses import dataclass
 import time
 from datetime import datetime, timezone, timedelta
 
