@@ -3,19 +3,10 @@
 This repository contains serverless AWS Lambda functions that automate various tasks for Asmbly Makerspace. All infrastructure is managed as code using the AWS Serverless Application Model (SAM).
 
 ## Table of Contents
-- [TODO](#todo)
 - [What's in this Repository?](#whats-in-this-repository)
 - [How It's Managed (The Important Part!)](#how-its-managed-the-important-part)
 - [Supporting Documentation](#supporting-documentation)
 - [Repository Structure Overview](#repository-structure-overview)
-
-## TODO
-
-- [x] Manual Deployment of each lambda for POC purposes
-- [x] Approval from Asmbly IT
-- [x] Prove-out client-side yaml deployment
-- [x] Decide on [branch & deployment strategy](Branching%20Strategy.md)
-- [x] Use GitHub Actions for automated deployment
 
 ## What's in this Repository?
 
