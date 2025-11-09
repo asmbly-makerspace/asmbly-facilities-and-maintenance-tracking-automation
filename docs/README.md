@@ -14,8 +14,8 @@ This repository contains serverless AWS Lambda functions that automate various t
 - [x] Manual Deployment of each lambda for POC purposes
 - [x] Approval from Asmbly IT
 - [x] Prove-out client-side yaml deployment
-- [ ] Decide on [branch & deployment strategy](Branching%20Strategy.md)
-- [ ] Use GitHub Actions for automated deployment
+- [x] Decide on [branch & deployment strategy](Branching%20Strategy.md)
+- [x] Use GitHub Actions for automated deployment
 
 ## What's in this Repository?
 

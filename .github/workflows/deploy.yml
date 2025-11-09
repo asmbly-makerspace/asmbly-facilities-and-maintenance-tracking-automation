@@ -1,0 +1,105 @@
+name: Deploy Production Pipeline
+
+on:
+  push:
+    branches:
+      - main # This pipeline triggers on pushes to the 'main' branch
+
+env:
+  AWS_REGION: us-east-2 # Set your desired AWS region here
+  SAM_STACK_NAME: AsmblyFacilitiesMaintTrackingStack-prod
+
+jobs:
+  # =================================================================
+  # JOB 1: Deploy the SAM application to AWS
+  # =================================================================
+  deploy:
+    outputs:
+      FACILITIES_API_URL: ${{ steps.get-api-url.outputs.API_URL }}
+    name: Deploy to AWS
+    environment: prod
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for OIDC if you use it
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::110104886034:role/GitHub-OIDC-facilities-automation-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Build SAM Application
+        # The --use-container flag builds your functions in a Docker container
+        # that mimics the Lambda execution environment.
+        run: sam build --use-container
+
+      - name: Deploy SAM Application
+        run: |
+          sam deploy \
+            --stack-name ${{ env.SAM_STACK_NAME }} \
+            --parameter-overrides Stage=prod \
+            --no-fail-on-empty-changeset \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Get API Gateway URL Output
+        id: get-api-url
+        run: |
+          echo "Fetching API Gateway URL from CloudFormation stack outputs..."
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name ${{ env.SAM_STACK_NAME }} \
+            --query "Stacks[0].Outputs[?OutputKey=='FacilitiesApiUrl'].OutputValue" \
+            --output text)
+          if [ -z "$API_URL" ]; then
+            echo "::error::Failed to retrieve 'FacilitiesApiUrl' from stack outputs."
+            exit 1
+          fi
+          echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
+
+  # =================================================================
+  # JOB 2: Update Slack App Configuration
+  # This job runs only after the 'deploy' job succeeds.
+  # =================================================================
+  update-slack-url:
+    name: Update Slack Event URL
+    environment: prod
+    needs: deploy
+    if: secrets.SLACK_MAINTENANCE_BOT_APP_ID != '' && secrets.SLACK_APP_CONFIG_TOKEN != ''
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install boto3 requests
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::110104886034:role/GitHub-OIDC-facilities-automation-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run Slack Manifest Update Script
+        env:
+          SLACK_MAINTENANCE_BOT_APP_ID: ${{ secrets.SLACK_MAINTENANCE_BOT_APP_ID }}
+          SLACK_APP_CONFIG_TOKEN: ${{ secrets.SLACK_APP_CONFIG_TOKEN }}
+          FACILITIES_API_URL: ${{ needs.deploy.outputs.FACILITIES_API_URL }}
+        run: |
+          python scripts/update_slack_manifest.py
