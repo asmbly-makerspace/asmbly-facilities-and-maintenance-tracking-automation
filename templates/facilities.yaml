@@ -116,16 +116,30 @@ Resources:
             Weekly task update!
             * Mark tasks with :loading: to show that they're being worked on!
             * Mark tasks with :white_check_mark: to call them done!
-      Events:
-        ScheduledRun:
-          Type: Schedule
-          Properties:
-            Schedule: "cron(30 4 ? * SAT *)"
-            Description: "Triggers the lambda task fetcher every Saturday morning"
       Tags:
         Project: pm-reminder-bot
         Workspace: facilities
         Stage: !Ref Stage
+
+  # Explicit EventBridge Rule and Permission (replaces the 'Events' block)
+  PMReminderBotScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "pm-reminder-bot-schedule-${Stage}" # A short, valid name
+      Description: "Triggers the lambda task fetcher every Saturday morning"
+      ScheduleExpression: "cron(30 4 ? * SAT *)"
+      State: "ENABLED"
+      Targets:
+        - Arn: !GetAtt PMReminderBotFunction.Arn
+          Id: "PMReminderBotFunctionTarget"
+
+  PMReminderBotSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt PMReminderBotFunction.Arn
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt PMReminderBotScheduleRule.Arn
 
 Outputs:
   PMReminderBotFunctionArn:
