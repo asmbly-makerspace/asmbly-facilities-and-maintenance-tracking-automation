@@ -74,7 +74,12 @@ jobs:
     environment: prod
     needs: deploy
     runs-on: ubuntu-latest
-    if: ${{ secrets.SLACK_MAINTENANCE_BOT_APP_ID != '' && secrets.SLACK_APP_CONFIG_TOKEN != '' }}
+
+    # 1. Load secrets into the job-level 'env' context.
+    #    This block *can* access the 'prod' environment secrets.
+    env:
+      SLACK_MAINTENANCE_BOT_APP_ID: ${{ secrets.SLACK_MAINTENANCE_BOT_APP_ID }}
+      SLACK_APP_CONFIG_TOKEN: ${{ secrets.SLACK_APP_CONFIG_TOKEN }}
 
     steps:
       - name: Checkout code
@@ -97,9 +102,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Run Slack Manifest Update Script
+        # 2. Check the 'env' context, which is now populated and safe to read.
+        if: ${{ env.SLACK_MAINTENANCE_BOT_APP_ID != '' && env.SLACK_APP_CONFIG_TOKEN != '' }}
+
+        # 3. Add the *additional* env var needed just for this step.
+        #    The other two are inherited from the job-level 'env' block.
         env:
-          SLACK_MAINTENANCE_BOT_APP_ID: ${{ secrets.SLACK_MAINTENANCE_BOT_APP_ID }}
-          SLACK_APP_CONFIG_TOKEN: ${{ secrets.SLACK_APP_CONFIG_TOKEN }}
           FACILITIES_API_URL: ${{ needs.deploy.outputs.FACILITIES_API_URL }}
         run: |
           python scripts/update_slack_manifest.py
