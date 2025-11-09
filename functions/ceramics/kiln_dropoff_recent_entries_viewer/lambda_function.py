@@ -1,16 +1,16 @@
 import os
 from datetime import datetime, timedelta, timezone
 
-from common.aws import get_secret
+from common.aws import get_secret, get_json_parameter
 from common.clickup import get_all_clickup_tasks
 
 
 # --- Environment Variables ---
 # These should be set in the Lambda configuration
 # Name of the secret in AWS Secrets Manager containing the API token
-SECRET_NAME = os.environ.get('SECRET_NAME', 'clickup/api/token')
-# The ID of the ClickUp list where form submissions are created
-LIST_ID = os.environ.get('CLICKUP_LIST_KILNDROP_ID')
+SECRET_NAME = os.environ.get("SECRET_NAME")
+# Name of the SSM Parameter containing the ClickUp config (e.g., list ID)
+CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME = os.environ.get("CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME")
 
 
 def generate_html_page(tasks):
@@ -180,23 +180,28 @@ def lambda_handler(event, context):
     """
     Main handler for the Lambda function. Triggered by API Gateway.
     """
-    # --- START OF DEBUGGING CODE ---
-    print(f"--- DEBUG: Lambda function execution started.")
-    print(f"--- DEBUG: List ID from env var 'CLICKUP_LIST_KILNDROP_ID' is: '{LIST_ID}'")
-    print(f"--- DEBUG: Secret Name from env var 'SECRET_NAME' is: '{SECRET_NAME}'")
-    # --- END OF DEBUGGING CODE ---
-    
     # 1. Check for required environment variables
-    if not LIST_ID:
-        print("ERROR: CLICKUP_LIST_KILNDROP_ID environment variable not set.")
+    if not SECRET_NAME:
+        print("ERROR: SECRET_NAME environment variable not set.")
         return {
             "statusCode": 500,
             "headers": {"Content-Type": "text/html"},
-            "body": generate_error_page("Server configuration error: Missing List ID."),
+            "body": generate_error_page("Server configuration error: Missing secret name."),
+        }
+    if not CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME:
+        print("ERROR: CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME environment variable not set.")
+        return {
+            "statusCode": 500,
+            "headers": {"Content-Type": "text/html"},
+            "body": generate_error_page("Server configuration error: Missing ClickUp config parameter name."),
         }
 
     try:
-        # 2. Get API token from Secrets Manager
+        # 2. Get ClickUp List ID from SSM Parameter Store
+        list_id = get_json_parameter(CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME, "list_id")
+        print(f"--- INFO: Successfully loaded ClickUp List ID: '{list_id}'")
+
+        # 3. Get API token from Secrets Manager
         api_token = get_secret(SECRET_NAME, 'CLICKUP_API_TOKEN')
         
         # --- MORE DEBUGGING CODE ---
@@ -210,16 +215,16 @@ def lambda_handler(event, context):
             print("--- DEBUG ERROR: API Token IS MISSING OR NULL after calling get_clickup_api_token().")
         # --- END OF MORE DEBUGGING CODE ---
         
-        # 3. Fetch recent tasks from ClickUp API
+        # 4. Fetch recent tasks from ClickUp API
         twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
         timestamp_ms = int(twenty_four_hours_ago.timestamp() * 1000)
 
-        tasks = get_all_clickup_tasks(LIST_ID, api_token, date_created_gt=timestamp_ms)
+        tasks = get_all_clickup_tasks(list_id, api_token, date_created_gt=timestamp_ms)
         
         # MODIFIED: Sort the tasks manually since the API parameter was removed
         tasks.sort(key=lambda x: int(x.get('date_created', 0)), reverse=True)
         
-        # 4. Generate and return the HTML page
+        # 5. Generate and return the HTML page
         html_body = generate_html_page(tasks)
         
         return {
