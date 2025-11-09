@@ -73,7 +73,7 @@ jobs:
     name: Update Slack Event URL
     environment: prod
     needs: deploy
-    if: secrets.SLACK_MAINTENANCE_BOT_APP_ID != '' && secrets.SLACK_APP_CONFIG_TOKEN != ''
+    if: ${{ secrets.SLACK_MAINTENANCE_BOT_APP_ID != '' && secrets.SLACK_APP_CONFIG_TOKEN != '' }}
     runs-on: ubuntu-latest
 
     steps:
