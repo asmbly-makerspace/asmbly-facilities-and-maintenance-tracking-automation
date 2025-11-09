@@ -28,8 +28,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::110104886034:role/GitHub-OIDC-facilities-automation-deploy
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup SAM CLI
@@ -58,14 +57,14 @@ jobs:
     name: Update Slack Event URL
     environment: prod
     needs: deploy
+    if: secrets.SLACK_MAINTENANCE_BOT_APP_ID != '' && secrets.SLACK_APP_CONFIG_TOKEN != ''
     runs-on: ubuntu-latest
 
     steps:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::110104886034:role/GitHub-OIDC-facilities-automation-deploy
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Update Slack App Manifest
@@ -90,15 +89,37 @@ jobs:
           echo "New Event Subscription URL: $EVENT_SUBSCRIPTION_URL"
 
           echo "Fetching current Slack app manifest..."
-          MANIFEST_JSON=$(curl -s -H "Authorization: Bearer $SLACK_APP_CONFIG_TOKEN" \
-            "https://slack.com/api/apps.manifest.export?app_id=${{ env.SLACK_MAINTENANCE_BOT_APP_ID }}" | jq -r '.manifest')
+          MANIFEST_RESPONSE=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer $SLACK_APP_CONFIG_TOKEN" \
+            "https://slack.com/api/apps.manifest.export?app_id=${{ secrets.SLACK_MAINTENANCE_BOT_APP_ID }}")
+          
+          HTTP_CODE=$(echo "$MANIFEST_RESPONSE" | tail -n1)
+          MANIFEST_BODY=$(echo "$MANIFEST_RESPONSE" | sed '$d')
+
+          if [ "$HTTP_CODE" -ne 200 ] || ! echo "$MANIFEST_BODY" | jq -e '.ok == true' > /dev/null; then
+            echo "::error::Failed to fetch Slack manifest. HTTP Code: $HTTP_CODE"
+            echo "Response: $MANIFEST_BODY"
+            exit 1
+          fi
+
+          MANIFEST_JSON=$(echo "$MANIFEST_BODY" | jq -r '.manifest')
 
           echo "Updating manifest with new request_url..."
           UPDATED_MANIFEST_JSON=$(echo "$MANIFEST_JSON" | jq --arg url "$EVENT_SUBSCRIPTION_URL" \
             '.features.event_subscriptions.request_url = $url')
 
           echo "Pushing updated manifest to Slack..."
-          curl -X POST -H "Authorization: Bearer $SLACK_APP_CONFIG_TOKEN" \
+          UPDATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST -H "Authorization: Bearer $SLACK_APP_CONFIG_TOKEN" \
             -H "Content-Type: application/json; charset=utf-8" \
-            --data "{\"app_id\": \"${{ env.SLACK_MAINTENANCE_BOT_APP_ID }}\", \"manifest\": $UPDATED_MANIFEST_JSON}" \
-            "https://slack.com/api/apps.manifest.update"
+            --data "{\"app_id\": \"${{ secrets.SLACK_MAINTENANCE_BOT_APP_ID }}\", \"manifest\": $UPDATED_MANIFEST_JSON}" \
+            "https://slack.com/api/apps.manifest.update")
+
+          HTTP_CODE=$(echo "$UPDATE_RESPONSE" | tail -n1)
+          UPDATE_BODY=$(echo "$UPDATE_RESPONSE" | sed '$d')
+
+          if [ "$HTTP_CODE" -ne 200 ] || ! echo "$UPDATE_BODY" | jq -e '.ok == true' > /dev/null; then
+            echo "::error::Failed to update Slack manifest. HTTP Code: $HTTP_CODE"
+            echo "Response: $UPDATE_BODY"
+            exit 1
+          fi
+
+          echo "Slack manifest updated successfully!"
