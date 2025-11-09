@@ -1,5 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
+Transform:
+  - AWS::LanguageExtensions
+  - AWS::Serverless-2016-10-31
 Description: Resources for Purchase Request-focused Lambda functions.
 
 Parameters:
@@ -16,6 +18,23 @@ Parameters:
     Type: String
 
 Resources:
+  ClickUpMasterItemsListParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${Stage}/clickup/facilities/masterItemsList"
+      Type: String
+      Description: "JSON configuration for the ClickUp Master Items List ID."
+      Value:
+        Fn::ToJsonString:
+          Fn::Transform:
+            Name: 'AWS::Include'
+            Parameters:
+              Location: ../configs/clickup_facilities_masterItemsList.json
+      Tags:
+        Project: slack-slash-reorder
+        Workspace: facilities
+        Stage: !Ref Stage
+
   SlackSlashReorderLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -51,7 +70,9 @@ Resources:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
               - Effect: Allow
                 Action: ssm:GetParameter
-                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}'
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/masterItemsList'
       Tags:
         - Key: Project
           Value: slack-slash-reorder
@@ -78,7 +99,7 @@ Resources:
         Variables:
           CLICKUP_SECRET_NAME: 'clickup/api/token'
           SLACK_MAINTENANCE_BOT_SECRET_NAME: !Sub 'slack-maintenancebot-token'
-          LIST_ID: '901320662208'
+          CLICKUP_MASTER_ITEMS_LIST_PARAM_NAME: !Ref ClickUpMasterItemsListParameter
           PURCHASE_REQUEST_LIST_ID: '901310302436'
           WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
           SUPPLIER_LINK_FIELD_ID: 'c25e5cb5-e38f-4ae7-adae-d3620d9157bc'

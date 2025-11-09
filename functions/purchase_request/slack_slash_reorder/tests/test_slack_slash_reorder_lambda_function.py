@@ -13,7 +13,7 @@ LAMBDA_FUNCTION_PATH = "functions.purchase_request.slack_slash_reorder.lambda_fu
 @patch.dict(os.environ, {
     "CLICKUP_SECRET_NAME": "fake_clickup_secret",
     "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake_slack_secret",
-    "LIST_ID": "fake_list_id",
+    "CLICKUP_MASTER_ITEMS_LIST_PARAM_NAME": "/test/param/master_items_list",
     "PURCHASE_REQUEST_LIST_ID": "fake_purchase_list_id",
     "WORKSPACE_FIELD_ID_PARAM_NAME": "/test/param/workspace_field_id",
     "SUPPLIER_LINK_FIELD_ID": "supplier_link_field_id",
@@ -35,7 +35,11 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
     @patch(f"{LAMBDA_FUNCTION_PATH}.requests.Session")
     def test_lambda_handler_initial_open(self, mock_session, mock_get_all_clickup_tasks, mock_get_secret, mock_get_json_param):
         mock_http_session = MagicMock()
-        mock_get_json_param.return_value = 'workspace_field_id'
+        def get_param_side_effect(param_name, key):
+            if param_name == "/test/param/workspace_field_id": return 'workspace_field_id'
+            if param_name == "/test/param/master_items_list": return 'fake_list_id'
+            return None
+        mock_get_json_param.side_effect = get_param_side_effect
         mock_session.return_value = mock_http_session
         mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
         mock_get_all_clickup_tasks.return_value = self.clickup_master_items['tasks']
@@ -49,6 +53,7 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
         self.assertEqual(response['statusCode'], 200)
         call_args, call_kwargs = mock_http_session.post.call_args
         self.assertEqual(call_args[0], 'https://slack.com/api/views.open')
+        mock_get_all_clickup_tasks.assert_called_with('fake_list_id', 'fake_clickup_token')
         sent_json = call_kwargs['json']
         self.assertEqual(sent_json['trigger_id'], 'fake_trigger_id')
         self.assertEqual(sent_json['view']['title']['text'], 'Reorder Item')
@@ -59,7 +64,11 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
     @patch(f"{LAMBDA_FUNCTION_PATH}.requests.Session")
     def test_no_items_found(self, mock_session, mock_get_all_clickup_tasks, mock_get_secret, mock_get_json_param):
         mock_http_session = MagicMock()
-        mock_get_json_param.return_value = 'workspace_field_id'
+        def get_param_side_effect(param_name, key):
+            if param_name == "/test/param/workspace_field_id": return 'workspace_field_id'
+            if param_name == "/test/param/master_items_list": return 'fake_list_id'
+            return None
+        mock_get_json_param.side_effect = get_param_side_effect
         mock_session.return_value = mock_http_session
         mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
         mock_get_all_clickup_tasks.return_value = []
@@ -81,7 +90,11 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
     @patch(f"{LAMBDA_FUNCTION_PATH}.requests.Session")
     def test_workspace_filter(self, mock_session, mock_get_secret, mock_get_json_param):
         mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
-        mock_get_json_param.return_value = 'workspace_field_id'
+        def get_param_side_effect(param_name, key):
+            if param_name == "/test/param/workspace_field_id": return 'workspace_field_id'
+            if param_name == "/test/param/master_items_list": return 'fake_list_id'
+            return None
+        mock_get_json_param.side_effect = get_param_side_effect
         mock_http_session = MagicMock()
         mock_session.return_value = mock_http_session
 
@@ -116,7 +129,11 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
     @patch(f"{LAMBDA_FUNCTION_PATH}.requests.Session")
     def test_item_selection_updates_description(self, mock_session, mock_get_secret, mock_get_json_param):
         mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
-        mock_get_json_param.return_value = 'workspace_field_id'
+        def get_param_side_effect(param_name, key):
+            if param_name == "/test/param/workspace_field_id": return 'workspace_field_id'
+            if param_name == "/test/param/master_items_list": return 'fake_list_id'
+            return None
+        mock_get_json_param.side_effect = get_param_side_effect
         mock_http_session = MagicMock()
         mock_session.return_value = mock_http_session
 
@@ -156,7 +173,11 @@ class TestFacilitiesSlackReorderLambdaFunction(unittest.TestCase):
     @patch(f"{LAMBDA_FUNCTION_PATH}.get_task")
     @patch(f"{LAMBDA_FUNCTION_PATH}.create_task")
     def test_successful_submission(self, mock_create_task, mock_get_task, mock_get_slack_user_info, mock_get_secret, mock_get_json_param):
-        mock_get_json_param.return_value = 'workspace_field_id'
+        def get_param_side_effect(param_name, key):
+            if param_name == "/test/param/workspace_field_id": return 'workspace_field_id'
+            if param_name == "/test/param/master_items_list": return 'fake_list_id'
+            return None
+        mock_get_json_param.side_effect = get_param_side_effect
         mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
         mock_get_slack_user_info.return_value = {"user": {"real_name": "Test User"}}
         mock_get_task.return_value = self.clickup_master_items['tasks'][0]

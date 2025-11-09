@@ -6,7 +6,7 @@ import urllib.parse
 from datetime import datetime
 
 from common.aws import get_secret, get_json_parameter
-from common.clickup import get_all_clickup_tasks, get_task, create_task, get_custom_field_value
+from common.clickup import get_all_clickup_tasks, get_task, create_task
 from common.slack import SlackState, get_slack_user_info
 
 class Config:
@@ -14,7 +14,8 @@ class Config:
     def __init__(self):
         self.clickup_api_token_secret_name = os.environ["CLICKUP_SECRET_NAME"]
         self.slack_bot_token_secret_name = os.environ["SLACK_MAINTENANCE_BOT_SECRET_NAME"]
-        self.clickup_list_id = os.environ["LIST_ID"]
+        self.master_items_list_param_name = os.environ["CLICKUP_MASTER_ITEMS_LIST_PARAM_NAME"]
+        self.clickup_list_id = None # This will be populated after fetching from SSM
         self.purchase_request_list_id = os.environ["PURCHASE_REQUEST_LIST_ID"]
         self.workspace_field_id_param_name = os.environ["WORKSPACE_FIELD_ID_PARAM_NAME"]
         self.workspace_field_id = None  # This will be populated after fetching from SSM
@@ -183,6 +184,7 @@ def lambda_handler(event, context):
         slack_bot_token = get_secret(config.slack_bot_token_secret_name, 'SLACK_MAINTENANCE_BOT_TOKEN')
         # Fetch the workspace ID and assign it back to the config object
         config.workspace_field_id = get_json_parameter(config.workspace_field_id_param_name, 'workspace_field_id')
+        config.clickup_list_id = get_json_parameter(config.master_items_list_param_name, 'list_id')
         slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
 
         parsed_body = urllib.parse.parse_qs(event["body"])
