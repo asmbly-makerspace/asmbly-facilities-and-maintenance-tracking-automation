@@ -1,0 +1,104 @@
+name: Deploy Production Pipeline
+
+on:
+  push:
+    branches:
+      - main # This pipeline triggers on pushes to the 'main' branch
+
+env:
+  AWS_REGION: us-east-2 # Set your desired AWS region here
+  SAM_STACK_NAME: AsmblyFacilitiesMaintTrackingStack-prod
+
+jobs:
+  # =================================================================
+  # JOB 1: Deploy the SAM application to AWS
+  # =================================================================
+  deploy:
+    name: Deploy to AWS
+    environment: prod
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for OIDC if you use it
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Build SAM Application
+        # The --use-container flag builds your functions in a Docker container
+        # that mimics the Lambda execution environment.
+        run: sam build --use-container
+
+      - name: Deploy SAM Application
+        run: |
+          sam deploy \
+            --stack-name ${{ env.SAM_STACK_NAME }} \
+            --parameter-overrides Stage=prod \
+            --no-fail-on-empty-changeset \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+            --region ${{ env.AWS_REGION }}
+
+  # =================================================================
+  # JOB 2: Update Slack App Configuration
+  # This job runs only after the 'deploy' job succeeds.
+  # =================================================================
+  update-slack-url:
+    name: Update Slack Event URL
+    environment: prod
+    needs: deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update Slack App Manifest
+        env:
+          # This is a special token for updating app manifests.
+          # Store it as a secret in your GitHub repository settings.
+          SLACK_MAINTENANCE_BOT_APP_ID: ${{ secrets.SLACK_MAINTENANCE_BOT_APP_ID }}
+          SLACK_APP_CONFIG_TOKEN: ${{ secrets.SLACK_APP_CONFIG_TOKEN }}
+        run: |
+          echo "Fetching API Gateway URL from CloudFormation stack outputs..."
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name ${{ env.SAM_STACK_NAME }} \
+            --query "Stacks[0].Outputs[?OutputKey=='FacilitiesApiUrl'].OutputValue" \
+            --output text)
+
+          if [ -z "$API_URL" ]; then
+            echo "::error::Failed to retrieve API Gateway URL from stack outputs."
+            exit 1
+          fi
+
+          EVENT_SUBSCRIPTION_URL="${API_URL}/slack/events"
+          echo "New Event Subscription URL: $EVENT_SUBSCRIPTION_URL"
+
+          echo "Fetching current Slack app manifest..."
+          MANIFEST_JSON=$(curl -s -H "Authorization: Bearer $SLACK_APP_CONFIG_TOKEN" \
+            "https://slack.com/api/apps.manifest.export?app_id=${{ env.SLACK_MAINTENANCE_BOT_APP_ID }}" | jq -r '.manifest')
+
+          echo "Updating manifest with new request_url..."
+          UPDATED_MANIFEST_JSON=$(echo "$MANIFEST_JSON" | jq --arg url "$EVENT_SUBSCRIPTION_URL" \
+            '.features.event_subscriptions.request_url = $url')
+
+          echo "Pushing updated manifest to Slack..."
+          curl -X POST -H "Authorization: Bearer $SLACK_APP_CONFIG_TOKEN" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data "{\"app_id\": \"${{ env.SLACK_MAINTENANCE_BOT_APP_ID }}\", \"manifest\": $UPDATED_MANIFEST_JSON}" \
+            "https://slack.com/api/apps.manifest.update"
