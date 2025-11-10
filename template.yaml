@@ -25,6 +25,14 @@ Parameters:
     Description: The name of the AWS Secrets Manager secret containing NeonCRM credentials.
     Default: "prod/neon_token"
 
+  AsmblyHostedZoneId:
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: /config/route53/asmbly/hosted-zone-id
+    Description: The Route 53 Hosted Zone ID for asmbly.org. Fetched from SSM Parameter Store.
+
+Conditions:
+  IsProd: !Equals [!Ref Stage, 'prod']
+
 Resources:
   FacilitiesApi:
     Type: AWS::Serverless::Api
@@ -297,7 +305,67 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
 
+  # --- Custom Domain Infrastructure (PROD-ONLY) ---
+  # These resources are only created when the Stage parameter is 'prod'
+
+  FacilitiesCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: IsProd
+    Properties:
+      DomainName: facilities.asmbly.org
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: facilities.asmbly.org
+          HostedZoneId: !Ref AsmblyHostedZoneId # Fetched from SSM
+      Tags:
+        - Key: Project
+          Value: facilities-api
+        - Key: Workspace
+          Value: facilities
+
+  FacilitiesApiCustomDomain:
+    Type: AWS::ApiGatewayV2::DomainName
+    Condition: IsProd
+    Properties:
+      DomainName: facilities.asmbly.org
+      DomainNameConfigurations:
+        - CertificateArn: !Ref FacilitiesCertificate
+          EndpointType: REGIONAL
+      Tags:
+        Project: facilities-api
+        Workspace: facilities
+    DependsOn:
+      - FacilitiesCertificate
+
+  FacilitiesApiMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    Condition: IsProd
+    Properties:
+      DomainName: !Ref FacilitiesApiCustomDomain
+      ApiId: !Ref FacilitiesApi
+      Stage: !Ref Stage # This will be 'prod' when IsProd is true
+    DependsOn:
+      - FacilitiesApiCustomDomain
+
+  FacilitiesDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: IsProd
+    Properties:
+      HostedZoneId: !Ref AsmblyHostedZoneId # Fetched from SSM
+      Name: facilities.asmbly.org
+      Type: A
+      AliasTarget:
+        HostedZoneId: !GetAtt FacilitiesApiCustomDomain.RegionalHostedZoneId
+        DNSName: !GetAtt FacilitiesApiCustomDomain.RegionalDomainName
+    DependsOn:
+      - FacilitiesApiCustomDomain
+
 Outputs:
   FacilitiesApiUrl:
     Description: "The invoke URL for the Facilities API Gateway"
-    Value: !Sub "https://${FacilitiesApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+    Value: !Sub "https://{FacilitiesApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+
+  FacilitiesProdUrl:
+    Description: "The custom, friendly URL for the PROD API Gateway"
+    Condition: IsProd # This output is only created for 'prod'
+    Value: "https://facilities.asmbly.org"
