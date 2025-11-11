@@ -4,8 +4,8 @@
 
 - [Prerequisites](#prerequisites)
 - [Architecture Overview](#architecture-overview)
+- [CI/CD Infrastructure (The Deployer Role)](#cicd-infrastructure-the-deployer-role)
 - [Automated Production Deployment (via GitHub Actions)](#automated-production-deployment-via-github-actions)
-  - [The Deployment Pipeline](#the-deployment-pipeline)
 - [Manual Deployment (for Dev & Stage)](#manual-deployment-for-dev--stage)
 
 ## Prerequisites
@@ -22,15 +22,33 @@ This project uses a **multi-stack architecture**. The root `template.yaml` file 
 
 Each nested stack is defined in its own template file within the `/templates` directory. This structure helps organize resources and allows for independent deployments of different parts of the application.
 
-The logical IDs for the stacks are defined in the root `template.yaml` file:
-*   `FacilitiesStack`
-*   `PurchaseRequestStack`
-*   `CeramicsStack`
-*   `ProblemReportStack`
+## CI/CD Infrastructure (The Deployer Role)
+
+Before the application can be deployed, the **deployer itself** must exist. This infrastructure is defined in `template-cicd.yaml`.
+
+* **What it is:** This template defines the `GitHub-OIDC-facilities-automation-deploy` role and its exact, least-privilege IAM policy. This is the role that GitHub Actions assumes to deploy the main application.
+* **Why it's separate:** It separates the "application" (`template.yaml`) from the "deployer" (`template-cicd.yaml`). This is a critical security practice.
+
+### How to Manage the Deployer Role
+
+This stack (`AsmblyFacilitiesMaintTrackingStack-cicd`) is **NEVER** deployed by GitHub Actions. It is **ONLY** deployed manually from your local machine using administrator credentials.
+
+**You will only touch this file if a deployment fails with a permissions error.**
+
+For example, if you add an SQS queue to `template.yaml` and the `prod` deploy fails with `is not authorized to perform: sqs:CreateQueue`, you must:
+
+1.  **Edit `template-cicd.yaml`:** Add `sqs:CreateQueue` to the `GitHubDeployPolicy`.
+2.  **Deploy the CICD stack** from your local machine:
+    ```bash
+    sam deploy --template-file template-cicd.yaml --stack-name AsmblyFacilitiesMaintTrackingStack-cicd --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region us-east-2
+    ```
+3.  **Re-run** the failed GitHub Actions job.
 
 ## Automated Production Deployment (via GitHub Actions)
 
-The `prod` environment is deployed automatically. **Any push or merge to the `main` branch will trigger the `Deploy Production Pipeline` workflow.** This ensures that the production environment is always in sync with the `main` branch.
+The `prod` environment is deployed automatically. **Any push or merge to the `main` branch will trigger the `Deploy Production Pipeline` workflow.**
+
+This workflow securely authenticates with AWS by assuming the `GitHub-OIDC-facilities-automation-deploy` role (which is managed by our `template-cicd.yaml` stack).
 
 You should not need to deploy to `prod` manually.
 
@@ -39,13 +57,13 @@ You should not need to deploy to `prod` manually.
 The automated workflow consists of two main jobs:
 
 1.  **Deploy to AWS:**
-    *   This job builds the SAM application inside a Docker container that mimics the Lambda environment.
-    *   It then deploys all the AWS resources defined in the templates to the `prod` environment.
+    * This job builds the SAM application inside a Docker container that mimics the Lambda environment.
+    * It then deploys all the AWS resources defined in the templates to the `prod` environment.
 
 2.  **Update Slack Event URL:**
-    *   This job runs only after the AWS deployment succeeds.
-    *   It executes the `scripts/update_slack_manifest.py` Python script.
-    *   This script fetches the newly deployed API Gateway URL from the CloudFormation stack outputs and programmatically updates the Slack App's "Event Subscription URL" via the Slack API. This keeps the Slack integration pointing to the correct live endpoint without any manual intervention.
+    * This job runs only after the AWS deployment succeeds.
+    * It executes the `scripts/update_slack_manifest.py` Python script.
+    * This script fetches the newly deployed API Gateway URL from the CloudFormation stack outputs and programmatically updates the Slack App's "Event Subscription URL" via the Slack API. This keeps the Slack integration pointing to the correct live endpoint without any manual intervention.
 
 ## Manual Deployment (for Dev & Stage)
 
@@ -67,17 +85,17 @@ The `samconfig.toml` file is pre-configured for `dev`, `stage`, and `prod` envir
 
 Each environment serves a specific purpose in our development lifecycle. Manual deployments should be targeted at `dev` and `stage`.
 
-*   **`dev` (Development)**
-    *   **Purpose:** The `dev` environment is for active development and rapid iteration.
-    *   **Expectations:** This environment is considered fragile and may be unstable due to frequent deployments of work-in-progress features. Deploy here often.
+* **`dev` (Development)**
+    * **Purpose:** The `dev` environment is for active development and rapid iteration.
+    * **Expectations:** This environment is considered fragile and may be unstable due to frequent deployments of work-in-progress features. Deploy here often.
 
-*   **`stage` (Staging)**
-    *   **Purpose:** `stage` is a pre-production environment that mirrors `prod` as closely as possible. It is used to verify that features are working correctly and to conduct final testing before a production release.
-    *   **Expectations:** This environment should be stable. Deployments to `stage` should only happen when a feature is complete and has passed all local tests.
+* **`stage` (Staging)**
+    * **Purpose:** `stage` is a pre-production environment that mirrors `prod` as closely as possible. It is used to verify that features are working correctly and to conduct final testing before a production release.
+    * **Expectations:** This environment should be stable. Deployments to `stage` should only happen when a feature is complete and has passed all local tests.
 
-*   **`prod` (Production)**
-    *   **Purpose:** This is the live environment used by end-users.
-    *   **Expectations:** Deployments to `prod` are the most critical. Code should only be deployed to production after it has been thoroughly verified in `stage`, all automated tests are passing, and manual workflow tests have been completed. **Do not deploy to `prod` if there is any risk of breaking existing functionality.**
+* **`prod` (Production)**
+    * **Purpose:** This is the live environment used by end-users.
+    * **Expectations:** Deployments to `prod` are the most critical. Code should only be deployed to production after it has been thoroughly verified in `stage`, all automated tests are passing, and manual workflow tests have been completed. **Do not deploy to `prod` if there is any risk of breaking existing functionality.**
 
 ### Deploying All Stacks Manually
 
@@ -88,7 +106,7 @@ To deploy the entire application, including all nested stacks, run the `sam depl
 sam deploy --config-env dev
 ```
 
-### Deploying a Single Stack
+### Deploying a Sindle Stack
 
 To deploy only a specific part of the application (e.g., after making a change to a single function), you can target its logical stack ID. This is much faster than deploying the entire application.
 

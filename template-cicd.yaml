@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Stack for the CI/CD infrastructure, including the GitHub OIDC role
+  and its deployment permissions for the facilities automation project.
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Default: "asmbly-makerspace"
+  GitHubRepo:
+    Type: String
+    Default: "asmbly-facilities-and-maintenance-tracking-automation"
+
+Resources:
+  # This is the OIDC Role that GitHub Actions will assume
+  GitHubOidcDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GitHub-OIDC-facilities-automation-deploy # This matches your existing role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+              StringLike:
+                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubOrg}/${GitHubRepo}:*"
+      # This is the correct way to attach the policy to the role
+      ManagedPolicyArns:
+        - !Ref GitHubDeployPolicy
+      Tags:
+        - Key: Project
+          Value: facilities-automation
+        - Key: Purpose
+          Value: GitHub-Actions-Deploy
+
+  # This is the "specific JSON policy" we built, now managed as code.
+  GitHubDeployPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: GitHub-OIDC-facilities-automation-deploy-policy
+      Description: "Least-privilege policy for the facilities automation GitHub Actions deployer."
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFormationStackOperations
+            Effect: Allow
+            Action:
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeChangeSet
+              - cloudformation:CreateChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:ValidateTemplate
+              - cloudformation:GetTemplateSummary
+            Resource: "*"
+          - Sid: AllowSAMArtifactBucketAccess
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+            # This bucket name is from your previous deployment logs
+            Resource: "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6/*"
+          - Sid: AllowIAMRoleAndPolicyCreation
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:GetRole
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:PassRole
+            Resource: "arn:aws:iam::*:role/*"
+          - Sid: AllowLambdaFunctionsAndLayers
+            Effect: Allow
+            Action:
+              - lambda:CreateFunction
+              - lambda:DeleteFunction
+              - lambda:UpdateFunctionCode
+              - lambda:UpdateFunctionConfiguration
+              - lambda:GetFunction
+              - lambda:CreateLayerVersion
+              - lambda:PublishLayerVersion
+              - lambda:DeleteLayerVersion
+              - lambda:AddPermission
+              - lambda:RemovePermission
+            Resource: "*"
+          - Sid: AllowAPIGatewayManagement
+            Effect: Allow
+            Action: apigateway:*
+            Resource: "*"
+          - Sid: AllowSSMParameterWrite
+            Effect: Allow
+            Action:
+              - ssm:PutParameter
+              - ssm:DeleteParameter
+              - ssm:AddTagsToResource
+            Resource: "arn:aws:ssm:*:*:parameter/*"
+          - Sid: AllowEventBridgeRuleManagement
+            Effect: Allow
+            Action:
+              - events:PutRule
+              - events:DeleteRule
+              - events:DescribeRule
+              - events:PutTargets
+              - events:RemoveTargets
+            Resource: "*"
+          - Sid: AllowSSMParameterRead
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/route53/asmbly/hosted-zone-id"
+          - Sid: AllowACMAndRoute53Management
+            Effect: Allow
+            Action:
+              - acm:RequestCertificate
+              - acm:DescribeCertificate
+              - acm:DeleteCertificate
+              - acm:AddTagsToCertificate
+              - route53:GetChange
+              - route53:ChangeResourceRecordSets
+              - route53:GetHostedZone
+            Resource: "*"
