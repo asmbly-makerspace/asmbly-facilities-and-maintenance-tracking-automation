@@ -95,6 +95,7 @@ Resources:
               - lambda:UpdateFunctionCode
               - lambda:UpdateFunctionConfiguration
               - lambda:GetFunction
+              - lambda:GetLayerVersion
               - lambda:CreateLayerVersion
               - lambda:PublishLayerVersion
               - lambda:DeleteLayerVersion
