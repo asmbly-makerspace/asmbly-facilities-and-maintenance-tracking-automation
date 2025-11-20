@@ -22,6 +22,25 @@ def _make_discourse_request(method, url, api_key, api_username, **kwargs):
             logger.error(f"Discourse API response: {e.response.text}")
         raise
 
+def create_post(base_url, title, content, api_key, api_username, category_id):
+    """Creates a new topic in Discourse and returns its URL."""
+    url = f"{base_url}/posts.json"
+    payload = {
+        "title": title,
+        "raw": content,
+        "category": category_id
+    }
+        
+    response_data = _make_discourse_request("POST", url, api_key, api_username, json=payload)
+    
+    # Construct the URL from the response
+    topic_slug = response_data.get('topic_slug')
+    topic_id = response_data.get('topic_id')
+    if topic_slug and topic_id:
+        return f"{base_url}/t/{topic_slug}/{topic_id}"
+    else:
+        logger.error("Could not construct Discourse URL from response.")
+        return None
 
 def post_reply(base_url, topic_id, post_number, message, api_key, api_username):
     """Posts a reply to a specific topic in Discourse."""

@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
+Transform:
+  - AWS::LanguageExtensions
+  - AWS::Serverless-2016-10-31
 Description: Resources for Problem Report-focused Lambda functions.
 
-# Parameters are required because the root template passes them in
 Parameters:
   Stage:
     Type: String
@@ -10,11 +11,104 @@ Parameters:
   RequestsLayerARN:
     Type: String
     Description: The ARN of the shared Requests Lambda Layer.
+  ClickUpWorkspaceFieldIdParameterName:
+    Type: String
+    Description: The name of the SSM Parameter storing the Workspace Field ID.
   CommonLayerARN:
     Type: String
     Description: The ARN of the shared Common Utilities Lambda Layer.
 
 Resources:
+  ClickUpProblemReportConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${Stage}/clickup/facilities/problemReports"
+      Description: "JSON configuration for the ClickUp Problem Reports list and its custom field IDs."
+      Type: String
+      Value:
+        Fn::ToJsonString:
+          Fn::Transform:
+            Name: 'AWS::Include'
+            Parameters:
+              Location: ../configs/clickup_facilities_problemReports.json
+      Tags:
+        Project: asmbly-facilities-and-maintenance-tracking-automation
+        Workspace: facilities
+        Stage: !Ref Stage
+
+  NewProblemReportRequestReceivedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [lambda.amazonaws.com]
+            Action: [sts:AssumeRole]
+      Policies:
+        - PolicyName: NewProblemReportRequestReceivedPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:prod/discourse-facilities-bot-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/problemReports"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}"
+      Tags:
+        - Key: Project
+          Value: new-problem-report-request-received
+        - Key: Workspace
+          Value: facilities
+        - Key: Stage
+          Value: !Ref Stage
+
+  NewProblemReportRequestReceivedFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "NewProblemReportRequestReceived-${Stage}"
+      Description: "Handles a new problem report request from a Google Form."
+      CodeUri: ../functions/problem_report/new_problem_report_request_received/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      MemorySize: 512
+      Timeout: 20
+      Role: !GetAtt NewProblemReportRequestReceivedRole.Arn
+      Layers:
+        - !Ref RequestsLayerARN
+        - !Ref CommonLayerARN
+      Environment:
+        Variables:
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
+          DISCOURSE_SECRET_NAME: 'prod/discourse-facilities-bot'
+          CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
+          CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME: !Ref ClickUpProblemReportConfigParameter
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
+          SLACK_CHANNEL_ID: 'C063LH7MB45'
+          SLACK_BOT_NAME: 'Problem Reporter Bot'
+          SLACK_BOT_EMOJI: ':warning:'
+          SLACK_WORKSPACE_URL: 'https://asmbly-makerspace.slack.com'
+          DISCOURSE_URL: 'https://yo.asmbly.org'
+          DISCOURSE_PROBLEM_REPORT_CATEGORY: '59'
+      Tags:
+        Project: new-problem-report-request-received
+        Workspace: facilities
+        Stage: !Ref Stage
+
   ProblemReportReactionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -40,7 +134,6 @@ Resources:
                 Action:
                   - secretsmanager:GetSecretValue
                 Resource:
-                  # Note: The Discourse secret does not follow the stage prefix pattern
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:prod/discourse-facilities-bot-*'
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
@@ -64,7 +157,7 @@ Resources:
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
       MemorySize: 512
-      Timeout: 20 # Increased timeout for multiple API calls
+      Timeout: 20
       Role: !GetAtt ProblemReportReactionRole.Arn
       Layers:
         - !Ref RequestsLayerARN
@@ -81,6 +174,9 @@ Resources:
         Stage: !Ref Stage
 
 Outputs:
+  NewProblemReportRequestReceivedFunctionArn:
+    Description: "The ARN of the New Problem Report Request Received Lambda Function"
+    Value: !GetAtt NewProblemReportRequestReceivedFunction.Arn
   ProblemReportReactionFunctionArn:
     Description: "The ARN of the Slack Reaction Webhook Lambda Function for Problem Reports"
     Value: !GetAtt ProblemReportReactionFunction.Arn

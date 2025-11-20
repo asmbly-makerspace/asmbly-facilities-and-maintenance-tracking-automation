@@ -2,8 +2,6 @@ import os
 import sys
 from unittest.mock import patch, MagicMock
 
-import pytest
-
 # Add the python directory to the path to allow common module imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'python')))
 
@@ -69,6 +67,16 @@ def test_slack_state_get_selected_option_value():
     assert state.get_selected_option_value("block1", "action1") == "option1"
     assert state.get_selected_option_value("block1", "action2") is None
     assert state.get_selected_option_value("block2", "action1") is None
+
+def test_get_slack_post_url_success():
+    """Test successful generation of a Slack permalink."""
+    url = slack.get_slack_post_url("https://my.slack.com", "C123", "12345.67890")
+    assert url == "https://my.slack.com/archives/C123/p1234567890"
+
+def test_get_slack_post_url_no_workspace_url():
+    """Test that the function returns None if the workspace URL is missing."""
+    url = slack.get_slack_post_url(None, "C123", "12345.67890")
+    assert url is None
 
 def test_get_slack_user_info():
     """Test retrieving user information from Slack."""
