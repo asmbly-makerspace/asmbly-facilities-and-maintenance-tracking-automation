@@ -91,6 +91,11 @@ These services automate tasks related to facilities management, problem reportin
     * **How it's triggered:** An HTTP `POST` from a ClickUp webhook.
     * **Webhook URL:** `https://facilities.asmbly.org/purchase-request/new`
     * **Config Location:** ClickUp Webhooks (Facilities - Purchase Requests) -> Automations -> "New Purchase Request" Webhook.
+* **New Problem Report Handler** (`NewProblemReportRequestReceivedFunction`)
+    * **What it does:** Receives a webhook from a Google Form when a new problem report is submitted. It creates a task in ClickUp, posts a notification to Slack, and optionally creates a Discourse forum topic. It then updates the ClickUp task with links to the Slack and Discourse posts.
+    * **How it's triggered:** An HTTP `POST` from a Google Apps Script attached to the Problem Report Google Form.
+    * **Webhook URL:** `https://facilities.asmbly.org/problem-report/new`
+    * **Config Location:** The webhook URL is [configured in the Google Apps Script](https://script.google.com/u/0/home/projects/1q-X-Z0WM41Lb0WtnkTN6yyhYcazQH22ksNKD7cCwL76FSbqXsLzlR7q1/edit) attached to the "Problem Report" Google Form.
 
 ## How It's Managed (The Important Part!)
 

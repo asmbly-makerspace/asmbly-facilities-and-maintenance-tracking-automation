@@ -62,6 +62,16 @@ def send_slack_message(token, channel_to_attempt, text, bot_name, icon_emoji, *,
         return {"ok": False, "error": "script_error", "error_message": str(e)}
 
 
+def get_slack_post_url(slack_workspace_url, channel_id, message_ts):
+    """Constructs the permalink for a Slack message."""
+    if not slack_workspace_url:
+        print("slack_workspace_url was not provided. Cannot generate permalink.")
+        return None
+    # Timestamp needs to be without the dot for the URL
+    ts_for_url = message_ts.replace('.', '')
+    return f"{slack_workspace_url}/archives/{channel_id}/p{ts_for_url}"
+
+
 def get_slack_user_info(api_token, user_id, http_session=None):
     '''Retrieves user information from Slack.'''
     url = "https://slack.com/api/users.info"

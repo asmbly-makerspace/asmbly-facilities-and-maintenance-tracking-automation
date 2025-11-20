@@ -1,0 +1,29 @@
+{
+  "timestamp": "2025-11-20T06:30:11.624Z",
+  "data": {
+    "In a few words, what is the problem?": [
+      "ErrorCheck and rethread the upper thread"
+    ],
+    "Which piece of equipment, if applicable?  ": [
+      "Embroidery / Sewing Machine 2"
+    ],
+    "What kind of problem would you like to report?": [
+      "Equipment"
+    ],
+    "What Area is this in?": [
+      "General Areas"
+    ],
+    "Timestamp": [
+      "11/20/2025 0:30:08"
+    ],
+    "Create Discourse Post? Asmbly stewards and leads will always be notified of problem reports. Creating a discourse post will make the problem report public for wider interaction and feedback on yo.asmbly.org.": [
+      "No"
+    ],
+    "Please leave your name and phone number (optional). We may be able to resolve by phone or text and can follow up with you, especially if we need more information.  ": [
+      "Bob James"
+    ],
+    "Any more details that we should know?": [
+      "May be the sensor"
+    ]
+  }
+}

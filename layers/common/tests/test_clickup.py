@@ -1,8 +1,5 @@
-import json
 import os
-import importlib
 import sys
-import pathlib
 from unittest.mock import patch
 
 import pytest
@@ -93,3 +90,24 @@ def test_get_all_clickup_tasks_max_pages(mock_fetch_page):
 
     assert len(tasks) == 3
     assert mock_fetch_page.call_count == 3
+
+
+@patch('common.clickup._make_clickup_request')
+def test_get_list_custom_fields(mock_make_request):
+    """Test retrieving custom fields for a list."""
+    api_token = 'test_token'
+    list_id = 'list_123'
+    mock_response = {
+        "fields": [
+            {"id": "field_abc", "name": "Test Field 1"},
+            {"id": "field_def", "name": "Test Field 2"}
+        ]
+    }
+    mock_make_request.return_value = mock_response
+
+    fields = clickup.get_list_custom_fields(api_token, list_id)
+
+    mock_make_request.assert_called_once_with(api_token, "GET", f"list/{list_id}/field")
+    assert len(fields) == 2
+    assert fields[0]['id'] == 'field_abc'
+    assert fields[1]['name'] == 'Test Field 2'

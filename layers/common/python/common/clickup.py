@@ -52,6 +52,11 @@ def create_task(api_token, list_id, payload):
     """Creates a ClickUp task in a specific list."""
     return _make_clickup_request(api_token, "POST", f"list/{list_id}/task", json=payload)
 
+def get_list_custom_fields(api_token, list_id):
+    """Retrieves all custom fields available on a list."""
+    response_data = _make_clickup_request(api_token, "GET", f"list/{list_id}/field")
+    return response_data.get('fields', [])
+
 def update_task(api_token, task_id, payload):
     """Updates a ClickUp task."""
     response_data = _make_clickup_request(api_token, "PUT", f"task/{task_id}", json=payload)
