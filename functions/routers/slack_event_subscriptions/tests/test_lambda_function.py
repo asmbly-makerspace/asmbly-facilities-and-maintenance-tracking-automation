@@ -1,7 +1,7 @@
 import json
 import os
 from unittest import TestCase
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import patch, MagicMock
 
 from functions.routers.slack_event_subscriptions import lambda_function
 

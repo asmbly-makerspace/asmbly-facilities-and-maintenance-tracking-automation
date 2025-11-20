@@ -2,7 +2,7 @@ import json
 import os
 import sys
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 # Add the parent directory to the Python path to allow importing lambda_function
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
