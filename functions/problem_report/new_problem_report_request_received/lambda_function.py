@@ -55,11 +55,13 @@ def lambda_handler(event, context):
     clickup_config_param_name = os.environ['CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME']
     CLICKUP_CONFIG = aws.get_json_parameter(clickup_config_param_name)
     
-    secrets_arn = os.environ["SECRETS_ARN"]
-    clickup_api_token = aws.get_secret(secrets_arn, "CLICKUP_API_KEY")
-    discourse_api_key = aws.get_secret(secrets_arn, "DISCOURSE_API_KEY")
-    discourse_api_username = aws.get_secret(secrets_arn, "DISCOURSE_API_USERNAME")
-    discourse_url = aws.get_secret(secrets_arn, "DISCOURSE_URL")
+    clickup_secret_name = os.environ['CLICKUP_SECRET_NAME']
+    clickup_api_token = aws.get_secret(clickup_secret_name, "CLICKUP_API_TOKEN")
+
+    discourse_secret_name = os.environ['DISCOURSE_SECRET_NAME']
+    discourse_api_key = aws.get_secret(discourse_secret_name, "DISCOURSE_API_KEY")
+    discourse_api_username = aws.get_secret(discourse_secret_name, "DISCOURSE_API_USERNAME")
+    discourse_url = aws.get_secret(discourse_secret_name, "DISCOURSE_URL")
     
     slack_secret_name = os.environ['SLACK_MAINTENANCE_BOT_SECRET_NAME']
     slack_bot_token = aws.get_secret(slack_secret_name, "SLACK_MAINTENANCE_BOT_TOKEN")
@@ -147,7 +149,7 @@ def lambda_handler(event, context):
             update_payload = {"description": final_task_description}
             
             # Conditionally build the list of custom fields to update
-            custom_fields_to_update = []
+            custom_fields__to_update = []
             if discourse_post_url:
                 custom_fields_to_update.append({"id": CLICKUP_CONFIG["discourse_post_field_id"], "value": discourse_post_url})
             if slack_post_url:

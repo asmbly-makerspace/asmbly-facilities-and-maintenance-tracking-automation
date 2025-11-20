@@ -1,5 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
+Transform:
+  - AWS::LanguageExtensions
+  - AWS::Serverless-2016-10-31
 Description: Resources for Problem Report-focused Lambda functions.
 
 Parameters:
@@ -20,11 +22,12 @@ Resources:
       Name: !Sub "/${Stage}/clickup/facilities/problemReports"
       Description: "JSON configuration for the ClickUp Problem Reports list and its custom field IDs."
       Type: String
-      Value: !Sub
-        - |
-          ${ConfigContent}
-        - ConfigContent: !Include
-            Location: ../configs/clickup_facilities_problemReports.json
+      Value:
+        Fn::ToJsonString:
+          Fn::Transform:
+            Name: 'AWS::Include'
+            Parameters:
+              Location: ../configs/clickup_facilities_problemReports.json
       Tags:
         Project: asmbly-facilities-and-maintenance-tracking-automation
         Workspace: facilities
@@ -55,13 +58,12 @@ Resources:
                 Action:
                   - secretsmanager:GetSecretValue
                 Resource:
-                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Stage}/google-forms-webhooks-*'
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:prod/discourse-facilities-bot-*'
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
-                  - !Sub 'arn_aws_secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
               - Effect: Allow
                 Action: ssm:GetParameter
-                Resource: !GetAtt ClickUpProblemReportConfigParameter.Arn
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/problemReports"
       Tags:
         - Key: Project
           Value: new-problem-report-request-received
@@ -86,7 +88,8 @@ Resources:
         - !Ref CommonLayerARN
       Environment:
         Variables:
-          SECRETS_ARN: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Stage}/google-forms-webhooks'
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
+          DISCOURSE_SECRET_NAME: 'prod/discourse-facilities-bot'
           CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME: !Ref ClickUpProblemReportConfigParameter
           SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
           SLACK_CHANNEL_ID: 'C063LH7MB45'

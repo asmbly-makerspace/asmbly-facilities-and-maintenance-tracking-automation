@@ -1,7 +1,7 @@
 import json
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 # Use an absolute import path from the project root
 from functions.problem_report.new_problem_report_request_received.lambda_function import lambda_handler
@@ -14,8 +14,9 @@ class TestLambdaHandler(unittest.TestCase):
         This method is called before each test function is executed.
         """
         self.original_environ = dict(os.environ)
-        os.environ['SECRETS_ARN'] = 'test_secrets_arn'
-        os.environ['SLACK_MAINTENANCE_BOT_SECRET_NAME'] = 'slack_secret_name'
+        os.environ['CLICKUP_SECRET_NAME'] = 'clickup_secret'
+        os.environ['DISCOURSE_SECRET_NAME'] = 'discourse_secret'
+        os.environ['SLACK_MAINTENANCE_BOT_SECRET_NAME'] = 'slack_secret'
         os.environ['CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME'] = 'test_param'
         os.environ['SLACK_CHANNEL_ID'] = 'C12345'
         os.environ['SLACK_BOT_NAME'] = 'Test Bot'
@@ -48,15 +49,13 @@ class TestLambdaHandler(unittest.TestCase):
         # Mock all external dependencies
         def get_secret_side_effect(secret_name, secret_key):
             secrets = {
-                'test_secrets_arn': {
-                    "CLICKUP_API_KEY": "test_clickup_key",
+                'clickup_secret': {"CLICKUP_API_TOKEN": "test_clickup_key"},
+                'discourse_secret': {
                     "DISCOURSE_API_KEY": "test_discourse_key",
                     "DISCOURSE_API_USERNAME": "test_discourse_user",
                     "DISCOURSE_URL": "https://test.discourse.url",
                 },
-                'slack_secret_name': {
-                    "SLACK_MAINTENANCE_BOT_TOKEN": "test_slack_token"
-                }
+                'slack_secret': {"SLACK_MAINTENANCE_BOT_TOKEN": "test_slack_token"}
             }
             return secrets[secret_name][secret_key]
         mock_aws.get_secret.side_effect = get_secret_side_effect
@@ -100,15 +99,13 @@ class TestLambdaHandler(unittest.TestCase):
         # Mock all external dependencies
         def get_secret_side_effect(secret_name, secret_key):
             secrets = {
-                'test_secrets_arn': {
-                    "CLICKUP_API_KEY": "test_clickup_key",
+                'clickup_secret': {"CLICKUP_API_TOKEN": "test_clickup_key"},
+                'discourse_secret': {
                     "DISCOURSE_API_KEY": "test_discourse_key",
                     "DISCOURSE_API_USERNAME": "test_discourse_user",
                     "DISCOURSE_URL": "https://test.discourse.url",
                 },
-                'slack_secret_name': {
-                    "SLACK_MAINTENANCE_BOT_TOKEN": "test_slack_token"
-                }
+                'slack_secret': {"SLACK_MAINTENANCE_BOT_TOKEN": "test_slack_token"}
             }
             return secrets[secret_name][secret_key]
         mock_aws.get_secret.side_effect = get_secret_side_effect
