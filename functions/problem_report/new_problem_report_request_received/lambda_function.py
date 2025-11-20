@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from typing import Any, Dict, List, Optional
 
 from common import aws, clickup, discourse, google_forms, slack
 
@@ -24,11 +25,11 @@ DISCLAIMER_TEXT = "Report generated from a filing. This report has also been sen
 
 # --- HELPER FUNCTIONS ---
 
-def _get_form_value(form_data, key, default=None):
+def _get_form_value(form_data: Dict[str, List[str]], key: str, default: Optional[str] = None) -> Optional[str]:
     """Safely retrieves a value from the parsed form data using the FORM_FIELD_MAP."""
     return form_data.get(FORM_FIELD_MAP[key], [default])[0]
 
-def _generate_base_message(report_data):
+def _generate_base_message(report_data: Dict[str, Any]) -> str:
     """Generates the core message content from report data, used by all services."""
     return f"""Problem Type: {report_data['problem_type']}
 Workspace:  {report_data['workspace']}
@@ -38,7 +39,7 @@ Additional Info:  {report_data['additional_info']}"""
 
 # --- MAIN HANDLER ---
 
-def lambda_handler(event, context):
+def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     """
     Main Lambda entry point.
     Orchestrates the entire process of handling a new problem report:
@@ -78,7 +79,7 @@ def lambda_handler(event, context):
     form_data = google_forms.parse_form_response(event["body"])
     report_data = {key: _get_form_value(form_data, key) for key in FORM_FIELD_MAP}
     report_data["create_discourse_post"] = _get_form_value(form_data, "create_discourse_post", "No").lower() == "yes"
-    logger.info(f"Parsed report data. Summary: '{report_data['summary']}'. Create Discourse post: {report_data['create_discourse_post']}")
+    logger.info("Parsed report data. Summary: '%s'. Create Discourse post: %s", report_data['summary'], report_data['create_discourse_post'])
 
     # Generate message content for different platforms
     base_message = _generate_base_message(report_data)
@@ -99,9 +100,9 @@ def lambda_handler(event, context):
             ]
         }
         clickup_task = clickup.create_task(clickup_api_token, CLICKUP_CONFIG["list_id"], task_payload)
-        logger.info(f"Successfully created ClickUp task: {clickup_task.get('url')}")
+        logger.info("Successfully created ClickUp task: %s", clickup_task.get('url'))
     except Exception as e:
-        logger.error(f"Error creating ClickUp task: {e}")
+        logger.error("Error creating ClickUp task: %s", e)
 
     # Step 2: Create Discourse Post if requested
     discourse_post_url = None
@@ -110,9 +111,9 @@ def lambda_handler(event, context):
         try:
             discourse_content = f"{base_message}\n\n{clickup_disclaimer}"
             discourse_post_url = discourse.create_post(discourse_url, f"Problem Report: {report_data['summary']}", discourse_content, discourse_api_key, discourse_api_username)
-            logger.info(f"Successfully created Discourse post: {discourse_post_url}")
+            logger.info("Successfully created Discourse post: %s", discourse_post_url)
         except Exception as e:
-            logger.error(f"Error creating Discourse post: {e}")
+            logger.error("Error creating Discourse post: %s", e)
     else:
         logger.info("Step 2: Skipping Discourse post creation as per user request.")
 
@@ -132,11 +133,11 @@ def lambda_handler(event, context):
         )
         if slack_response.get('ok'):
             slack_post_url = slack.get_slack_post_url(slack_workspace_url, slack_response['channel'], slack_response['ts'])
-            logger.info(f"Successfully sent Slack notification: {slack_post_url}")
+            logger.info("Successfully sent Slack notification: %s", slack_post_url)
         else:
-            logger.error(f"Failed to send Slack message: {slack_response.get('error')}")
+            logger.error("Failed to send Slack message: %s", slack_response.get('error'))
     except Exception as e:
-        logger.error(f"Error sending Slack message: {e}")
+        logger.error("Error sending Slack message: %s", e)
 
     # Step 4: Update ClickUp Task with final details
     if clickup_task:
@@ -146,7 +147,7 @@ def lambda_handler(event, context):
             final_task_description = f'{base_message}\n\nDiscourse Link: {discourse_link_text}\nSlack Post: {slack_link_text}\n\n{clickup_disclaimer}'
             
             # Start with the description update
-            update_payload = {"description": final_task_description}
+            update_payload: Dict[str, Any] = {"description": final_task_description}
             
             # Conditionally build the list of custom fields to update
             custom_fields_to_update = []
@@ -162,7 +163,7 @@ def lambda_handler(event, context):
             clickup.update_task(clickup_api_token, clickup_task["id"], update_payload)
             logger.info("Successfully updated ClickUp task.")
         except Exception as e:
-            logger.error(f"Error updating ClickUp task: {e}")
+            logger.error("Error updating ClickUp task: %s", e)
     else:
         logger.warning("Step 4: Skipping ClickUp task update because task creation failed.")
 
