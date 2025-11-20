@@ -79,6 +79,7 @@ Resources:
             Effect: Allow
             Action:
               - iam:CreateRole
+              - iam:TagRole
               - iam:DeleteRole
               - iam:GetRole
               - iam:PutRolePolicy
