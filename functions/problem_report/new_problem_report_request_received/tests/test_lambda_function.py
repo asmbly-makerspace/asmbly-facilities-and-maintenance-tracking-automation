@@ -1,13 +1,10 @@
 import json
 import os
-import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
-# Add the parent directory to the Python path to allow importing lambda_function
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from lambda_function import lambda_handler
+# Use an absolute import path from the project root
+from functions.problem_report.new_problem_report_request_received.lambda_function import lambda_handler
 
 class TestLambdaHandler(unittest.TestCase):
 
@@ -33,13 +30,11 @@ class TestLambdaHandler(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_environ)
 
-    @patch('lambda_function.aws.get_json_parameter')
-    @patch('lambda_function.slack.send_slack_message')
-    @patch('lambda_function.discourse.create_post')
-    @patch('lambda_function.clickup.create_task')
-    @patch('lambda_function.clickup.update_task')
-    @patch('lambda_function.aws.get_secret')
-    def test_handler_with_discourse_post(self, mock_get_secret, mock_update_task, mock_create_task, mock_create_discourse_post, mock_send_slack_message, mock_get_json_parameter):
+    @patch('functions.problem_report.new_problem_report_request_received.lambda_function.aws')
+    @patch('functions.problem_report.new_problem_report_request_received.lambda_function.slack')
+    @patch('functions.problem_report.new_problem_report_request_received.lambda_function.discourse')
+    @patch('functions.problem_report.new_problem_report_request_received.lambda_function.clickup')
+    def test_handler_with_discourse_post(self, mock_clickup, mock_discourse, mock_slack, mock_aws):
         """
         Tests the full handler flow when the user opts to create a Discourse post.
         Verifies that ClickUp task is created, Discourse post is made, Slack is notified,
@@ -64,36 +59,35 @@ class TestLambdaHandler(unittest.TestCase):
                 }
             }
             return secrets[secret_name][secret_key]
-        mock_get_secret.side_effect = get_secret_side_effect
+        mock_aws.get_secret.side_effect = get_secret_side_effect
         
-        mock_get_json_parameter.return_value = {
+        mock_aws.get_json_parameter.return_value = {
             "list_id": "12345",
             "problem_type_field_id": "field1",
             "contact_details_field_id": "field2",
             "discourse_post_field_id": "field3",
             "slack_post_field_id": "field4"
         }
-        mock_create_task.return_value = {"id": "test_task_id", "url": "https://app.clickup.com/t/test_task_id"}
-        mock_create_discourse_post.return_value = "https://test.discourse.url/t/test-post/123"
-        mock_send_slack_message.return_value = {"ok": True, "channel": "C12345", "ts": "12345.67890"}
+        mock_clickup.create_task.return_value = {"id": "test_task_id", "url": "https://app.clickup.com/t/test_task_id"}
+        mock_discourse.create_post.return_value = "https://test.discourse.url/t/test-post/123"
+        mock_slack.send_slack_message.return_value = {"ok": True, "channel": "C12345", "ts": "12345.67890"}
+        mock_slack.get_slack_post_url.return_value = "https://test.slack.com/archives/C12345/p1234567890"
 
         # Execute the handler
         response = lambda_handler(event, None)
 
         # Verify the response and that all mocks were called as expected
         self.assertEqual(response['statusCode'], 200)
-        mock_create_task.assert_called_once()
-        mock_create_discourse_post.assert_called_once()
-        mock_send_slack_message.assert_called_once()
-        mock_update_task.assert_called_once()
+        mock_clickup.create_task.assert_called_once()
+        mock_discourse.create_post.assert_called_once()
+        mock_slack.send_slack_message.assert_called_once()
+        mock_clickup.update_task.assert_called_once()
 
-    @patch('lambda_function.aws.get_json_parameter')
-    @patch('lambda_function.slack.send_slack_message')
-    @patch('lambda_function.discourse.create_post')
-    @patch('lambda_function.clickup.create_task')
-    @patch('lambda_function.clickup.update_task')
-    @patch('lambda_function.aws.get_secret')
-    def test_handler_no_discourse_post(self, mock_get_secret, mock_update_task, mock_create_task, mock_create_discourse_post, mock_send_slack_message, mock_get_json_parameter):
+    @patch('functions.problem_report.new_problem_report_request_received.lambda_function.aws')
+    @patch('functions.problem_report.new_problem_report_request_received.lambda_function.slack')
+    @patch('functions.problem_report.new_problem_report_request_received.lambda_function.discourse')
+    @patch('functions.problem_report.new_problem_report_request_received.lambda_function.clickup')
+    def test_handler_no_discourse_post(self, mock_clickup, mock_discourse, mock_slack, mock_aws):
         """
         Tests the handler flow when the user opts NOT to create a Discourse post.
         Verifies that the Discourse post creation is skipped and all other actions proceed.
@@ -117,27 +111,28 @@ class TestLambdaHandler(unittest.TestCase):
                 }
             }
             return secrets[secret_name][secret_key]
-        mock_get_secret.side_effect = get_secret_side_effect
+        mock_aws.get_secret.side_effect = get_secret_side_effect
 
-        mock_get_json_parameter.return_value = {
+        mock_aws.get_json_parameter.return_value = {
             "list_id": "12345",
             "problem_type_field_id": "field1",
             "contact_details_field_id": "field2",
             "discourse_post_field_id": "field3",
             "slack_post_field_id": "field4"
         }
-        mock_create_task.return_value = {"id": "test_task_id", "url": "https://app.clickup.com/t/test_task_id"}
-        mock_send_slack_message.return_value = {"ok": True, "channel": "C12345", "ts": "12345.67890"}
+        mock_clickup.create_task.return_value = {"id": "test_task_id", "url": "https://app.clickup.com/t/test_task_id"}
+        mock_slack.send_slack_message.return_value = {"ok": True, "channel": "C12345", "ts": "12345.67890"}
+        mock_slack.get_slack_post_url.return_value = "https://test.slack.com/archives/C12345/p1234567890"
 
         # Execute the handler
         response = lambda_handler(event, None)
 
         # Verify the response and that the Discourse mock was NOT called
         self.assertEqual(response['statusCode'], 200)
-        mock_create_task.assert_called_once()
-        mock_create_discourse_post.assert_not_called()
-        mock_send_slack_message.assert_called_once()
-        mock_update_task.assert_called_once()
+        mock_clickup.create_task.assert_called_once()
+        mock_discourse.create_post.assert_not_called()
+        mock_slack.send_slack_message.assert_called_once()
+        mock_clickup.update_task.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()

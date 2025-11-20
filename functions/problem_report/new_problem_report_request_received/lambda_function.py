@@ -143,13 +143,17 @@ def lambda_handler(event, context):
             slack_link_text = slack_post_url or "Error sending notification"
             final_task_description = f'{base_message}\n\nDiscourse Link: {discourse_link_text}\nSlack Post: {slack_link_text}\n\n{clickup_disclaimer}'
             
+            # Start with the description update
             update_payload = {"description": final_task_description}
+            
+            # Conditionally build the list of custom fields to update
             custom_fields_to_update = []
             if discourse_post_url:
                 custom_fields_to_update.append({"id": CLICKUP_CONFIG["discourse_post_field_id"], "value": discourse_post_url})
             if slack_post_url:
                 custom_fields_to_update.append({"id": CLICKUP_CONFIG["slack_post_field_id"], "value": slack_post_url})
             
+            # Only add the 'custom_fields' key to the payload if there are fields to update
             if custom_fields_to_update:
                 update_payload["custom_fields"] = custom_fields_to_update
 
