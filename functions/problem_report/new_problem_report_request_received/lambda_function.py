@@ -55,13 +55,14 @@ def lambda_handler(event, context):
     clickup_config_param_name = os.environ['CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME']
     CLICKUP_CONFIG = aws.get_json_parameter(clickup_config_param_name)
     
-    secrets = aws.get_secret(os.environ["SECRETS_ARN"])
+    secrets_arn = os.environ["SECRETS_ARN"]
+    clickup_api_token = aws.get_secret(secrets_arn, "CLICKUP_API_KEY")
+    discourse_api_key = aws.get_secret(secrets_arn, "DISCOURSE_API_KEY")
+    discourse_api_username = aws.get_secret(secrets_arn, "DISCOURSE_API_USERNAME")
+    discourse_url = aws.get_secret(secrets_arn, "DISCOURSE_URL")
     
-    clickup_api_token = secrets["CLICKUP_API_KEY"]
-    discourse_api_key = secrets["DISCOURSE_API_KEY"]
-    discourse_api_username = secrets["DISCOURSE_API_USERNAME"]
-    discourse_url = secrets["DISCOURSE_URL"]
-    slack_bot_token = secrets["SLACK_MAINTENANCE_BOT_TOKEN"]
+    slack_secret_name = os.environ['SLACK_MAINTENANCE_BOT_SECRET_NAME']
+    slack_bot_token = aws.get_secret(slack_secret_name, "SLACK_MAINTENANCE_BOT_TOKEN")
 
     # Load Slack configuration from environment variables
     slack_channel_id = os.environ['SLACK_CHANNEL_ID']

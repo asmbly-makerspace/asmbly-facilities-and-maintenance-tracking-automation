@@ -2,8 +2,6 @@ import os
 import sys
 from unittest.mock import patch, MagicMock
 
-import pytest
-
 # Add the python directory to the path to allow common module imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'python')))
 

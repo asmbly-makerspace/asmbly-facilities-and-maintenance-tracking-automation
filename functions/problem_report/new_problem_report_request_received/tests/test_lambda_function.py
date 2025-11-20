@@ -18,6 +18,7 @@ class TestLambdaHandler(unittest.TestCase):
         """
         self.original_environ = dict(os.environ)
         os.environ['SECRETS_ARN'] = 'test_secrets_arn'
+        os.environ['SLACK_MAINTENANCE_BOT_SECRET_NAME'] = 'slack_secret_name'
         os.environ['CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME'] = 'test_param'
         os.environ['SLACK_CHANNEL_ID'] = 'C12345'
         os.environ['SLACK_BOT_NAME'] = 'Test Bot'
@@ -46,18 +47,25 @@ class TestLambdaHandler(unittest.TestCase):
         """
         with open(os.path.join(os.path.dirname(__file__), 'fixtures', 'example_google_forms_response.json')) as f:
             form_data = json.load(f)
-        # Ensure this test case correctly simulates opting IN to a Discourse post
         form_data['data']['Create Discourse Post? Asmbly stewards and leads will always be notified of problem reports. Creating a discourse post will make the problem report public for wider interaction and feedback on yo.asmbly.org.'] = ['Yes']
         event = {'body': json.dumps(form_data)}
 
         # Mock all external dependencies
-        mock_get_secret.return_value = {
-            "CLICKUP_API_KEY": "test_clickup_key",
-            "DISCOURSE_API_KEY": "test_discourse_key",
-            "DISCOURSE_API_USERNAME": "test_discourse_user",
-            "DISCOURSE_URL": "https://test.discourse.url",
-            "SLACK_MAINTENANCE_BOT_TOKEN": "test_slack_token"
-        }
+        def get_secret_side_effect(secret_name, secret_key):
+            secrets = {
+                'test_secrets_arn': {
+                    "CLICKUP_API_KEY": "test_clickup_key",
+                    "DISCOURSE_API_KEY": "test_discourse_key",
+                    "DISCOURSE_API_USERNAME": "test_discourse_user",
+                    "DISCOURSE_URL": "https://test.discourse.url",
+                },
+                'slack_secret_name': {
+                    "SLACK_MAINTENANCE_BOT_TOKEN": "test_slack_token"
+                }
+            }
+            return secrets[secret_name][secret_key]
+        mock_get_secret.side_effect = get_secret_side_effect
+        
         mock_get_json_parameter.return_value = {
             "list_id": "12345",
             "problem_type_field_id": "field1",
@@ -92,18 +100,25 @@ class TestLambdaHandler(unittest.TestCase):
         """
         with open(os.path.join(os.path.dirname(__file__), 'fixtures', 'example_google_forms_response.json')) as f:
             form_data = json.load(f)
-        # Ensure this test case correctly simulates opting OUT of a Discourse post
         form_data['data']['Create Discourse Post? Asmbly stewards and leads will always be notified of problem reports. Creating a discourse post will make the problem report public for wider interaction and feedback on yo.asmbly.org.'] = ['No']
         event = {'body': json.dumps(form_data)}
 
         # Mock all external dependencies
-        mock_get_secret.return_value = {
-            "CLICKUP_API_KEY": "test_clickup_key",
-            "DISCOURSE_API_KEY": "test_discourse_key",
-            "DISCOURSE_API_USERNAME": "test_discourse_user",
-            "DISCOURSE_URL": "https://test.discourse.url",
-            "SLACK_MAINTENANCE_BOT_TOKEN": "test_slack_token"
-        }
+        def get_secret_side_effect(secret_name, secret_key):
+            secrets = {
+                'test_secrets_arn': {
+                    "CLICKUP_API_KEY": "test_clickup_key",
+                    "DISCOURSE_API_KEY": "test_discourse_key",
+                    "DISCOURSE_API_USERNAME": "test_discourse_user",
+                    "DISCOURSE_URL": "https://test.discourse.url",
+                },
+                'slack_secret_name': {
+                    "SLACK_MAINTENANCE_BOT_TOKEN": "test_slack_token"
+                }
+            }
+            return secrets[secret_name][secret_key]
+        mock_get_secret.side_effect = get_secret_side_effect
+
         mock_get_json_parameter.return_value = {
             "list_id": "12345",
             "problem_type_field_id": "field1",
