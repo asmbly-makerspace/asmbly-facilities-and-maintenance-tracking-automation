@@ -68,8 +68,13 @@ Resources:
             Action:
               - s3:PutObject
               - s3:GetObject
+              - s3:ListBucket
+              - s3:GetBucketLocation
             # This bucket name is from your previous deployment logs
-            Resource: "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6/*"
+            Resource:
+              # You need to allow ListBucket on the BUCKET itself, not the objects /*
+              - "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6"
+              - "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6/*"
           - Sid: AllowIAMRoleAndPolicyCreation
             Effect: Allow
             Action:
