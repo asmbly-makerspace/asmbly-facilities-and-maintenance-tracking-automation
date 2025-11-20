@@ -185,19 +185,19 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
         logger.info("Step 4: Updating ClickUp task with final URLs...")
         try:
             slack_link_text = slack_post_url or "Error sending notification"
-            final_task_description = f'{base_message}\n\nDiscourse Link: {discourse_link_text}\nSlack Post: {slack_link_text}\n\n{clickup_disclaimer}'
-            
-            # Start with the description update
+            final_task_description = f'{base_message}\n\nDiscourse Link: {discourse_link_text}\nSlack Post: {slack_link_text}\n\n{clickup_disclaimer}' # Re-add disclaimer
+
+            # Build the payload for the update call
             update_payload: Dict[str, Any] = {"description": final_task_description}
-            
-            # Conditionally build the list of custom fields to update
             custom_fields_to_update = []
+
             if discourse_post_url:
-                custom_fields_to_update.append({"id": CLICKUP_CONFIG["discourse_post_field_id"], "value": discourse_post_url})
+                if discourse_field_id := CLICKUP_CONFIG.get("discourse_post_field_id"):
+                    custom_fields_to_update.append({"id": discourse_field_id, "value": discourse_post_url})
             if slack_post_url:
-                custom_fields_to_update.append({"id": CLICKUP_CONFIG["slack_post_field_id"], "value": slack_post_url})
-            
-            # Only add the 'custom_fields' key to the payload if there are fields to update
+                if slack_field_id := CLICKUP_CONFIG.get("slack_post_field_id"):
+                    custom_fields_to_update.append({"id": slack_field_id, "value": slack_post_url})
+
             if custom_fields_to_update:
                 update_payload["custom_fields"] = custom_fields_to_update
 

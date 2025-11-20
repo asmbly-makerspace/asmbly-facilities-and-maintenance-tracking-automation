@@ -127,8 +127,9 @@ class TestDiscourse(unittest.TestCase):
         content = "Test content"
         api_key = "test_key"
         api_username = "test_user"
-        
-        result_url = discourse.create_post(base_url, title, content, api_key, api_username)
+        category_id = "12"
+
+        result_url = discourse.create_post(base_url, title, content, api_key, api_username, category_id)
         
         self.assertEqual(result_url, "https://test.discourse.url/t/test-topic-slug/12345")
         mock_make_request.assert_called_once_with(
@@ -136,7 +137,7 @@ class TestDiscourse(unittest.TestCase):
             f"{base_url}/posts.json",
             api_key,
             api_username,
-            json={"title": title, "raw": content}
+            json={"title": title, "raw": content, "category": category_id}
         )
 
     @patch('common.discourse._make_discourse_request')
@@ -145,7 +146,7 @@ class TestDiscourse(unittest.TestCase):
         mock_make_request.side_effect = Exception("API Error")
         
         with self.assertRaises(Exception) as context:
-            discourse.create_post("url", "title", "content", "key", "user")
+            discourse.create_post("url", "title", "content", "key", "user", "12")
         
         self.assertTrue("API Error" in str(context.exception))
 
@@ -154,6 +155,6 @@ class TestDiscourse(unittest.TestCase):
         """Tests that None is returned if the slug is missing from the response."""
         mock_make_request.return_value = {"topic_id": 12345} # Missing 'topic_slug'
         
-        result_url = discourse.create_post("url", "title", "content", "key", "user")
+        result_url = discourse.create_post("url", "title", "content", "key", "user", "12")
         
         self.assertIsNone(result_url)

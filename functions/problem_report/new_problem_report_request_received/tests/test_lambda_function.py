@@ -22,6 +22,7 @@ class TestLambdaHandler(unittest.TestCase):
         os.environ['SLACK_BOT_EMOJI'] = ':test:'
         os.environ['SLACK_WORKSPACE_URL'] = 'https://test.slack.com'
         os.environ['DISCOURSE_URL'] = 'https://test.discourse.url'
+        os.environ['DISCOURSE_PROBLEM_REPORT_CATEGORY'] = '59'
 
     def tearDown(self):
         """
@@ -115,10 +116,15 @@ class TestLambdaHandler(unittest.TestCase):
 
         # Assert the payload for update_task
         update_task_call_args = mock_clickup.update_task.call_args
-        update_payload = update_task_call_args[0][2] # payload is the 3rd argument
-        update_custom_fields = {field['id']: field['value'] for field in update_payload['custom_fields']}
-        self.assertEqual(update_custom_fields.get('field3'), "https://test.discourse.url/t/test-post/123")
-        self.assertEqual(update_custom_fields.get('field4'), "https://test.slack.com/archives/C12345/p1234567890")
+        self.assertIsNotNone(update_task_call_args, "update_task was not called")
+        update_payload = update_task_call_args.kwargs.get('payload') or update_task_call_args.args[2]
+
+        self.assertIn("Discourse Link: https://test.discourse.url/t/test-post/123", update_payload['description'])
+        self.assertIn("Slack Post: https://test.slack.com/archives/C12345/p1234567890", update_payload['description'])
+
+        update_custom_fields = {field['id']: field['value'] for field in update_payload.get('custom_fields', [])}
+        self.assertEqual(update_custom_fields.get('field3'), "https://test.discourse.url/t/test-post/123") # discourse_post_field_id
+        self.assertEqual(update_custom_fields.get('field4'), "https://test.slack.com/archives/C12345/p1234567890") # slack_post_field_id
 
     @patch('functions.problem_report.new_problem_report_request_received.lambda_function.aws')
     @patch('functions.problem_report.new_problem_report_request_received.lambda_function.slack')
