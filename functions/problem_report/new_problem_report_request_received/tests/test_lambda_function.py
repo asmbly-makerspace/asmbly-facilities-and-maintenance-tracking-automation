@@ -15,13 +15,14 @@ class TestLambdaHandler(unittest.TestCase):
         """
         self.original_environ = dict(os.environ)
         os.environ['CLICKUP_SECRET_NAME'] = 'clickup_secret'
-        os.environ['DISCOURSE_SECRET_NAME'] = 'discourse_secret'
+        os.environ['DISCOURSE_SECRET_NAME'] = 'test/discourse_bot_secret'
         os.environ['SLACK_MAINTENANCE_BOT_SECRET_NAME'] = 'slack_secret'
         os.environ['CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME'] = 'test_param'
         os.environ['SLACK_CHANNEL_ID'] = 'C12345'
         os.environ['SLACK_BOT_NAME'] = 'Test Bot'
         os.environ['SLACK_BOT_EMOJI'] = ':test:'
         os.environ['SLACK_WORKSPACE_URL'] = 'https://test.slack.com'
+        os.environ['DISCOURSE_URL'] = 'https://test.discourse.url'
 
     def tearDown(self):
         """
@@ -50,10 +51,9 @@ class TestLambdaHandler(unittest.TestCase):
         def get_secret_side_effect(secret_name, secret_key):
             secrets = {
                 'clickup_secret': {"CLICKUP_API_TOKEN": "test_clickup_key"},
-                'discourse_secret': {
+                'test/discourse_bot_secret': {
                     "DISCOURSE_API_KEY": "test_discourse_key",
                     "DISCOURSE_API_USERNAME": "test_discourse_user",
-                    "DISCOURSE_URL": "https://test.discourse.url",
                 },
                 'slack_secret': {"SLACK_MAINTENANCE_BOT_TOKEN": "test_slack_token"}
             }
@@ -100,10 +100,9 @@ class TestLambdaHandler(unittest.TestCase):
         def get_secret_side_effect(secret_name, secret_key):
             secrets = {
                 'clickup_secret': {"CLICKUP_API_TOKEN": "test_clickup_key"},
-                'discourse_secret': {
+                'test/discourse_bot_secret': {
                     "DISCOURSE_API_KEY": "test_discourse_key",
                     "DISCOURSE_API_USERNAME": "test_discourse_user",
-                    "DISCOURSE_URL": "https://test.discourse.url",
                 },
                 'slack_secret': {"SLACK_MAINTENANCE_BOT_TOKEN": "test_slack_token"}
             }

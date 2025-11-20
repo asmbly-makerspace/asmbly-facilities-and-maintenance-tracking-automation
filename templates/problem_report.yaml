@@ -89,13 +89,14 @@ Resources:
       Environment:
         Variables:
           CLICKUP_SECRET_NAME: 'clickup/api/token'
-          DISCOURSE_SECRET_NAME: 'prod/discourse-facilities-bot'
+          DISCOURSE_SECRET_NAME: !Sub '${Stage}/discourse/facilities-bot' # For API Key and User
           CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME: !Ref ClickUpProblemReportConfigParameter
           SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
           SLACK_CHANNEL_ID: 'C063LH7MB45'
           SLACK_BOT_NAME: 'Problem Reporter Bot'
           SLACK_BOT_EMOJI: ':warning:'
           SLACK_WORKSPACE_URL: 'https://asmbly-makerspace.slack.com'
+          DISCOURSE_URL: 'https://yo.asmbly.org'
       Tags:
         Project: new-problem-report-request-received
         Workspace: facilities
@@ -159,7 +160,8 @@ Resources:
           REACTION_MAP_PARAMETER_NAME: !Sub "/${Stage}/config/reaction-handler/problem-report"
           SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
           CLICKUP_SECRET_NAME: 'clickup/api/token'
-          DISCOURSE_SECRET_NAME: 'prod/discourse-facilities-bot'
+          DISCOURSE_SECRET_NAME: !Sub '${Stage}/discourse/facilities-bot' # For API Key and User
+          # DISCOURSE_URL is not needed here; it's parsed from the message link.
       Tags:
         Project: slack-reaction-problem-report
         Workspace: facilities

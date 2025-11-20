@@ -60,9 +60,9 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     clickup_api_token = aws.get_secret(clickup_secret_name, "CLICKUP_API_TOKEN")
 
     discourse_secret_name = os.environ['DISCOURSE_SECRET_NAME']
-    discourse_api_key = aws.get_secret(discourse_secret_name, "DISCOURSE_API_KEY")
-    discourse_api_username = aws.get_secret(discourse_secret_name, "DISCOURSE_API_USERNAME")
-    discourse_url = aws.get_secret(discourse_secret_name, "DISCOURSE_URL")
+    discourse_api_key = aws.get_secret(discourse_secret_name, "DISCOURSE_FACILITIES_BOT_API_KEY")
+    discourse_api_username = aws.get_secret(discourse_secret_name, "DISCOURSE_FACILITIES_BOT_API_USERNAME")
+    discourse_url = os.environ['DISCOURSE_URL']
     
     slack_secret_name = os.environ['SLACK_MAINTENANCE_BOT_SECRET_NAME']
     slack_bot_token = aws.get_secret(slack_secret_name, "SLACK_MAINTENANCE_BOT_TOKEN")
