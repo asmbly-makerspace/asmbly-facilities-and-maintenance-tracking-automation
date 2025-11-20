@@ -97,6 +97,7 @@ Resources:
           SLACK_BOT_EMOJI: ':warning:'
           SLACK_WORKSPACE_URL: 'https://asmbly-makerspace.slack.com'
           DISCOURSE_URL: 'https://yo.asmbly.org'
+          DISCOURSE_PROBLEM_REPORT_CATEGORY: '59'
       Tags:
         Project: new-problem-report-request-received
         Workspace: facilities

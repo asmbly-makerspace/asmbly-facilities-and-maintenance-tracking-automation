@@ -18,6 +18,7 @@ FORM_FIELD_MAP = {
     "workspace": "What Area is this in?",
     "asset": "Which piece of equipment, if applicable?  ",
     "summary": "In a few words, what is the problem?",
+    "timestamp": "Timestamp",
     "additional_info": "Any more details that we should know?",
 }
 # Static disclaimer text to be used across services
@@ -74,6 +75,7 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     discourse_api_key = aws.get_secret(discourse_secret_name, "DISCOURSE_FACILITIES_BOT_API_KEY")
     discourse_api_username = aws.get_secret(discourse_secret_name, "DISCOURSE_FACILITIES_BOT_API_USERNAME")
     discourse_url = os.environ['DISCOURSE_URL']
+    discourse_category_id = os.environ['DISCOURSE_PROBLEM_REPORT_CATEGORY']
     
     slack_secret_name = os.environ['SLACK_MAINTENANCE_BOT_SECRET_NAME']
     slack_bot_token = aws.get_secret(slack_secret_name, "SLACK_MAINTENANCE_BOT_TOKEN")
@@ -104,20 +106,27 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     try:
         # Fetch custom fields to map dropdowns
         list_custom_fields = clickup.get_list_custom_fields(clickup_api_token, CLICKUP_CONFIG["list_id"])
-
+        
         # Map form text values to ClickUp dropdown option IDs (orderindex)
-        problem_type_option_id = _get_dropdown_option_id(list_custom_fields, CLICKUP_CONFIG["problem_type_field_id"], report_data["problem_type"])
-        workspace_option_id = _get_dropdown_option_id(list_custom_fields, CLICKUP_CONFIG["workspace_field_id"], report_data["workspace"])
-
-        custom_fields_payload = [
-            {"id": CLICKUP_CONFIG["contact_details_field_id"], "value": report_data["contact_details"]},
-            {"id": CLICKUP_CONFIG["asset_field_id"], "value": report_data["asset"]},
-        ]
-        if problem_type_option_id is not None:
-            custom_fields_payload.append({"id": CLICKUP_CONFIG["problem_type_field_id"], "value": problem_type_option_id})
-        if workspace_option_id is not None:
-            custom_fields_payload.append({"id": CLICKUP_CONFIG["workspace_field_id"], "value": workspace_option_id})
-
+        custom_fields_payload = []
+        
+        # Safely add fields to payload only if their config ID exists
+        if contact_details_field_id := CLICKUP_CONFIG.get("contact_details_field_id"):
+            custom_fields_payload.append({"id": contact_details_field_id, "value": report_data["contact_details"]})
+        
+        if asset_field_id := CLICKUP_CONFIG.get("asset_field_id"):
+            custom_fields_payload.append({"id": asset_field_id, "value": report_data["asset"]})
+            
+        if problem_type_field_id := CLICKUP_CONFIG.get("problem_type_field_id"):
+            problem_type_option_id = _get_dropdown_option_id(list_custom_fields, problem_type_field_id, report_data["problem_type"])
+            if problem_type_option_id is not None:
+                custom_fields_payload.append({"id": problem_type_field_id, "value": problem_type_option_id})
+        
+        if workspace_field_id := CLICKUP_CONFIG.get("workspace_field_id"):
+            workspace_option_id = _get_dropdown_option_id(list_custom_fields, workspace_field_id, report_data["workspace"])
+            if workspace_option_id is not None:
+                custom_fields_payload.append({"id": workspace_field_id, "value": workspace_option_id})
+                
         task_payload = {
             "name": report_data["summary"],
             "description": initial_task_description,
@@ -134,7 +143,15 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
         logger.info("Step 2: Creating Discourse post...")
         try:
             discourse_content = f"{base_message}\n\n{clickup_disclaimer}"
-            discourse_post_url = discourse.create_post(discourse_url, f"Problem Report: {report_data['summary']}", discourse_content, discourse_api_key, discourse_api_username)
+            discourse_title = f"{report_data['timestamp']} - {report_data['workspace']} - {report_data['asset']}"
+            discourse_post_url = discourse.create_post(
+                base_url=discourse_url, 
+                title=discourse_title, 
+                content=discourse_content, 
+                api_key=discourse_api_key, 
+                api_username=discourse_api_username,
+                category_id=discourse_category_id
+            )
             logger.info("Successfully created Discourse post: %s", discourse_post_url)
         except Exception as e:
             logger.error("Error creating Discourse post: %s", e)
