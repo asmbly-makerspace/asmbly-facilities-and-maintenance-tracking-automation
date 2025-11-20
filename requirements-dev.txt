@@ -5,3 +5,4 @@ requests
 requests-mock
 boto3
 pytest-cov
+tzdata

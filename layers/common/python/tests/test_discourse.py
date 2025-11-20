@@ -113,3 +113,47 @@ class TestDiscourse(unittest.TestCase):
             "post_number": "4"
         }
         self.assertEqual(discourse.parse_discourse_url(text), expected)
+
+    @patch('common.discourse._make_discourse_request')
+    def test_create_post_success(self, mock_make_request):
+        """Tests successful creation of a Discourse post."""
+        mock_make_request.return_value = {
+            "topic_slug": "test-topic-slug",
+            "topic_id": 12345
+        }
+        
+        base_url = "https://test.discourse.url"
+        title = "Test Title"
+        content = "Test content"
+        api_key = "test_key"
+        api_username = "test_user"
+        
+        result_url = discourse.create_post(base_url, title, content, api_key, api_username)
+        
+        self.assertEqual(result_url, "https://test.discourse.url/t/test-topic-slug/12345")
+        mock_make_request.assert_called_once_with(
+            "POST",
+            f"{base_url}/posts.json",
+            api_key,
+            api_username,
+            json={"title": title, "raw": content}
+        )
+
+    @patch('common.discourse._make_discourse_request')
+    def test_create_post_api_failure(self, mock_make_request):
+        """Tests handling of an API failure during post creation."""
+        mock_make_request.side_effect = Exception("API Error")
+        
+        with self.assertRaises(Exception) as context:
+            discourse.create_post("url", "title", "content", "key", "user")
+        
+        self.assertTrue("API Error" in str(context.exception))
+
+    @patch('common.discourse._make_discourse_request')
+    def test_create_post_missing_slug_in_response(self, mock_make_request):
+        """Tests that None is returned if the slug is missing from the response."""
+        mock_make_request.return_value = {"topic_id": 12345} # Missing 'topic_slug'
+        
+        result_url = discourse.create_post("url", "title", "content", "key", "user")
+        
+        self.assertIsNone(result_url)

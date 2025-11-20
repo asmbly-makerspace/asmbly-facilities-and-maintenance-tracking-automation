@@ -56,8 +56,10 @@ def lambda_handler(event, context):
 
     # Initialize APIs with secrets
     secrets = aws.get_secret(os.environ["SECRETS_ARN"])
-    clickup_api = clickup.ClickUp(secrets["CLICKUP_API_KEY"])
-    discourse_api = discourse.Discourse(secrets["DISCOURSE_API_KEY"], secrets["DISCOURSE_API_USERNAME"], secrets["DISCOURSE_URL"])
+    clickup_api_token = secrets["CLICKUP_API_KEY"]
+    discourse_api_key = secrets["DISCOURSE_API_KEY"]
+    discourse_api_username = secrets["DISCOURSE_API_USERNAME"]
+    discourse_url = secrets["DISCOURSE_URL"]
 
     # Parse form data and build a structured report dictionary
     form_data = google_forms.parse_form_response(event["body"])
@@ -75,15 +77,15 @@ def lambda_handler(event, context):
     initial_task_description = f'{base_message}\n\nDiscourse Link: {"Pending" if report_data["create_discourse_post"] else "Opted Out. Slack notification Only."}\nSlack Post: Pending\n\n{clickup_disclaimer}'
     clickup_task = None
     try:
-        clickup_task = clickup_api.create_task(
-            CLICKUP_CONFIG["list_id"],
-            report_data["summary"],
-            initial_task_description,
-            custom_fields=[
+        task_payload = {
+            "name": report_data["summary"],
+            "description": initial_task_description,
+            "custom_fields": [
                 {"id": CLICKUP_CONFIG["problem_type_field_id"], "value": report_data["problem_type"]},
                 {"id": CLICKUP_CONFIG["contact_details_field_id"], "value": report_data["contact_details"]},
             ]
-        )
+        }
+        clickup_task = clickup.create_task(clickup_api_token, CLICKUP_CONFIG["list_id"], task_payload)
         logger.info(f"Successfully created ClickUp task: {clickup_task.get('url')}")
     except Exception as e:
         logger.error(f"Error creating ClickUp task: {e}")
@@ -94,7 +96,7 @@ def lambda_handler(event, context):
         logger.info("Step 2: Creating Discourse post...")
         try:
             discourse_content = f"{base_message}\n\n{clickup_disclaimer}"
-            discourse_post_url = discourse_api.create_post(title=f"Problem Report: {report_data['summary']}", content=discourse_content)
+            discourse_post_url = discourse.create_post(discourse_url, f"Problem Report: {report_data['summary']}", discourse_content, discourse_api_key, discourse_api_username)
             logger.info(f"Successfully created Discourse post: {discourse_post_url}")
         except Exception as e:
             logger.error(f"Error creating Discourse post: {e}")
@@ -131,7 +133,7 @@ def lambda_handler(event, context):
             if custom_fields_to_update:
                 update_payload["custom_fields"] = custom_fields_to_update
 
-            clickup_api.update_task(clickup_task["id"], update_payload)
+            clickup.update_task(clickup_api_token, clickup_task["id"], update_payload)
             logger.info("Successfully updated ClickUp task.")
         except Exception as e:
             logger.error(f"Error updating ClickUp task: {e}")
