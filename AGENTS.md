@@ -50,6 +50,7 @@ When working with an AI Assistant (like Gemini), use the **System Prompts** belo
 > - **Robustness:** Ensure all external API calls are wrapped in `try/except` blocks with logging.
 > - **Formatting:** When formatting Slack messages, use Block Kit format where possible.
 > - **Logging:** Do not use f-strings for logging (use lazy logging: `logger.info("Msg: %s", val)`).
+> - **Imports:** Do not include or use imports that are not referenced or needed.
 
 ---
 
