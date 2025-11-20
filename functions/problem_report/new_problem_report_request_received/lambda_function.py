@@ -50,18 +50,28 @@ def lambda_handler(event, context):
     """
     logger.info("New problem report request received. Starting processing.")
     
-    # Load configurations from SSM Parameter Store
+    # Load configurations and secrets at the beginning
+    logger.info("Loading configurations and secrets...")
     clickup_config_param_name = os.environ['CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME']
     CLICKUP_CONFIG = aws.get_json_parameter(clickup_config_param_name)
-
-    # Initialize APIs with secrets
+    
     secrets = aws.get_secret(os.environ["SECRETS_ARN"])
+    
     clickup_api_token = secrets["CLICKUP_API_KEY"]
     discourse_api_key = secrets["DISCOURSE_API_KEY"]
     discourse_api_username = secrets["DISCOURSE_API_USERNAME"]
     discourse_url = secrets["DISCOURSE_URL"]
+    slack_bot_token = secrets["SLACK_MAINTENANCE_BOT_TOKEN"]
+
+    # Load Slack configuration from environment variables
+    slack_channel_id = os.environ['SLACK_CHANNEL_ID']
+    slack_bot_name = os.environ['SLACK_BOT_NAME']
+    slack_bot_emoji = os.environ['SLACK_BOT_EMOJI']
+    slack_workspace_url = os.environ['SLACK_WORKSPACE_URL']
+    logger.info("Configuration and secrets loaded.")
 
     # Parse form data and build a structured report dictionary
+    logger.info("Parsing form data...")
     form_data = google_forms.parse_form_response(event["body"])
     report_data = {key: _get_form_value(form_data, key) for key in FORM_FIELD_MAP}
     report_data["create_discourse_post"] = _get_form_value(form_data, "create_discourse_post", "No").lower() == "yes"
@@ -72,7 +82,7 @@ def lambda_handler(event, context):
     clickup_disclaimer = f"*{DISCLAIMER_TEXT}*"
     slack_disclaimer = f"_{DISCLAIMER_TEXT}_"
 
-    # Step 1: Create ClickUp Task with initial description
+    # Step 1: Create ClickUp Task
     logger.info("Step 1: Creating ClickUp task...")
     initial_task_description = f'{base_message}\n\nDiscourse Link: {"Pending" if report_data["create_discourse_post"] else "Opted Out. Slack notification Only."}\nSlack Post: Pending\n\n{clickup_disclaimer}'
     clickup_task = None
@@ -110,9 +120,18 @@ def lambda_handler(event, context):
     slack_message_text = f'{base_message}\nContact Details: {report_data["contact_details"]}\n\nDiscourse Link: {discourse_link_text}\nClickUp Task: {clickup_task_url}\n\n{slack_disclaimer}'
     slack_post_url = None
     try:
-        slack_response = slack.send_slack_message(secrets["SLACK_WEBHOOK_URL"], slack_message_text)
-        slack_post_url = slack_response.get('url')
-        logger.info(f"Successfully sent Slack notification: {slack_post_url}")
+        slack_response = slack.send_slack_message(
+            token=slack_bot_token,
+            channel_to_attempt=slack_channel_id,
+            text=slack_message_text,
+            bot_name=slack_bot_name,
+            icon_emoji=slack_bot_emoji
+        )
+        if slack_response.get('ok'):
+            slack_post_url = slack.get_slack_post_url(slack_workspace_url, slack_response['channel'], slack_response['ts'])
+            logger.info(f"Successfully sent Slack notification: {slack_post_url}")
+        else:
+            logger.error(f"Failed to send Slack message: {slack_response.get('error')}")
     except Exception as e:
         logger.error(f"Error sending Slack message: {e}")
 

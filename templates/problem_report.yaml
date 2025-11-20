@@ -58,7 +58,7 @@ Resources:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Stage}/google-forms-webhooks-*'
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:prod/discourse-facilities-bot-*'
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
-                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-webhook-url-*'
+                  - !Sub 'arn_aws_secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
               - Effect: Allow
                 Action: ssm:GetParameter
                 Resource: !GetAtt ClickUpProblemReportConfigParameter.Arn
@@ -88,6 +88,11 @@ Resources:
         Variables:
           SECRETS_ARN: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Stage}/google-forms-webhooks'
           CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME: !Ref ClickUpProblemReportConfigParameter
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
+          SLACK_CHANNEL_ID: 'C063LH7MB45'
+          SLACK_BOT_NAME: 'Problem Reporter Bot'
+          SLACK_BOT_EMOJI: ':warning:'
+          SLACK_WORKSPACE_URL: 'https://asmbly-makerspace.slack.com'
       Tags:
         Project: new-problem-report-request-received
         Workspace: facilities
