@@ -132,8 +132,12 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
             if workspace_option_id is not None:
                 custom_fields_payload.append({"id": workspace_field_id, "value": workspace_option_id})
                 
+        # Conditionally format the task name
+        task_name = report_data["summary"]
+        if report_data.get("asset"):
+            task_name = f"{report_data['asset']} - {task_name}"
         task_payload = {
-            "name": report_data["summary"],
+            "name": task_name,
             "description": initial_task_description,
             "custom_fields": custom_fields_payload
         }
