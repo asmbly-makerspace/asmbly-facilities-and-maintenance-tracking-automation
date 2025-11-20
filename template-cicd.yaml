@@ -68,12 +68,18 @@ Resources:
             Action:
               - s3:PutObject
               - s3:GetObject
+              - s3:ListBucket
+              - s3:GetBucketLocation
             # This bucket name is from your previous deployment logs
-            Resource: "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6/*"
+            Resource:
+              # You need to allow ListBucket on the BUCKET itself, not the objects /*
+              - "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6"
+              - "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6/*"
           - Sid: AllowIAMRoleAndPolicyCreation
             Effect: Allow
             Action:
               - iam:CreateRole
+              - iam:TagRole
               - iam:DeleteRole
               - iam:GetRole
               - iam:PutRolePolicy
@@ -90,11 +96,13 @@ Resources:
               - lambda:UpdateFunctionCode
               - lambda:UpdateFunctionConfiguration
               - lambda:GetFunction
+              - lambda:GetLayerVersion
               - lambda:CreateLayerVersion
               - lambda:PublishLayerVersion
               - lambda:DeleteLayerVersion
               - lambda:AddPermission
               - lambda:RemovePermission
+              - lambda:TagResource
             Resource: "*"
           - Sid: AllowAPIGatewayManagement
             Effect: Allow
