@@ -1,7 +1,7 @@
 import json
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, call
 # Use an absolute import path from the project root
 from functions.problem_report.new_problem_report_request_received.lambda_function import lambda_handler
 
@@ -17,6 +17,7 @@ class TestLambdaHandler(unittest.TestCase):
         os.environ['DISCOURSE_SECRET_NAME'] = 'test/discourse_bot_secret'
         os.environ['SLACK_MAINTENANCE_BOT_SECRET_NAME'] = 'slack_secret'
         os.environ['CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME'] = 'test_param'
+        os.environ['CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME'] = 'test_workspace_param'
         os.environ['SLACK_CHANNEL_ID'] = 'C12345'
         os.environ['SLACK_BOT_NAME'] = 'Test Bot'
         os.environ['SLACK_BOT_EMOJI'] = ':test:'
@@ -59,16 +60,22 @@ class TestLambdaHandler(unittest.TestCase):
             }
             return secrets[secret_name][secret_key]
         mock_aws.get_secret.side_effect = get_secret_side_effect
-        
-        mock_aws.get_json_parameter.return_value = {
-            "list_id": "12345",
-            "problem_type_field_id": "field1",
-            "contact_details_field_id": "field2",
-            "discourse_post_field_id": "field3",
-            "slack_post_field_id": "field4",
-            "workspace_field_id": "field_workspace",
-            "asset_field_id": "field_asset"
-        }
+
+        def get_json_param_side_effect(param_name, expected_key=None):
+            if param_name == 'test_param':
+                return {
+                    "list_id": "12345",
+                    "problem_type_field_id": "field1",
+                    "contact_details_field_id": "field2",
+                    "discourse_post_field_id": "field3",
+                    "slack_post_field_id": "field4",
+                    "asset_field_id": "field_asset"
+                }
+            if param_name == 'test_workspace_param' and expected_key == 'workspace_field_id':
+                return "field_workspace"
+            return None
+        mock_aws.get_json_parameter.side_effect = get_json_param_side_effect
+
         mock_clickup.get_list_custom_fields.return_value = [
             {
                 "id": "field1", "name": "Problem Type", "type": "drop_down",
@@ -115,16 +122,18 @@ class TestLambdaHandler(unittest.TestCase):
         self.assertEqual(custom_fields.get('field_workspace'), 5) # workspace "General Areas" -> orderindex 5
 
         # Assert the payload for update_task
-        update_task_call_args = mock_clickup.update_task.call_args
-        self.assertIsNotNone(update_task_call_args, "update_task was not called")
-        update_payload = update_task_call_args.kwargs.get('payload') or update_task_call_args.args[2]
-
+        # Assert description update
+        mock_clickup.update_task.assert_called_once()
+        update_call_args = mock_clickup.update_task.call_args
+        update_payload = update_call_args.kwargs.get('payload') or update_call_args.args[2]
         self.assertIn("Discourse Link: https://test.discourse.url/t/test-post/123", update_payload['description'])
         self.assertIn("Slack Post: https://test.slack.com/archives/C12345/p1234567890", update_payload['description'])
 
-        update_custom_fields = {field['id']: field['value'] for field in update_payload.get('custom_fields', [])}
-        self.assertEqual(update_custom_fields.get('field3'), "https://test.discourse.url/t/test-post/123") # discourse_post_field_id
-        self.assertEqual(update_custom_fields.get('field4'), "https://test.slack.com/archives/C12345/p1234567890") # slack_post_field_id
+        # Assert custom field updates
+        mock_clickup.set_custom_field_value.assert_has_calls([
+            call("test_clickup_key", "test_task_id", "field3", "https://test.discourse.url/t/test-post/123"),
+            call("test_clickup_key", "test_task_id", "field4", "https://test.slack.com/archives/C12345/p1234567890")
+        ], any_order=True)
 
     @patch('functions.problem_report.new_problem_report_request_received.lambda_function.aws')
     @patch('functions.problem_report.new_problem_report_request_received.lambda_function.slack')
@@ -152,16 +161,22 @@ class TestLambdaHandler(unittest.TestCase):
             }
             return secrets[secret_name][secret_key]
         mock_aws.get_secret.side_effect = get_secret_side_effect
-
-        mock_aws.get_json_parameter.return_value = {
-            "list_id": "12345",
-            "problem_type_field_id": "field1",
-            "contact_details_field_id": "field2",
-            "discourse_post_field_id": "field3",
-            "slack_post_field_id": "field4",
-            "workspace_field_id": "field_workspace",
-            "asset_field_id": "field_asset"
-        }
+        
+        def get_json_param_side_effect(param_name, expected_key=None):
+            if param_name == 'test_param':
+                return {
+                    "list_id": "12345",
+                    "problem_type_field_id": "field1",
+                    "contact_details_field_id": "field2",
+                    "discourse_post_field_id": "field3",
+                    "slack_post_field_id": "field4",
+                    "asset_field_id": "field_asset"
+                }
+            if param_name == 'test_workspace_param' and expected_key == 'workspace_field_id':
+                return "field_workspace"
+            return None
+        mock_aws.get_json_parameter.side_effect = get_json_param_side_effect
+        
         mock_clickup.get_list_custom_fields.return_value = [
             {
                 "id": "field1", "name": "Problem Type", "type": "drop_down",

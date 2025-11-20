@@ -234,6 +234,7 @@ Resources:
       Location: ./templates/problem_report.yaml
       Parameters:
         Stage: !Ref Stage
+        ClickUpWorkspaceFieldIdParameterName: !Ref ClickUpWorkspaceFieldIdParameter
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
 

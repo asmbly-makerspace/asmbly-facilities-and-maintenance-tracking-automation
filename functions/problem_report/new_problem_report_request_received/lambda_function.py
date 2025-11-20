@@ -66,6 +66,8 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     # Load configurations and secrets at the beginning
     logger.info("Loading configurations and secrets...")
     clickup_config_param_name = os.environ['CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME']
+    workspace_field_id_param_name = os.environ['CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME']
+    
     CLICKUP_CONFIG = aws.get_json_parameter(clickup_config_param_name)
     
     clickup_secret_name = os.environ['CLICKUP_SECRET_NAME']
@@ -79,6 +81,9 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     
     slack_secret_name = os.environ['SLACK_MAINTENANCE_BOT_SECRET_NAME']
     slack_bot_token = aws.get_secret(slack_secret_name, "SLACK_MAINTENANCE_BOT_TOKEN")
+
+    # Load the separate workspace field ID
+    workspace_field_id = aws.get_json_parameter(workspace_field_id_param_name, expected_key='workspace_field_id')
 
     # Load Slack configuration from environment variables
     slack_channel_id = os.environ['SLACK_CHANNEL_ID']
@@ -96,7 +101,7 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
 
     # Generate message content for different platforms
     base_message = _generate_base_message(report_data)
-    clickup_disclaimer = f"*{DISCLAIMER_TEXT}*"
+    clickup_disclaimer = f"_{DISCLAIMER_TEXT}_"
     slack_disclaimer = f"_{DISCLAIMER_TEXT}_"
 
     # Step 1: Create ClickUp Task
@@ -122,7 +127,7 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
             if problem_type_option_id is not None:
                 custom_fields_payload.append({"id": problem_type_field_id, "value": problem_type_option_id})
         
-        if workspace_field_id := CLICKUP_CONFIG.get("workspace_field_id"):
+        if workspace_field_id:
             workspace_option_id = _get_dropdown_option_id(list_custom_fields, workspace_field_id, report_data["workspace"])
             if workspace_option_id is not None:
                 custom_fields_payload.append({"id": workspace_field_id, "value": workspace_option_id})
@@ -185,23 +190,19 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
         logger.info("Step 4: Updating ClickUp task with final URLs...")
         try:
             slack_link_text = slack_post_url or "Error sending notification"
-            final_task_description = f'{base_message}\n\nDiscourse Link: {discourse_link_text}\nSlack Post: {slack_link_text}\n\n{clickup_disclaimer}' # Re-add disclaimer
-
-            # Build the payload for the update call
-            update_payload: Dict[str, Any] = {"description": final_task_description}
-            custom_fields_to_update = []
-
+            final_task_description = f'{base_message}\n\nDiscourse Link: {discourse_link_text}\nSlack Post: {slack_link_text}\n\n{clickup_disclaimer}'
+            
+            # First, update the task description using the standard update endpoint
+            clickup.update_task(clickup_api_token, clickup_task["id"], {"description": final_task_description})
+            
+            # Then, update custom fields individually using the dedicated endpoint
             if discourse_post_url:
                 if discourse_field_id := CLICKUP_CONFIG.get("discourse_post_field_id"):
-                    custom_fields_to_update.append({"id": discourse_field_id, "value": discourse_post_url})
+                    clickup.set_custom_field_value(clickup_api_token, clickup_task["id"], discourse_field_id, discourse_post_url)
             if slack_post_url:
                 if slack_field_id := CLICKUP_CONFIG.get("slack_post_field_id"):
-                    custom_fields_to_update.append({"id": slack_field_id, "value": slack_post_url})
+                    clickup.set_custom_field_value(clickup_api_token, clickup_task["id"], slack_field_id, slack_post_url)
 
-            if custom_fields_to_update:
-                update_payload["custom_fields"] = custom_fields_to_update
-
-            clickup.update_task(clickup_api_token, clickup_task["id"], update_payload)
             logger.info("Successfully updated ClickUp task.")
         except Exception as e:
             logger.error("Error updating ClickUp task: %s", e)

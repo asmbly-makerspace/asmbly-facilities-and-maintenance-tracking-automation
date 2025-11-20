@@ -11,6 +11,9 @@ Parameters:
   RequestsLayerARN:
     Type: String
     Description: The ARN of the shared Requests Lambda Layer.
+  ClickUpWorkspaceFieldIdParameterName:
+    Type: String
+    Description: The name of the SSM Parameter storing the Workspace Field ID.
   CommonLayerARN:
     Type: String
     Description: The ARN of the shared Common Utilities Lambda Layer.
@@ -63,7 +66,9 @@ Resources:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
               - Effect: Allow
                 Action: ssm:GetParameter
-                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/problemReports"
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/problemReports"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}"
       Tags:
         - Key: Project
           Value: new-problem-report-request-received
@@ -90,6 +95,7 @@ Resources:
         Variables:
           CLICKUP_SECRET_NAME: 'clickup/api/token'
           DISCOURSE_SECRET_NAME: 'prod/discourse-facilities-bot'
+          CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
           CLICKUP_PROBLEM_REPORTS_CONFIG_PARAM_NAME: !Ref ClickUpProblemReportConfigParameter
           SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
           SLACK_CHANNEL_ID: 'C063LH7MB45'
