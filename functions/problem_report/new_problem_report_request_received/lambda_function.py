@@ -77,7 +77,7 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     # Parse form data and build a structured report dictionary
     logger.info("Parsing form data...")
     form_data = google_forms.parse_form_response(event["body"])
-    report_data = {key: _get_form_value(form_data, key) for key in FORM_FIELD_MAP}
+    report_data: Dict[str, Any] = {key: _get_form_value(form_data, key) for key in FORM_FIELD_MAP}
     report_data["create_discourse_post"] = _get_form_value(form_data, "create_discourse_post", "No").lower() == "yes"
     logger.info("Parsed report data. Summary: '%s'. Create Discourse post: %s", report_data['summary'], report_data['create_discourse_post'])
 
