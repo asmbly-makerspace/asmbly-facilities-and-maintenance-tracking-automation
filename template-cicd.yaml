@@ -102,6 +102,7 @@ Resources:
               - lambda:DeleteLayerVersion
               - lambda:AddPermission
               - lambda:RemovePermission
+              - lambda:TagResource
             Resource: "*"
           - Sid: AllowAPIGatewayManagement
             Effect: Allow
