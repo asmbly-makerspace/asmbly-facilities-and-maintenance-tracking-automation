@@ -112,7 +112,7 @@ class TestLambdaHandler(unittest.TestCase):
         create_task_call_args = mock_clickup.create_task.call_args
         task_payload = create_task_call_args[0][2] # payload is the 3rd argument
 
-        self.assertEqual(task_payload['name'], "ErrorCheck and rethread the upper thread")
+        self.assertEqual(task_payload['name'], "Embroidery / Sewing Machine 2 - ErrorCheck and rethread the upper thread")
         
         # Check custom fields payload for correct dropdown mapping and other values
         custom_fields = {field['id']: field['value'] for field in task_payload['custom_fields']}
@@ -206,6 +206,12 @@ class TestLambdaHandler(unittest.TestCase):
         mock_discourse.create_post.assert_not_called()
         mock_slack.send_slack_message.assert_called_once()
         mock_clickup.update_task.assert_called_once()
+
+        # Assert the payload for create_task to ensure the name is correct
+        create_task_call_args = mock_clickup.create_task.call_args
+        task_payload = create_task_call_args[0][2] # payload is the 3rd argument
+
+        self.assertEqual(task_payload['name'], "Embroidery / Sewing Machine 2 - ErrorCheck and rethread the upper thread")
 
 if __name__ == '__main__':
     unittest.main()
