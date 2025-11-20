@@ -37,6 +37,17 @@ Asset:  {report_data['asset']}
 Summary:  {report_data['summary']}
 Additional Info:  {report_data['additional_info']}"""
 
+def _get_dropdown_option_id(custom_fields: List[Dict[str, Any]], field_id: str, option_name: str) -> Optional[int]:
+    """Finds the orderindex for a dropdown option by its name."""
+    for field in custom_fields:
+        if field.get('id') == field_id and field.get('type') == 'drop_down':
+            options = field.get('type_config', {}).get('options', [])
+            for option in options:
+                # Case-insensitive and whitespace-insensitive comparison
+                if isinstance(option.get('name'), str) and option['name'].strip().lower() == option_name.strip().lower():
+                    return option.get('orderindex')
+    return None
+
 # --- MAIN HANDLER ---
 
 def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
@@ -91,13 +102,26 @@ def lambda_handler(event: Dict[str, Any], context: object) -> Dict[str, Any]:
     initial_task_description = f'{base_message}\n\nDiscourse Link: {"Pending" if report_data["create_discourse_post"] else "Opted Out. Slack notification Only."}\nSlack Post: Pending\n\n{clickup_disclaimer}'
     clickup_task = None
     try:
+        # Fetch custom fields to map dropdowns
+        list_custom_fields = clickup.get_list_custom_fields(clickup_api_token, CLICKUP_CONFIG["list_id"])
+
+        # Map form text values to ClickUp dropdown option IDs (orderindex)
+        problem_type_option_id = _get_dropdown_option_id(list_custom_fields, CLICKUP_CONFIG["problem_type_field_id"], report_data["problem_type"])
+        workspace_option_id = _get_dropdown_option_id(list_custom_fields, CLICKUP_CONFIG["workspace_field_id"], report_data["workspace"])
+
+        custom_fields_payload = [
+            {"id": CLICKUP_CONFIG["contact_details_field_id"], "value": report_data["contact_details"]},
+            {"id": CLICKUP_CONFIG["asset_field_id"], "value": report_data["asset"]},
+        ]
+        if problem_type_option_id is not None:
+            custom_fields_payload.append({"id": CLICKUP_CONFIG["problem_type_field_id"], "value": problem_type_option_id})
+        if workspace_option_id is not None:
+            custom_fields_payload.append({"id": CLICKUP_CONFIG["workspace_field_id"], "value": workspace_option_id})
+
         task_payload = {
             "name": report_data["summary"],
             "description": initial_task_description,
-            "custom_fields": [
-                {"id": CLICKUP_CONFIG["problem_type_field_id"], "value": report_data["problem_type"]},
-                {"id": CLICKUP_CONFIG["contact_details_field_id"], "value": report_data["contact_details"]},
-            ]
+            "custom_fields": custom_fields_payload
         }
         clickup_task = clickup.create_task(clickup_api_token, CLICKUP_CONFIG["list_id"], task_payload)
         logger.info("Successfully created ClickUp task: %s", clickup_task.get('url'))
