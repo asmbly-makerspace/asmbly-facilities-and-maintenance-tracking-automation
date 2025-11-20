@@ -149,7 +149,7 @@ def lambda_handler(event, context):
             update_payload = {"description": final_task_description}
             
             # Conditionally build the list of custom fields to update
-            custom_fields__to_update = []
+            custom_fields_to_update = []
             if discourse_post_url:
                 custom_fields_to_update.append({"id": CLICKUP_CONFIG["discourse_post_field_id"], "value": discourse_post_url})
             if slack_post_url:

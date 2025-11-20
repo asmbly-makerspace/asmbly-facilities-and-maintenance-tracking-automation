@@ -1,7 +1,7 @@
 import json
 import os
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 # Use an absolute import path from the project root
 from functions.problem_report.new_problem_report_request_received.lambda_function import lambda_handler
