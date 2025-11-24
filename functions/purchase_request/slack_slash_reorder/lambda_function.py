@@ -62,9 +62,24 @@ def prepare_tasks_for_state(tasks, workspace_field_id):
         })
     return prepared_tasks
 
-def build_slack_modal(tasks_to_display, all_workspaces, initial_description=""):
-    '''Builds the Slack modal view.'''
+def build_slack_modal(tasks_to_display, all_workspaces, initial_description="", initial_workspace=None):
+    '''Builds the Slack modal view, preserving the selected workspace and using dynamic block IDs.'''
     sorted_tasks = sorted(tasks_to_display, key=lambda t: t['name'])
+
+    # Generate a unique ID for this view render to force Slack to update blocks
+    unique_id = str(datetime.now().timestamp())
+
+    workspace_element = {
+        "type": "static_select",
+        "action_id": "selected_workspace",
+        "placeholder": {"type": "plain_text", "text": "All Workspaces"},
+        "options": [{"text": {"type": "plain_text", "text": ws}, "value": ws} for ws in all_workspaces]
+    }
+    if initial_workspace:
+        workspace_element["initial_option"] = {
+            "text": {"type": "plain_text", "text": initial_workspace},
+            "value": initial_workspace
+        }
 
     view = {
         "type": "modal", "callback_id": "reorder_modal_submit",
@@ -72,9 +87,10 @@ def build_slack_modal(tasks_to_display, all_workspaces, initial_description=""):
         "title": {"type": "plain_text", "text": "Reorder Item"},
         "submit": {"type": "plain_text", "text": "Submit"},
         "blocks": [
-            {"type": "input", "block_id": "workspace_filter", "label": {"type": "plain_text", "text": "Filter by Workspace"}, "dispatch_action": True, "element": {"type": "static_select", "action_id": "selected_workspace", "placeholder": {"type": "plain_text", "text": "All Workspaces"}, "options": [{"text": {"type": "plain_text", "text": ws}, "value": ws} for ws in all_workspaces]}, "optional": True},
+            {"type": "input", "block_id": "workspace_filter", "label": {"type": "plain_text", "text": "Filter by Workspace"}, "dispatch_action": True, "element": workspace_element, "optional": True},
             {"type": "input", "block_id": "delivery_date_block", "label": {"type": "plain_text", "text": "Required Delivery Date"}, "hint": {"type": "plain_text", "text": "Efforts will be made to meet this date, but it is not a guarantee."}, "element": {"type": "datepicker", "action_id": "delivery_date_action", "placeholder": {"type": "plain_text", "text": "Select a date"}}, "optional": True},
-            {"type": "input", "block_id": "item_selection", "label": {"type": "plain_text", "text": "Select an item to reorder"}, "dispatch_action": True, "element": {"type": "static_select", "action_id": "selected_item", "placeholder": {"type": "plain_text", "text": "Select an item"}, "options": [{"text": {"type": "plain_text", "text": task["name"]}, "value": task["id"]} for task in sorted_tasks]}},
+            # Use a dynamic block_id to force Slack to re-render the options
+            {"type": "input", "block_id": f"item_selection_{unique_id}", "label": {"type": "plain_text", "text": "Select an item to reorder"}, "dispatch_action": True, "element": {"type": "static_select", "action_id": "selected_item", "placeholder": {"type": "plain_text", "text": "Select an item"}, "options": [{"text": {"type": "plain_text", "text": task["name"]}, "value": task["id"]} for task in sorted_tasks]}},
             {"type": "input", "block_id": "description_block", "label": {"type": "plain_text", "text": "Description"}, "element": {"type": "plain_text_input", "action_id": "description_action", "multiline": True, "initial_value": initial_description}, "optional": True},
         ]
     }
@@ -85,21 +101,16 @@ def handle_block_actions(payload):
     Handles interactive events from the Slack modal by reading state from DynamoDB
     and returning a direct response_action to update the view.
     """
-    logger.info("handle_block_actions started.")
     view = payload["view"]
     view_id = view["id"]
     
     try:
-        logger.info("Getting state from DynamoDB for view_id: %s", view_id)
         response = state_table.get_item(Key={'view_id': view_id})
-        logger.info("DynamoDB response received.")
-
         if 'Item' not in response:
             raise ValueError(f"State not found in DynamoDB for view_id: {view_id}")
         
         all_tasks_prepared = json.loads(response['Item']['tasks_data'])
         all_workspaces = get_all_workspaces_from_tasks(all_tasks_prepared)
-        logger.info("Successfully parsed state from DynamoDB.")
 
     except Exception as e:
         logger.error("Failed to get or parse state from DynamoDB for view_id %s: %s", view_id, e, exc_info=True)
@@ -108,11 +119,14 @@ def handle_block_actions(payload):
 
     action = payload["actions"][0]
     action_id = action["action_id"]
-    logger.info("Processing action_id: %s", action_id)
     
     state = SlackState(view.get("state", {}).get("values"))
     current_workspace = state.get_selected_option_value("workspace_filter", "selected_workspace")
     description = state.get_value("description_block", "description_action", "value") or ""
+
+    # The item selection block_id is now dynamic, so we must find it with a prefix search
+    item_block_id = next((k for k in state.values.keys() if k.startswith("item_selection")), None)
+    selected_item_id = state.get_selected_option_value(item_block_id, "selected_item") if item_block_id else None
 
     if action_id == "selected_workspace":
         current_workspace = action.get("selected_option", {}).get("value")
@@ -124,21 +138,28 @@ def handle_block_actions(payload):
                 description = task_details.get("description", "")
 
     tasks_to_display = [t for t in all_tasks_prepared if not current_workspace or t.get('workspace_name') == current_workspace]
-    logger.info("Filtered tasks. Found %d tasks to display.", len(tasks_to_display))
 
-    updated_view = build_slack_modal(tasks_to_display, all_workspaces, initial_description=description)
+    updated_view = build_slack_modal(tasks_to_display, all_workspaces, initial_description=description, initial_workspace=current_workspace)
     
-    response_body = {"response_action": "update", "view": updated_view}
-    logger.info("Returning response_action to update view.")
-    return {"statusCode": 200, "body": json.dumps(response_body)}
+    return {"statusCode": 200, "body": json.dumps({"response_action": "update", "view": updated_view})}
 
 def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_token, config):
     """Handles the final submission of the modal and creates the ClickUp task."""
     state = SlackState(payload["view"]["state"]["values"])
 
-    selected_item_id = state.get_selected_option_value("item_selection", "selected_item")
+    # The item selection block_id is now dynamic, so we must find it with a prefix search
+    item_block_id = next((k for k in state.values.keys() if k.startswith("item_selection")), None)
+    selected_item_id = state.get_selected_option_value(item_block_id, "selected_item") if item_block_id else None
+
     delivery_date = state.get_value("delivery_date_block", "delivery_date_action", "selected_date")
     description_text = state.get_value("description_block", "description_action", "value") or ""
+
+    if not selected_item_id:
+        # This should not happen in normal flow, but it's good practice to handle it.
+        logger.error("Could not find selected_item_id in view submission.")
+        # Return an error message to the user in the modal
+        error_view = {"type": "modal", "title": {"type": "plain_text", "text": "Error"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Could not determine the selected item. Please try again."}}], "close": {"type": "plain_text", "text": "Close"}}
+        return {"statusCode": 200, "body": json.dumps({"response_action": "update", "view": error_view})}
 
     slack_user_id = payload["user"]["id"]
     slack_user_info = get_slack_user_info(slack_bot_token, slack_user_id, http_session)
@@ -195,6 +216,8 @@ def handle_load_data_and_update_view(view_id):
 
         all_tasks_prepared = prepare_tasks_for_state(all_tasks_full, config.workspace_field_id)
         
+        logger.info("Data being written to DynamoDB: %s", json.dumps(all_tasks_prepared, indent=2))
+
         ttl_timestamp = int((datetime.now() + timedelta(hours=1)).timestamp())
         state_table.put_item(
             Item={
@@ -289,7 +312,5 @@ def lambda_handler(event, context):
         return handle_initial_open(trigger_id, slack_headers, context)
 
     except Exception as e:
-        # This is a critical catch-all. If anything outside of the specific handlers fails,
-        # this will log it and return a generic 500 error to API Gateway.
         logger.error("An unhandled exception occurred in lambda_handler: %s", e, exc_info=True)
         return {"statusCode": 500, "body": json.dumps({"error": "An internal server error occurred."})}
