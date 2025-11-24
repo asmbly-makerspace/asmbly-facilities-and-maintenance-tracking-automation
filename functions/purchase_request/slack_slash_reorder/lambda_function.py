@@ -1,7 +1,7 @@
 import json
 import os
 import requests
-from datetime import timezone
+from datetime import timezone, timedelta
 import urllib.parse
 from datetime import datetime
 import boto3
@@ -13,6 +13,11 @@ from common.slack import SlackState, get_slack_user_info
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+# Initialize DynamoDB client
+dynamodb = boto3.resource('dynamodb')
+STATE_TABLE_NAME = os.environ.get("STATE_TABLE_NAME")
+state_table = dynamodb.Table(STATE_TABLE_NAME) if STATE_TABLE_NAME else None
 
 class Config:
     """Loads and holds configuration from environment variables."""
@@ -26,14 +31,11 @@ class Config:
         # These will be populated after fetching from SSM
         self.master_items_list_id = None
         self.purchase_requests_config = {}
-        self.workspace_field_id = None  # This will be populated after fetching from SSM
+        self.workspace_field_id = None
 
-def get_all_workspaces_from_tasks(tasks, workspace_field_id):
+def get_all_workspaces_from_tasks(tasks):
     '''Extracts all unique workspace names from tasks.'''
-    workspaces = set()
-    for task in tasks:
-        workspace_name = get_workspace_name_from_task(task, workspace_field_id)
-        if workspace_name: workspaces.add(workspace_name)
+    workspaces = set(task.get('workspace_name') for task in tasks if task.get('workspace_name'))
     return sorted(list(workspaces))
 
 def get_workspace_name_from_task(task, workspace_field_id):
@@ -48,24 +50,25 @@ def get_workspace_name_from_task(task, workspace_field_id):
             except (ValueError, TypeError): continue
     return None
 
-def prepare_tasks_for_metadata(tasks, workspace_field_id):
-    '''Prepares tasks for metadata storage, omitting the description to save space.'''
+def prepare_tasks_for_state(tasks, workspace_field_id):
+    '''Prepares tasks for state storage, including the description.'''
     prepared_tasks = []
     for task in tasks:
         prepared_tasks.append({
             "id": task.get("id"),
             "name": task.get("name"),
+            "description": task.get("description") or task.get("text_content") or "",
             "workspace_name": get_workspace_name_from_task(task, workspace_field_id)
         })
     return prepared_tasks
 
-def build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str="", initial_description=""):
+def build_slack_modal(tasks_to_display, all_workspaces, initial_description=""):
     '''Builds the Slack modal view.'''
     sorted_tasks = sorted(tasks_to_display, key=lambda t: t['name'])
 
     view = {
         "type": "modal", "callback_id": "reorder_modal_submit",
-        "private_metadata": private_metadata_str,
+        "private_metadata": "", # Keep this empty
         "title": {"type": "plain_text", "text": "Reorder Item"},
         "submit": {"type": "plain_text", "text": "Submit"},
         "blocks": [
@@ -77,20 +80,30 @@ def build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str="",
     }
     return view
 
-def handle_block_actions(payload, http_session, slack_headers, clickup_api_token):
-    """Handles interactive events from the Slack modal."""
+def handle_block_actions(payload, http_session, slack_headers):
+    """Handles interactive events from the Slack modal by reading state from DynamoDB."""
     view = payload["view"]
     view_id = view["id"]
-    private_metadata_str = view.get("private_metadata", "{}")
-    all_tasks_prepared = json.loads(private_metadata_str)
-    all_workspaces = sorted(list(set(t['workspace_name'] for t in all_tasks_prepared if t['workspace_name'])))
     
+    try:
+        # Get state from DynamoDB
+        response = state_table.get_item(Key={'view_id': view_id})
+        if 'Item' not in response:
+            raise ValueError("State not found in DynamoDB for view_id: %s", view_id)
+        
+        all_tasks_prepared = json.loads(response['Item']['tasks_data'])
+        all_workspaces = get_all_workspaces_from_tasks(all_tasks_prepared)
+
+    except Exception as e:
+        logger.error("Failed to get or parse state from DynamoDB for view_id %s: %s", view_id, e, exc_info=True)
+        # Optionally, update the modal with an error message
+        return {"statusCode": 500, "body": "Failed to retrieve state"}
+
     action = payload["actions"][0]
     action_id = action["action_id"]
     
     state = SlackState(view.get("state", {}).get("values"))
     current_workspace = state.get_selected_option_value("workspace_filter", "selected_workspace")
-    # Preserve the current description from the state, unless it's being updated
     description = state.get_value("description_block", "description_action", "value") or ""
 
     if action_id == "selected_workspace":
@@ -98,14 +111,13 @@ def handle_block_actions(payload, http_session, slack_headers, clickup_api_token
     elif action_id == "selected_item":
         task_id = action.get("selected_option", {}).get("value")
         if task_id:
-            task_details = get_task(clickup_api_token, task_id)
+            task_details = next((t for t in all_tasks_prepared if t['id'] == task_id), None)
             if task_details:
-                # Overwrite description only when a new item is selected
-                description = task_details.get("description") or task_details.get("text_content") or ""
+                description = task_details.get("description", "")
 
     tasks_to_display = [t for t in all_tasks_prepared if t.get('workspace_name') == current_workspace] if current_workspace else all_tasks_prepared
 
-    updated_view = build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str=private_metadata_str, initial_description=description)
+    updated_view = build_slack_modal(tasks_to_display, all_workspaces, initial_description=description)
 
     http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": updated_view})
     return {"statusCode": 200, "body": ""}
@@ -123,7 +135,6 @@ def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_t
     requestor_real_name = slack_user_info.get("user", {}).get("real_name", "Unknown User")
 
     def get_raw_custom_field_value(task, field_id):
-        """Helper to get the raw 'value' of a custom field, not the interpreted one."""
         for field in task.get("custom_fields", []):
             if field.get("id") == field_id:
                 return field.get("value")
@@ -142,7 +153,6 @@ def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_t
     }
 
     if delivery_date:
-        # Make the datetime object timezone-aware (UTC) for consistent timestamps
         dt_object = datetime.strptime(delivery_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
         new_task_payload["due_date"] = int(dt_object.timestamp() * 1000)
 
@@ -152,7 +162,7 @@ def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_t
     return {"statusCode": 200, "body": json.dumps({"response_action": "update", "view": success_view})}
 
 def handle_load_data_and_update_view(view_id):
-    """Fetches data from ClickUp and updates the Slack modal."""
+    """Fetches data from ClickUp, stores it in DynamoDB, and updates the Slack modal."""
     logger.info("Starting to load data for view_id: %s", view_id)
     http_session = requests.Session()
     slack_bot_token = None
@@ -170,24 +180,32 @@ def handle_load_data_and_update_view(view_id):
         if not all_tasks_full:
             logger.warning("No reorderable items found in ClickUp list for view_id: %s", view_id)
             error_view = {"type": "modal", "title": {"type": "plain_text", "text": "No Items Found"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Sorry, no reorderable items were found in the ClickUp list."}}], "close": {"type": "plain_text", "text": "Close"}}
-            response = http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": error_view})
-            logger.info("Slack API response for no items: %s", response.json())
-            response.raise_for_status()
+            http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": error_view})
             return
 
-        all_tasks_prepared = prepare_tasks_for_metadata(all_tasks_full, config.workspace_field_id)
-        all_workspaces = get_all_workspaces_from_tasks(all_tasks_full, config.workspace_field_id)
-        private_metadata_str = json.dumps(all_tasks_prepared)
+        all_tasks_prepared = prepare_tasks_for_state(all_tasks_full, config.workspace_field_id)
+        
+        # Store the state in DynamoDB
+        ttl_timestamp = int((datetime.now() + timedelta(hours=1)).timestamp())
+        state_table.put_item(
+            Item={
+                'view_id': view_id,
+                'tasks_data': json.dumps(all_tasks_prepared),
+                'ttl': ttl_timestamp
+            }
+        )
+        logger.info("Stored state in DynamoDB for view_id: %s", view_id)
 
-        modal_view = build_slack_modal(all_tasks_prepared, all_workspaces, private_metadata_str=private_metadata_str)
+        all_workspaces = get_all_workspaces_from_tasks(all_tasks_prepared)
+        modal_view = build_slack_modal(all_tasks_prepared, all_workspaces)
         
         logger.info("Updating view %s with loaded data.", view_id)
         response = http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": modal_view})
-        logger.info("Slack API response: %s", response.json())
         response.raise_for_status()
 
     except Exception as e:
         logger.error("Failed to load data and update view %s: %s", view_id, e, exc_info=True)
+        # Error handling to update the modal
         try:
             if not slack_bot_token:
                 slack_bot_token = get_secret(os.environ["SLACK_MAINTENANCE_BOT_SECRET_NAME"], 'SLACK_MAINTENANCE_BOT_TOKEN')
@@ -248,7 +266,7 @@ def lambda_handler(event, context):
             slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
 
             if payload_type == "block_actions":
-                return handle_block_actions(payload, http_session, slack_headers, clickup_api_token)
+                return handle_block_actions(payload, http_session, slack_headers)
             
             elif payload_type == "view_submission":
                 return handle_view_submission(payload, http_session, clickup_api_token, slack_bot_token, config)

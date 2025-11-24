@@ -52,49 +52,20 @@ Resources:
         Workspace: facilities
         Stage: !Ref Stage
 
-  SlackSlashReorderLambdaRole:
-    Type: AWS::IAM::Role
+  SlackReorderStateTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - lambda.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      Policies:
-        - PolicyName: SlackSlashReorderPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: 'arn:aws:logs:*:*:*'
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource:
-                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
-                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
-              - Effect: Allow
-                Action: ssm:GetParameter
-                Resource:
-                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}'
-                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/masterItemsList'
-                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/purchaseRequests'
-        - PolicyName: LambdaSelfInvokePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SlackSlashReorderFunction-${Stage}'
+      TableName: !Sub "SlackReorderStateTable-${Stage}"
+      AttributeDefinitions:
+        - AttributeName: view_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: view_id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
       Tags:
         - Key: Project
           Value: slack-slash-reorder
@@ -113,12 +84,35 @@ Resources:
       Runtime: python3.12
       MemorySize: 512
       Timeout: 10
-      Role: !GetAtt SlackSlashReorderLambdaRole.Arn
       Layers:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SlackSlashReorderFunction-${Stage}'
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SlackReorderStateTable
+        - SSMParameterReadPolicy:
+            ParameterName: !Ref ClickUpWorkspaceFieldIdParameterName
+        - SSMParameterReadPolicy:
+            ParameterName: !GetAtt ClickUpMasterItemsListParameter.Name
+        - SSMParameterReadPolicy:
+            ParameterName: !GetAtt ClickUpPurchaseRequestsConfigParameter.Name
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
+                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
       Environment:
         Variables:
+          STATE_TABLE_NAME: !Ref SlackReorderStateTable
           CLICKUP_SECRET_NAME: 'clickup/api/token'
           SLACK_MAINTENANCE_BOT_SECRET_NAME: !Sub 'slack-maintenancebot-token'
           CLICKUP_MASTER_ITEMS_LIST_CONFIG_PARAM_NAME: !Ref ClickUpMasterItemsListParameter
