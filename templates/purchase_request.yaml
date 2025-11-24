@@ -88,20 +88,31 @@ Resources:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN
       Policies:
+        # Self-invocation permission
         - Version: '2012-10-17'
           Statement:
             - Effect: Allow
               Action:
                 - lambda:InvokeFunction
               Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SlackSlashReorderFunction-${Stage}'
+
+        # DynamoDB Access
         - DynamoDBCrudPolicy:
             TableName: !Ref SlackReorderStateTable
-        - SSMParameterReadPolicy:
-            ParameterName: !Ref ClickUpWorkspaceFieldIdParameterName
-        - SSMParameterReadPolicy:
-            ParameterName: !GetAtt ClickUpMasterItemsListParameter.Name
-        - SSMParameterReadPolicy:
-            ParameterName: !GetAtt ClickUpPurchaseRequestsConfigParameter.Name
+
+        # Manual SSM Policy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+              Resource:
+                - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}'
+                - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpMasterItemsListParameter}'
+                - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpPurchaseRequestsConfigParameter}'
+
+        # Secrets Manager Access
         - Version: '2012-10-17'
           Statement:
             - Effect: Allow
