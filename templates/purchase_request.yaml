@@ -77,10 +77,6 @@ Resources:
                 Resource: 'arn:aws:logs:*:*:*'
               - Effect: Allow
                 Action:
-                  - iam:CreateRole
-                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/*'
-              - Effect: Allow
-                Action:
                   - secretsmanager:GetSecretValue
                 Resource:
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
@@ -91,6 +87,14 @@ Resources:
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}'
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/masterItemsList'
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/purchaseRequests'
+        - PolicyName: LambdaSelfInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SlackSlashReorderFunction-${Stage}'
       Tags:
         - Key: Project
           Value: slack-slash-reorder

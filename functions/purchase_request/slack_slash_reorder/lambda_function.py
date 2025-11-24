@@ -180,6 +180,7 @@ def handle_load_data_and_update_view(view_id):
             logger.warning("No reorderable items found in ClickUp list for view_id: %s", view_id)
             error_view = {"type": "modal", "title": {"type": "plain_text", "text": "No Items Found"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Sorry, no reorderable items were found in the ClickUp list."}}], "close": {"type": "plain_text", "text": "Close"}}
             response = http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": error_view})
+            logger.info("Slack API response for no items: %s", response.json())
             response.raise_for_status()
             return
 
@@ -191,6 +192,7 @@ def handle_load_data_and_update_view(view_id):
         
         logger.info("Updating view %s with loaded data.", view_id)
         response = http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": modal_view})
+        logger.info("Slack API response: %s", response.json())
         response.raise_for_status()
 
     except Exception as e:
