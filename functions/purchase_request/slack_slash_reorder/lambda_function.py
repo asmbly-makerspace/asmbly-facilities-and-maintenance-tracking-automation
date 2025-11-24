@@ -49,24 +49,19 @@ def get_workspace_name_from_task(task, workspace_field_id):
     return None
 
 def prepare_tasks_for_metadata(tasks, workspace_field_id):
-    '''Prepares tasks for metadata storage.'''
+    '''Prepares tasks for metadata storage, omitting the description to save space.'''
     prepared_tasks = []
     for task in tasks:
         prepared_tasks.append({
             "id": task.get("id"),
             "name": task.get("name"),
-            "description": task.get("description") or task.get("text_content") or "",
             "workspace_name": get_workspace_name_from_task(task, workspace_field_id)
         })
     return prepared_tasks
 
-def build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str="", initial_description="", unique_id=None):
+def build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str="", initial_description=""):
     '''Builds the Slack modal view.'''
     sorted_tasks = sorted(tasks_to_display, key=lambda t: t['name'])
-
-    description_block_id = "description_block"
-    if unique_id:
-        description_block_id = f"description_block_{unique_id}"
 
     view = {
         "type": "modal", "callback_id": "reorder_modal_submit",
@@ -77,12 +72,12 @@ def build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str="",
             {"type": "input", "block_id": "workspace_filter", "label": {"type": "plain_text", "text": "Filter by Workspace"}, "dispatch_action": True, "element": {"type": "static_select", "action_id": "selected_workspace", "placeholder": {"type": "plain_text", "text": "All Workspaces"}, "options": [{"text": {"type": "plain_text", "text": ws}, "value": ws} for ws in all_workspaces]}, "optional": True},
             {"type": "input", "block_id": "delivery_date_block", "label": {"type": "plain_text", "text": "Required Delivery Date"}, "hint": {"type": "plain_text", "text": "Efforts will be made to meet this date, but it is not a guarantee."}, "element": {"type": "datepicker", "action_id": "delivery_date_action", "placeholder": {"type": "plain_text", "text": "Select a date"}}, "optional": True},
             {"type": "input", "block_id": "item_selection", "label": {"type": "plain_text", "text": "Select an item to reorder"}, "dispatch_action": True, "element": {"type": "static_select", "action_id": "selected_item", "placeholder": {"type": "plain_text", "text": "Select an item"}, "options": [{"text": {"type": "plain_text", "text": task["name"]}, "value": task["id"]} for task in sorted_tasks]}},
-            {"type": "input", "block_id": description_block_id, "label": {"type": "plain_text", "text": "Description"}, "element": {"type": "plain_text_input", "action_id": "description_action", "multiline": True, "initial_value": initial_description}, "optional": True},
+            {"type": "input", "block_id": "description_block", "label": {"type": "plain_text", "text": "Description"}, "element": {"type": "plain_text_input", "action_id": "description_action", "multiline": True, "initial_value": initial_description}, "optional": True},
         ]
     }
     return view
 
-def handle_block_actions(payload, http_session, slack_headers):
+def handle_block_actions(payload, http_session, slack_headers, clickup_api_token):
     """Handles interactive events from the Slack modal."""
     view = payload["view"]
     view_id = view["id"]
@@ -95,21 +90,22 @@ def handle_block_actions(payload, http_session, slack_headers):
     
     state = SlackState(view.get("state", {}).get("values"))
     current_workspace = state.get_selected_option_value("workspace_filter", "selected_workspace")
-    description = ""
+    # Preserve the current description from the state, unless it's being updated
+    description = state.get_value("description_block", "description_action", "value") or ""
 
     if action_id == "selected_workspace":
         current_workspace = action.get("selected_option", {}).get("value")
     elif action_id == "selected_item":
         task_id = action.get("selected_option", {}).get("value")
         if task_id:
-            task_details = next((t for t in all_tasks_prepared if t['id'] == task_id), None)
+            task_details = get_task(clickup_api_token, task_id)
             if task_details:
-                description = task_details.get("description", "")
+                # Overwrite description only when a new item is selected
+                description = task_details.get("description") or task_details.get("text_content") or ""
 
     tasks_to_display = [t for t in all_tasks_prepared if t.get('workspace_name') == current_workspace] if current_workspace else all_tasks_prepared
 
-    unique_id = str(datetime.now().timestamp())
-    updated_view = build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str=private_metadata_str, initial_description=description, unique_id=unique_id)
+    updated_view = build_slack_modal(tasks_to_display, all_workspaces, private_metadata_str=private_metadata_str, initial_description=description)
 
     http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": updated_view})
     return {"statusCode": 200, "body": ""}
@@ -120,12 +116,7 @@ def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_t
 
     selected_item_id = state.get_selected_option_value("item_selection", "selected_item")
     delivery_date = state.get_value("delivery_date_block", "delivery_date_action", "selected_date")
-    
-    description_text = ""
-    for block_id, block_values in state.values.items():
-        if block_id.startswith("description_block"):
-            description_text = block_values.get("description_action", {}).get("value", "")
-            break
+    description_text = state.get_value("description_block", "description_action", "value") or ""
 
     slack_user_id = payload["user"]["id"]
     slack_user_info = get_slack_user_info(slack_bot_token, slack_user_id, http_session)
@@ -257,7 +248,7 @@ def lambda_handler(event, context):
             slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
 
             if payload_type == "block_actions":
-                return handle_block_actions(payload, http_session, slack_headers)
+                return handle_block_actions(payload, http_session, slack_headers, clickup_api_token)
             
             elif payload_type == "view_submission":
                 return handle_view_submission(payload, http_session, clickup_api_token, slack_bot_token, config)
