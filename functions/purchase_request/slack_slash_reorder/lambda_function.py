@@ -62,12 +62,9 @@ def prepare_tasks_for_state(tasks, workspace_field_id):
         })
     return prepared_tasks
 
-def build_slack_modal(tasks_to_display, all_workspaces, initial_description="", initial_workspace=None):
-    '''Builds the Slack modal view, preserving the selected workspace and using dynamic block IDs.'''
+def build_slack_modal(tasks_to_display, all_workspaces, initial_description="", selected_workspace=None, selected_item=None):
+    '''Builds the Slack modal view, preserving the selected state.'''
     sorted_tasks = sorted(tasks_to_display, key=lambda t: t['name'])
-
-    # Generate a unique ID for this view render to force Slack to update blocks
-    unique_id = str(datetime.now().timestamp())
 
     workspace_element = {
         "type": "static_select",
@@ -75,11 +72,26 @@ def build_slack_modal(tasks_to_display, all_workspaces, initial_description="", 
         "placeholder": {"type": "plain_text", "text": "All Workspaces"},
         "options": [{"text": {"type": "plain_text", "text": ws}, "value": ws} for ws in all_workspaces]
     }
-    if initial_workspace:
+    if selected_workspace:
         workspace_element["initial_option"] = {
-            "text": {"type": "plain_text", "text": initial_workspace},
-            "value": initial_workspace
+            "text": {"type": "plain_text", "text": selected_workspace},
+            "value": selected_workspace
         }
+
+    item_element = {
+        "type": "static_select",
+        "action_id": "selected_item",
+        "placeholder": {"type": "plain_text", "text": "Select an item"},
+        "options": [{"text": {"type": "plain_text", "text": task["name"]}, "value": task["id"]} for task in sorted_tasks]
+    }
+    if selected_item:
+        # Find the full task object to get its name for the initial_option
+        task_name = next((t['name'] for t in tasks_to_display if t['id'] == selected_item), None)
+        if task_name:
+            item_element["initial_option"] = {
+                "text": {"type": "plain_text", "text": task_name},
+                "value": selected_item
+            }
 
     view = {
         "type": "modal", "callback_id": "reorder_modal_submit",
@@ -89,8 +101,7 @@ def build_slack_modal(tasks_to_display, all_workspaces, initial_description="", 
         "blocks": [
             {"type": "input", "block_id": "workspace_filter", "label": {"type": "plain_text", "text": "Filter by Workspace"}, "dispatch_action": True, "element": workspace_element, "optional": True},
             {"type": "input", "block_id": "delivery_date_block", "label": {"type": "plain_text", "text": "Required Delivery Date"}, "hint": {"type": "plain_text", "text": "Efforts will be made to meet this date, but it is not a guarantee."}, "element": {"type": "datepicker", "action_id": "delivery_date_action", "placeholder": {"type": "plain_text", "text": "Select a date"}}, "optional": True},
-            # Use a dynamic block_id to force Slack to re-render the options
-            {"type": "input", "block_id": f"item_selection_{unique_id}", "label": {"type": "plain_text", "text": "Select an item to reorder"}, "dispatch_action": True, "element": {"type": "static_select", "action_id": "selected_item", "placeholder": {"type": "plain_text", "text": "Select an item"}, "options": [{"text": {"type": "plain_text", "text": task["name"]}, "value": task["id"]} for task in sorted_tasks]}},
+            {"type": "input", "block_id": "item_selection", "label": {"type": "plain_text", "text": "Select an item to reorder"}, "dispatch_action": True, "element": item_element},
             {"type": "input", "block_id": "description_block", "label": {"type": "plain_text", "text": "Description"}, "element": {"type": "plain_text_input", "action_id": "description_action", "multiline": True, "initial_value": initial_description}, "optional": True},
         ]
     }
@@ -122,42 +133,38 @@ def handle_block_actions(payload):
     
     state = SlackState(view.get("state", {}).get("values"))
     current_workspace = state.get_selected_option_value("workspace_filter", "selected_workspace")
+    selected_item = state.get_selected_option_value("item_selection", "selected_item")
     description = state.get_value("description_block", "description_action", "value") or ""
-
-    # The item selection block_id is now dynamic, so we must find it with a prefix search
-    item_block_id = next((k for k in state.values.keys() if k.startswith("item_selection")), None)
-    selected_item_id = state.get_selected_option_value(item_block_id, "selected_item") if item_block_id else None
 
     if action_id == "selected_workspace":
         current_workspace = action.get("selected_option", {}).get("value")
+        # Reset item selection when workspace changes
+        selected_item = None
+        description = ""
     elif action_id == "selected_item":
-        task_id = action.get("selected_option", {}).get("value")
-        if task_id:
-            task_details = next((t for t in all_tasks_prepared if t['id'] == task_id), None)
+        selected_item = action.get("selected_option", {}).get("value")
+        if selected_item:
+            task_details = next((t for t in all_tasks_prepared if t['id'] == selected_item), None)
             if task_details:
                 description = task_details.get("description", "")
 
     tasks_to_display = [t for t in all_tasks_prepared if not current_workspace or t.get('workspace_name') == current_workspace]
 
-    updated_view = build_slack_modal(tasks_to_display, all_workspaces, initial_description=description, initial_workspace=current_workspace)
+    updated_view = build_slack_modal(tasks_to_display, all_workspaces, initial_description=description, selected_workspace=current_workspace, selected_item=selected_item)
     
-    return {"statusCode": 200, "body": json.dumps({"response_action": "update", "view": updated_view})}
+    # Using "push" forces Slack to re-render the view completely, fixing UI bugs.
+    return {"statusCode": 200, "body": json.dumps({"response_action": "push", "view": updated_view})}
 
 def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_token, config):
     """Handles the final submission of the modal and creates the ClickUp task."""
     state = SlackState(payload["view"]["state"]["values"])
 
-    # The item selection block_id is now dynamic, so we must find it with a prefix search
-    item_block_id = next((k for k in state.values.keys() if k.startswith("item_selection")), None)
-    selected_item_id = state.get_selected_option_value(item_block_id, "selected_item") if item_block_id else None
-
+    selected_item_id = state.get_selected_option_value("item_selection", "selected_item")
     delivery_date = state.get_value("delivery_date_block", "delivery_date_action", "selected_date")
     description_text = state.get_value("description_block", "description_action", "value") or ""
 
     if not selected_item_id:
-        # This should not happen in normal flow, but it's good practice to handle it.
         logger.error("Could not find selected_item_id in view submission.")
-        # Return an error message to the user in the modal
         error_view = {"type": "modal", "title": {"type": "plain_text", "text": "Error"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Could not determine the selected item. Please try again."}}], "close": {"type": "plain_text", "text": "Close"}}
         return {"statusCode": 200, "body": json.dumps({"response_action": "update", "view": error_view})}
 
