@@ -34,10 +34,57 @@ Conditions:
   IsProd: !Equals [!Ref Stage, 'prod']
 
 Resources:
+  ApiGatewayCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayCloudWatchRole.Arn
+
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/apigateway/facilities-api-${Stage}"
+      RetentionInDays: 7
+
   FacilitiesApi:
     Type: AWS::Serverless::Api
+    DependsOn: ApiGatewayAccount
     Properties:
       StageName: !Ref Stage
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: >-
+          {
+          "requestId": "$context.requestId",
+          "ip": "$context.identity.sourceIp",
+          "caller": "$context.identity.caller",
+          "user": "$context.identity.user",
+          "requestTime": "$context.requestTime",
+          "httpMethod": "$context.httpMethod",
+          "resourcePath": "$context.resourcePath",
+          "status": "$context.status",
+          "protocol": "$context.protocol",
+          "responseLength": "$context.responseLength",
+          "integrationErrorMessage": "$context.integrationErrorMessage"
+          }
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          DataTraceEnabled: true
       DefinitionBody:
         openapi: '3.0.1'
         info:
