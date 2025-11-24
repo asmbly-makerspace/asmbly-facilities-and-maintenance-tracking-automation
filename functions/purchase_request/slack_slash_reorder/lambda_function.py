@@ -28,7 +28,7 @@ class Config:
         self.purchase_requests_config_param_name = os.environ["CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME"]
         self.workspace_field_id_param_name = os.environ["CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME"]
 
-        # These will be populated after fetching from SSM
+        # These will be populated only when needed
         self.master_items_list_id = None
         self.purchase_requests_config = {}
         self.workspace_field_id = None
@@ -68,7 +68,7 @@ def build_slack_modal(tasks_to_display, all_workspaces, initial_description=""):
 
     view = {
         "type": "modal", "callback_id": "reorder_modal_submit",
-        "private_metadata": "", # Keep this empty
+        "private_metadata": "",
         "title": {"type": "plain_text", "text": "Reorder Item"},
         "submit": {"type": "plain_text", "text": "Submit"},
         "blocks": [
@@ -84,43 +84,50 @@ def handle_block_actions(payload, http_session, slack_headers):
     """Handles interactive events from the Slack modal by reading state from DynamoDB."""
     view = payload["view"]
     view_id = view["id"]
-    
+
     try:
         # Get state from DynamoDB
         response = state_table.get_item(Key={'view_id': view_id})
         if 'Item' not in response:
-            raise ValueError("State not found in DynamoDB for view_id: %s", view_id)
-        
+            raise ValueError(f"State not found in DynamoDB for view_id: {view_id}")
+
         all_tasks_prepared = json.loads(response['Item']['tasks_data'])
         all_workspaces = get_all_workspaces_from_tasks(all_tasks_prepared)
 
+        action = payload["actions"][0]
+        action_id = action["action_id"]
+
+        state = SlackState(view.get("state", {}).get("values"))
+
+        # Safe extraction of current filter
+        current_workspace = None
+        try:
+            current_workspace = state.get_selected_option_value("workspace_filter", "selected_workspace")
+        except Exception:
+            current_workspace = None
+
+        description = state.get_value("description_block", "description_action", "value") or ""
+
+        # Robustly handle selection
+        if action_id == "selected_workspace":
+            current_workspace = (action.get("selected_option") or {}).get("value")
+        elif action_id == "selected_item":
+            task_id = (action.get("selected_option") or {}).get("value")
+            if task_id:
+                task_details = next((t for t in all_tasks_prepared if t['id'] == task_id), None)
+                if task_details:
+                    description = task_details.get("description", "")
+
+        tasks_to_display = [t for t in all_tasks_prepared if t.get('workspace_name') == current_workspace] if current_workspace else all_tasks_prepared
+
+        updated_view = build_slack_modal(tasks_to_display, all_workspaces, initial_description=description)
+
+        http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": updated_view})
+        return {"statusCode": 200, "body": ""}
+
     except Exception as e:
-        logger.error("Failed to get or parse state from DynamoDB for view_id %s: %s", view_id, e, exc_info=True)
-        # Optionally, update the modal with an error message
-        return {"statusCode": 500, "body": "Failed to retrieve state"}
-
-    action = payload["actions"][0]
-    action_id = action["action_id"]
-    
-    state = SlackState(view.get("state", {}).get("values"))
-    current_workspace = state.get_selected_option_value("workspace_filter", "selected_workspace")
-    description = state.get_value("description_block", "description_action", "value") or ""
-
-    if action_id == "selected_workspace":
-        current_workspace = action.get("selected_option", {}).get("value")
-    elif action_id == "selected_item":
-        task_id = action.get("selected_option", {}).get("value")
-        if task_id:
-            task_details = next((t for t in all_tasks_prepared if t['id'] == task_id), None)
-            if task_details:
-                description = task_details.get("description", "")
-
-    tasks_to_display = [t for t in all_tasks_prepared if t.get('workspace_name') == current_workspace] if current_workspace else all_tasks_prepared
-
-    updated_view = build_slack_modal(tasks_to_display, all_workspaces, initial_description=description)
-
-    http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": updated_view})
-    return {"statusCode": 200, "body": ""}
+        logger.error("Failed to handle block actions for view_id %s: %s", view_id, e, exc_info=True)
+        return {"statusCode": 500, "body": "An error occurred while processing the request."}
 
 def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_token, config):
     """Handles the final submission of the modal and creates the ClickUp task."""
@@ -168,11 +175,15 @@ def handle_load_data_and_update_view(view_id):
     slack_bot_token = None
     try:
         config = Config()
+        # Fetch ALL credentials here since we need to talk to ClickUp
         clickup_api_token = get_secret(config.clickup_api_token_secret_name, 'CLICKUP_API_TOKEN')
         slack_bot_token = get_secret(config.slack_bot_token_secret_name, 'SLACK_MAINTENANCE_BOT_TOKEN')
+
+        # Load SSM parameters
         config.workspace_field_id = get_json_parameter(config.workspace_field_id_param_name, expected_key='workspace_field_id')
         config.master_items_list_id = get_json_parameter(config.master_items_list_config_param_name, expected_key='list_id')
         config.purchase_requests_config = get_json_parameter(config.purchase_requests_config_param_name)
+
         slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
 
         all_tasks_full = get_all_clickup_tasks(config.master_items_list_id, clickup_api_token)
@@ -184,8 +195,7 @@ def handle_load_data_and_update_view(view_id):
             return
 
         all_tasks_prepared = prepare_tasks_for_state(all_tasks_full, config.workspace_field_id)
-        
-        # Store the state in DynamoDB
+
         ttl_timestamp = int((datetime.now() + timedelta(hours=1)).timestamp())
         state_table.put_item(
             Item={
@@ -194,30 +204,26 @@ def handle_load_data_and_update_view(view_id):
                 'ttl': ttl_timestamp
             }
         )
-        logger.info("Stored state in DynamoDB for view_id: %s", view_id)
 
         all_workspaces = get_all_workspaces_from_tasks(all_tasks_prepared)
         modal_view = build_slack_modal(all_tasks_prepared, all_workspaces)
-        
-        logger.info("Updating view %s with loaded data.", view_id)
+
         response = http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": modal_view})
         response.raise_for_status()
 
     except Exception as e:
         logger.error("Failed to load data and update view %s: %s", view_id, e, exc_info=True)
-        # Error handling to update the modal
         try:
             if not slack_bot_token:
                 slack_bot_token = get_secret(os.environ["SLACK_MAINTENANCE_BOT_SECRET_NAME"], 'SLACK_MAINTENANCE_BOT_TOKEN')
             slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
-            error_view = {"type": "modal", "title": {"type": "plain_text", "text": "Error"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": f"An error occurred while loading items: {e}"}}], "close": {"type": "plain_text", "text": "Close"}}
+            error_view = {"type": "modal", "title": {"type": "plain_text", "text": "Error"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": f"An error occurred: {e}"}}], "close": {"type": "plain_text", "text": "Close"}}
             http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": error_view})
         except Exception as inner_e:
-            logger.error("Failed to update view %s with error message: %s", view_id, inner_e, exc_info=True)
+            logger.error("Failed to report error to Slack: %s", inner_e)
 
 def handle_initial_open(trigger_id, slack_headers, context):
     """Handles the initial slash command to open the modal."""
-    logger.info("Opening loading modal for trigger_id: %s", trigger_id)
     loading_view = {
         "type": "modal", "callback_id": "reorder_modal_submit",
         "title": {"type": "plain_text", "text": "Reorder Item"},
@@ -227,12 +233,10 @@ def handle_initial_open(trigger_id, slack_headers, context):
     response = http_session.post("https://slack.com/api/views.open", headers=slack_headers, json={"trigger_id": trigger_id, "view": loading_view})
     response.raise_for_status()
     view_id = response.json()["view"]["id"]
-    logger.info("Opened loading modal with view_id: %s", view_id)
 
     lambda_client = boto3.client('lambda')
     payload = {"action": "load_data_and_update_view", "view_id": view_id}
-    
-    logger.info("Invoking self asynchronously to load data for view_id: %s", view_id)
+
     lambda_client.invoke(
         FunctionName=context.function_name,
         InvocationType='Event',
@@ -242,7 +246,7 @@ def handle_initial_open(trigger_id, slack_headers, context):
 
 def lambda_handler(event, context):
     """
-    Main Lambda handler that routes requests based on the Slack payload type.
+    Main Lambda handler. Optimized to lazy-load secrets/config only when needed.
     """
     if event.get("action") == "load_data_and_update_view":
         handle_load_data_and_update_view(event['view_id'])
@@ -256,28 +260,35 @@ def lambda_handler(event, context):
             payload = json.loads(payload_str)
             payload_type = payload.get("type")
 
-            config = Config()
+            config = Config() # Lightweight init (only env vars)
             http_session = requests.Session()
-            clickup_api_token = get_secret(config.clickup_api_token_secret_name, 'CLICKUP_API_TOKEN')
-            slack_bot_token = get_secret(config.slack_bot_token_secret_name, 'SLACK_MAINTENANCE_BOT_TOKEN')
-            config.workspace_field_id = get_json_parameter(config.workspace_field_id_param_name, expected_key='workspace_field_id')
-            config.master_items_list_id = get_json_parameter(config.master_items_list_config_param_name, expected_key='list_id')
-            config.purchase_requests_config = get_json_parameter(config.purchase_requests_config_param_name)
-            slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
 
             if payload_type == "block_actions":
+                # FAST PATH: Only fetch Slack token. Skip ClickUp/SSM overhead.
+                slack_bot_token = get_secret(config.slack_bot_token_secret_name, 'SLACK_MAINTENANCE_BOT_TOKEN')
+                slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
+
                 return handle_block_actions(payload, http_session, slack_headers)
-            
+
             elif payload_type == "view_submission":
+                # SLOW PATH: Fetch everything needed for submission logic.
+                slack_bot_token = get_secret(config.slack_bot_token_secret_name, 'SLACK_MAINTENANCE_BOT_TOKEN')
+                clickup_api_token = get_secret(config.clickup_api_token_secret_name, 'CLICKUP_API_TOKEN')
+
+                # Fetch required SSM params
+                config.workspace_field_id = get_json_parameter(config.workspace_field_id_param_name, expected_key='workspace_field_id')
+                config.purchase_requests_config = get_json_parameter(config.purchase_requests_config_param_name)
+
                 return handle_view_submission(payload, http_session, clickup_api_token, slack_bot_token, config)
 
+        # Initial Slash Command
         trigger_id = parsed_body.get("trigger_id", [None])[0]
         if not trigger_id:
             raise ValueError("trigger_id not found in request body")
-        
+
         slack_bot_token = get_secret(os.environ["SLACK_MAINTENANCE_BOT_SECRET_NAME"], 'SLACK_MAINTENANCE_BOT_TOKEN')
         slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
-        
+
         return handle_initial_open(trigger_id, slack_headers, context)
 
     except Exception as e:
