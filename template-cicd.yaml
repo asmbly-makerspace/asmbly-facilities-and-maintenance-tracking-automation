@@ -17,7 +17,7 @@ Resources:
   GitHubOidcDeployRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: GitHub-OIDC-facilities-automation-deploy # This matches your existing role
+      RoleName: GitHub-OIDC-facilities-automation-deploy
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -30,7 +30,6 @@ Resources:
                 "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
               StringLike:
                 "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubOrg}/${GitHubRepo}:*"
-      # This is the correct way to attach the policy to the role
       ManagedPolicyArns:
         - !Ref GitHubDeployPolicy
       Tags:
@@ -39,7 +38,7 @@ Resources:
         - Key: Purpose
           Value: GitHub-Actions-Deploy
 
-  # This is the "specific JSON policy" we built, now managed as code.
+  # The updated policy with permissions for logs, tagging, rollbacks, and TTL
   GitHubDeployPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -62,6 +61,7 @@ Resources:
               - cloudformation:DeleteStack
               - cloudformation:ValidateTemplate
               - cloudformation:GetTemplateSummary
+              - cloudformation:ContinueUpdateRollback
             Resource: "*"
           - Sid: AllowSAMArtifactBucketAccess
             Effect: Allow
@@ -70,16 +70,15 @@ Resources:
               - s3:GetObject
               - s3:ListBucket
               - s3:GetBucketLocation
-            # This bucket name is from your previous deployment logs
             Resource:
-              # You need to allow ListBucket on the BUCKET itself, not the objects /*
               - "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6"
               - "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6/*"
-          - Sid: AllowIAMRoleAndPolicyCreation
+          - Sid: AllowIAMRoleAndPolicyManagement
             Effect: Allow
             Action:
               - iam:CreateRole
               - iam:TagRole
+              - iam:UntagRole
               - iam:DeleteRole
               - iam:GetRole
               - iam:PutRolePolicy
@@ -103,10 +102,22 @@ Resources:
               - lambda:AddPermission
               - lambda:RemovePermission
               - lambda:TagResource
+              - lambda:UntagResource
             Resource: "*"
           - Sid: AllowAPIGatewayManagement
             Effect: Allow
             Action: apigateway:*
+            Resource: "*"
+          - Sid: AllowCloudWatchLogsManagement
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:DescribeLogGroups
+              - logs:CreateLogStream
+              - logs:PutRetentionPolicy
+              - logs:TagLogGroup
+              - logs:UntagLogGroup
             Resource: "*"
           - Sid: AllowDynamoDBTableManagement
             Effect: Allow
@@ -115,8 +126,10 @@ Resources:
               - dynamodb:UpdateTable
               - dynamodb:DeleteTable
               - dynamodb:DescribeTable
+              - dynamodb:DescribeTimeToLive
               - dynamodb:UpdateTimeToLive
               - dynamodb:TagResource
+              - dynamodb:UntagResource
             Resource: "*"
           - Sid: AllowSSMParameterWrite
             Effect: Allow
@@ -124,6 +137,8 @@ Resources:
               - ssm:PutParameter
               - ssm:DeleteParameter
               - ssm:AddTagsToResource
+              - ssm:RemoveTagsFromResource
+              - ssm:GetParameters
             Resource: "arn:aws:ssm:*:*:parameter/*"
           - Sid: AllowEventBridgeRuleManagement
             Effect: Allow
@@ -147,6 +162,7 @@ Resources:
               - acm:DescribeCertificate
               - acm:DeleteCertificate
               - acm:AddTagsToCertificate
+              - acm:RemoveTagsFromCertificate
               - route53:GetChange
               - route53:ChangeResourceRecordSets
               - route53:GetHostedZone
