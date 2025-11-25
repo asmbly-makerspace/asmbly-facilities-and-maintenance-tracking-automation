@@ -4,5 +4,6 @@ pytest-mock
 requests
 requests-mock
 boto3
+moto
 pytest-cov
 tzdata
