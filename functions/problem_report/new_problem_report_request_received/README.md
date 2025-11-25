@@ -77,10 +77,11 @@ The core infrastructure consists of an IAM Role, secrets in Secrets Manager, an 
 
 ### Tags
 
-| Name      | Value                             |
-|-----------|-----------------------------------|
-| Project   | new-problem-report-request-received |
-| Workspace | facilities                        |
+| Name        | Value                                |
+|-------------|--------------------------------------|
+| Application | facilities-automation-hub            |
+| Project     | problem-report:new-request-received |
+| Workspace   | facilities                           |
 
 ## Configuration
 

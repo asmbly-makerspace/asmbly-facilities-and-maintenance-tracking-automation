@@ -65,10 +65,11 @@ The core infrastructure is defined in `templates/routers.yaml` and consists of t
 
 ### Tags
 
-| Name      | Value                         |
-|-----------|-------------------------------|
-| Project   | facilities-slack-event-router |
-| Workspace | facilities                    |
+| Name        | Value                       |
+|-------------|-----------------------------|
+| Application | facilities-automation-hub   |
+| Project     | router:slack-event          |
+| Workspace   | facilities                  |
 
 ## Configuration
 

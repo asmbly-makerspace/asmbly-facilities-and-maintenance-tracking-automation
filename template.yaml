@@ -209,7 +209,8 @@ Resources:
             Parameters:
               Location: ./configs/reactions_problem_report.json
       Tags:
-        Project: slack-reaction-problem-report
+        Application: facilities-automation-hub
+        Project: problem-report:slack-reaction
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -226,7 +227,8 @@ Resources:
             Parameters:
               Location: ./configs/router_config.json
       Tags:
-        Project: facilities-slack-event-router
+        Application: facilities-automation-hub
+        Project: router:slack-event
         Workspace: facilities
         Stage: !Ref Stage
 

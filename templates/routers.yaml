@@ -40,7 +40,8 @@ Resources:
               Action: ssm:GetParameter
               Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RouterConfigParameterName}"
       Tags:
-        Project: facilities-slack-event-router
+        Application: facilities-automation-hub
+        Project: router:slack-event
         Workspace: facilities
         Stage: !Ref Stage
 

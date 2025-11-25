@@ -32,7 +32,8 @@ Resources:
             Parameters:
               Location: ../configs/clickup_facilities_problemReports.json
       Tags:
-        Project: asmbly-facilities-and-maintenance-tracking-automation
+        Application: facilities-automation-hub
+        Project: problem-report:config
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -70,8 +71,10 @@ Resources:
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/problemReports"
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}"
       Tags:
+        - Key: Application
+          Value: facilities-automation-hub
         - Key: Project
-          Value: new-problem-report-request-received
+          Value: problem-report:new-request-received
         - Key: Workspace
           Value: facilities
         - Key: Stage
@@ -105,7 +108,8 @@ Resources:
           DISCOURSE_URL: 'https://yo.asmbly.org'
           DISCOURSE_PROBLEM_REPORT_CATEGORY: '59'
       Tags:
-        Project: new-problem-report-request-received
+        Application: facilities-automation-hub
+        Project: problem-report:new-request-received
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -141,8 +145,10 @@ Resources:
                 Action: ssm:GetParameter
                 Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/config/reaction-handler/problem-report'
       Tags:
+        - Key: Application
+          Value: facilities-automation-hub
         - Key: Project
-          Value: slack-reaction-problem-report
+          Value: problem-report:slack-reaction
         - Key: Workspace
           Value: facilities
         - Key: Stage
@@ -169,7 +175,8 @@ Resources:
           CLICKUP_SECRET_NAME: 'clickup/api/token'
           DISCOURSE_SECRET_NAME: 'prod/discourse-facilities-bot'
       Tags:
-        Project: slack-reaction-problem-report
+        Application: facilities-automation-hub
+        Project: problem-report:slack-reaction
         Workspace: facilities
         Stage: !Ref Stage
 
