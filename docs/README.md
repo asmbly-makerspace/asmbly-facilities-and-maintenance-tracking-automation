@@ -1,5 +1,8 @@
 # Asmbly Facilities, Maintenance, and Tracking Automation Hub
 
+[![Deploy](https://github.com/asmbly-makerspace/asmbly-facilities-and-maintenance-tracking-automation/actions/workflows/deploy.yml/badge.svg)](https://github.com/asmbly-makerspace/asmbly-facilities-and-maintenance-tracking-automation/actions/workflows/deploy.yml)
+[![Python Tests](https://github.com/asmbly-makerspace/asmbly-facilities-and-maintenance-tracking-automation/actions/workflows/python-tests.yml/badge.svg)](https://github.com/asmbly-makerspace/asmbly-facilities-and-maintenance-tracking-automation/actions/workflows/python-tests.yml)
+
 This repository contains serverless AWS Lambda functions that automate various tasks for Asmbly Makerspace. All infrastructure is managed as code using the AWS Serverless Application Model (SAM).
 
 ## Table of Contents
