@@ -191,6 +191,7 @@ Resources:
             Parameters:
               Location: ./configs/reactions_purchase_request.json
       Tags:
+        Application: facilities-automation-hub
         Project: purchase-request:slack-reaction
         Workspace: facilities
         Stage: !Ref Stage
