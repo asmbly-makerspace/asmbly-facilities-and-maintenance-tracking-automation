@@ -38,7 +38,7 @@ Resources:
         - Key: Purpose
           Value: GitHub-Actions-Deploy
 
-  # The updated policy with permissions for logs, tagging, and rollbacks
+  # The updated policy with permissions for logs, tagging, rollbacks, and TTL
   GitHubDeployPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -126,6 +126,7 @@ Resources:
               - dynamodb:UpdateTable
               - dynamodb:DeleteTable
               - dynamodb:DescribeTable
+              - dynamodb:DescribeTimeToLive
               - dynamodb:UpdateTimeToLive
               - dynamodb:TagResource
               - dynamodb:UntagResource
