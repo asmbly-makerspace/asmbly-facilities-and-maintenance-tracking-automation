@@ -5,7 +5,6 @@ from unittest.mock import patch, MagicMock
 import urllib.parse
 import boto3
 from moto import mock_aws
-import importlib
 
 # Set environment variables before importing
 TABLE_NAME = "TestStateTable"
@@ -25,10 +24,27 @@ LAMBDA_FUNCTION_PATH = "functions.purchase_request.slack_slash_reorder.lambda_fu
 @mock_aws
 class TestSlackReorderWithDynamoDB(unittest.TestCase):
 
-    def setUp(self):
-        """Set up a mock DynamoDB table and other test data."""
-        self.test_dir = os.path.dirname(__file__)
+    @classmethod
+    def setUpClass(cls):
+        """
+        Load static data from disk ONCE for the whole test class.
+        This significantly speeds up execution by reducing File I/O.
+        """
+        test_dir = os.path.dirname(__file__)
 
+        # Load fixtures once
+        with open(os.path.join(test_dir, 'fixtures', 'clickup_master_items_response.json')) as f:
+            cls.clickup_master_items = json.load(f)
+
+        cls.purchase_requests_config = {
+            "list_id": "fake_purchase_list_id",
+            "supplier_link_field_id": "supplier_link_field_id",
+            "requestor_name_field_id": "requestor_name_field_id",
+            "item_type_field_id": "item_type_field_id"
+        }
+
+    def setUp(self):
+        """Set up a mock DynamoDB table per test to ensure isolation."""
         # Start DynamoDB Mock
         self.dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         self.table = self.dynamodb.create_table(
@@ -38,19 +54,8 @@ class TestSlackReorderWithDynamoDB(unittest.TestCase):
             BillingMode="PAY_PER_REQUEST"
         )
 
-        # Explicitly bind the module's global table variable to the mock
+        # Bind the module's global table variable to the mock
         lambda_function.state_table = self.table
-
-        # Load fixtures
-        with open(os.path.join(self.test_dir, 'fixtures', 'clickup_master_items_response.json')) as f:
-            self.clickup_master_items = json.load(f)
-
-        self.purchase_requests_config = {
-            "list_id": "fake_purchase_list_id",
-            "supplier_link_field_id": "supplier_link_field_id",
-            "requestor_name_field_id": "requestor_name_field_id",
-            "item_type_field_id": "item_type_field_id"
-        }
 
         self.mock_context = MagicMock()
         self.mock_context.function_name = "test_function"
@@ -62,7 +67,6 @@ class TestSlackReorderWithDynamoDB(unittest.TestCase):
         self.mock_http_session.post.return_value.json.return_value = {"ok": True}
 
     def tearDown(self):
-        """Clean up."""
         pass
 
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
@@ -77,7 +81,7 @@ class TestSlackReorderWithDynamoDB(unittest.TestCase):
         mock_lambda_client = MagicMock()
         mock_boto_client.return_value = mock_lambda_client
 
-        # FIX: Standard Slash Command body (URL encoded form data), NOT 'payload={json}'
+        # Standard Slash Command body
         event = {'body': 'trigger_id=fake_trigger_id&user_id=U123'}
 
         # --- WHEN ---
@@ -85,6 +89,7 @@ class TestSlackReorderWithDynamoDB(unittest.TestCase):
 
         # --- THEN ---
         self.assertEqual(response['statusCode'], 200)
+
         # Verify Slack API call
         self.mock_http_session.post.assert_called_once()
         self.assertIn("views.open", self.mock_http_session.post.call_args[0][0])
