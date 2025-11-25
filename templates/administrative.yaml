@@ -37,7 +37,8 @@ Resources:
               Action: secretsmanager:GetSecretValue
               Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${NeonSecretName}*'
       Tags:
-        Project: new-waiver-completed
+        Application: facilities-automation-hub
+        Project: administrative:new-waiver-completed
         Workspace: administrative
         Stage: !Ref Stage
 

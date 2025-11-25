@@ -64,10 +64,11 @@ The core infrastructure is defined in `templates/administrative.yaml` and consis
 
 ### Tags
 
-| Name      | Value                |
-|-----------|----------------------|
-| Project   | new-waiver-completed |
-| Workspace | administrative       |
+| Name        | Value                                |
+|-------------|--------------------------------------|
+| Application | facilities-automation-hub            |
+| Project     | administrative:new-waiver-completed |
+| Workspace   | administrative                       |
 
 ## Configuration
 

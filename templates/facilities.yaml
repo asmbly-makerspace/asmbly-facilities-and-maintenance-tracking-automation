@@ -35,7 +35,8 @@ Resources:
             Parameters:
               Location: ../configs/clickup_cmms_pmSchedule.json
       Tags:
-        Project: pm-reminder-bot
+        Application: facilities-automation-hub
+        Project: facilities:pm-reminder-bot
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -79,8 +80,10 @@ Resources:
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/cmms/pmSchedule'
 
       Tags:
+        - Key: Application
+          Value: facilities-automation-hub
         - Key: Project
-          Value: pm-reminder-bot
+          Value: facilities:pm-reminder-bot
         - Key: Workspace
           Value: facilities
         - Key: Stage
@@ -117,7 +120,8 @@ Resources:
             * Mark tasks with :loading: to show that they're being worked on!
             * Mark tasks with :white_check_mark: to call them done!
       Tags:
-        Project: pm-reminder-bot
+        Application: facilities-automation-hub
+        Project: facilities:pm-reminder-bot
         Workspace: facilities
         Stage: !Ref Stage
 

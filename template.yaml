@@ -245,7 +245,8 @@ Resources:
             Parameters:
               Location: ./configs/clickup_field_workspace.json
       Tags:
-        Project: facilities-clickup-config
+        Application: facilities-automation-hub
+        Project: config:clickup
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -385,8 +386,10 @@ Resources:
         - DomainName: facilities.asmbly.org
           HostedZoneId: !Ref AsmblyHostedZoneId # Fetched from SSM
       Tags:
+        - Key: Application
+          Value: facilities-automation-hub
         - Key: Project
-          Value: facilities-api
+          Value: api:custom-domain
         - Key: Workspace
           Value: facilities
 
@@ -399,7 +402,8 @@ Resources:
         - CertificateArn: !Ref FacilitiesCertificate
           EndpointType: REGIONAL
       Tags:
-        Project: facilities-api
+        Application: facilities-automation-hub
+        Project: api:custom-domain
         Workspace: facilities
     DependsOn:
       - FacilitiesCertificate
