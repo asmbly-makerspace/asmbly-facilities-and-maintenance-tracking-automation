@@ -191,7 +191,7 @@ Resources:
             Parameters:
               Location: ./configs/reactions_purchase_request.json
       Tags:
-        Project: slack-reaction-purchase-request
+        Project: purchase-request:slack-reaction
         Workspace: facilities
         Stage: !Ref Stage
 

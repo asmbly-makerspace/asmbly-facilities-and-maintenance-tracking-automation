@@ -95,10 +95,10 @@ The core infrastructure consists of an IAM Role, secrets in Secrets Manager, SSM
 
 ### Tags
 
-| Name      | Value                 |
-|-----------|-----------------------|
-| Project   | slack-slash-reorder   |
-| Workspace | facilities            |
+| Name      | Value                       |
+|-----------|-----------------------------|
+| Project   | purchase-request:slack-reorder |
+| Workspace | facilities                  |
 
 ## Configuration
 

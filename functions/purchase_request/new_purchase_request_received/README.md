@@ -79,10 +79,10 @@ The core infrastructure consists of an IAM Role, secrets in Secrets Manager, an 
 
 ### Tags
 
-| Name      | Value                         |
-|-----------|-------------------------------|
-| Project   | new-purchase-request-received |
-| Workspace | facilities                    |
+| Name      | Value                          |
+|-----------|--------------------------------|
+| Project   | purchase-request:clickup-webhook |
+| Workspace | facilities                     |
 
 ## Configuration
 

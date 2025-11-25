@@ -31,7 +31,7 @@ Resources:
             Parameters:
               Location: ../configs/clickup_facilities_masterItemsList.json
       Tags:
-        Project: slack-slash-reorder
+        Project: purchase-request:slack-reorder
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -48,7 +48,7 @@ Resources:
             Parameters:
               Location: ../configs/clickup_facilities_purchaseRequests.json
       Tags:
-        Project: purchase-requests
+        Project: purchase-request:config
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -68,7 +68,7 @@ Resources:
         Enabled: true
       Tags:
         - Key: Project
-          Value: slack-slash-reorder
+          Value: purchase-request:slack-reorder
         - Key: Workspace
           Value: facilities
         - Key: Stage
@@ -130,7 +130,7 @@ Resources:
           CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME: !Ref ClickUpPurchaseRequestsConfigParameter
           CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
       Tags:
-        Project: slack-slash-reorder
+        Project: purchase-request:slack-reorder
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -166,7 +166,7 @@ Resources:
                 Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/config/reaction-handler/purchase-request'
       Tags:
         - Key: Project
-          Value: slack-reaction-purchase-request
+          Value: purchase-request:slack-reaction
         - Key: Workspace
           Value: facilities
         - Key: Stage
@@ -192,7 +192,7 @@ Resources:
           SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
           CLICKUP_SECRET_NAME: 'clickup/api/token'
       Tags:
-        Project: slack-reaction-purchase-request
+        Project: purchase-request:slack-reaction
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -230,7 +230,7 @@ Resources:
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/purchaseRequests'
       Tags:
         - Key: Project
-          Value: new-purchase-request-received
+          Value: purchase-request:clickup-webhook
         - Key: Workspace
           Value: facilities
         - Key: Stage
@@ -261,7 +261,7 @@ Resources:
           CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
           CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME: !Ref ClickUpPurchaseRequestsConfigParameter
       Tags:
-        Project: new-purchase-request-received
+        Project: purchase-request:clickup-webhook
         Workspace: facilities
         Stage: !Ref Stage
 
