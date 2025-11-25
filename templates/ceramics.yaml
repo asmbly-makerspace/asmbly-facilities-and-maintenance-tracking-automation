@@ -29,10 +29,7 @@ Resources:
             Parameters:
               Location: ../configs/clickup_ceramics_dropOffRequests.json
       Tags:
-        Application: facilities-automation-hub
         Project: ceramics:kiln-dropoff-viewer
-        Workspace: ceramics
-        Stage: !Ref Stage
 
   KilnDropoffViewerLambdaRole:
     Type: AWS::IAM::Role
@@ -72,14 +69,8 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/config/clickup/ceramics/dropOffRequests'
       Tags:
-        - Key: Application
-          Value: facilities-automation-hub
         - Key: Project
           Value: ceramics:kiln-dropoff-viewer
-        - Key: Workspace
-          Value: ceramics
-        - Key: Stage
-          Value: !Ref Stage
 
   KilnDropoffRecentEntriesViewerFunction:
     Type: AWS::Serverless::Function
@@ -99,10 +90,7 @@ Resources:
           SECRET_NAME: "clickup/api/token"
           CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME: !Ref ClickUpCeramicsConfigParameter
       Tags:
-        Application: facilities-automation-hub
         Project: ceramics:kiln-dropoff-viewer
-        Workspace: ceramics
-        Stage: !Ref Stage
 
 Outputs:
   KilnDropoffViewerFunctionArn:

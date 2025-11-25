@@ -31,10 +31,7 @@ Resources:
             Parameters:
               Location: ../configs/clickup_facilities_masterItemsList.json
       Tags:
-        Application: facilities-automation-hub
         Project: purchase-request:slack-reorder
-        Workspace: facilities
-        Stage: !Ref Stage
 
   ClickUpPurchaseRequestsConfigParameter:
     Type: AWS::SSM::Parameter
@@ -49,10 +46,7 @@ Resources:
             Parameters:
               Location: ../configs/clickup_facilities_purchaseRequests.json
       Tags:
-        Application: facilities-automation-hub
         Project: purchase-request:config
-        Workspace: facilities
-        Stage: !Ref Stage
 
   SlackReorderStateTable:
     Type: AWS::DynamoDB::Table
@@ -69,14 +63,8 @@ Resources:
         AttributeName: ttl
         Enabled: true
       Tags:
-        - Key: Application
-          Value: facilities-automation-hub
         - Key: Project
           Value: purchase-request:slack-reorder
-        - Key: Workspace
-          Value: facilities
-        - Key: Stage
-          Value: !Ref Stage
 
   SlackSlashReorderFunction:
     Type: AWS::Serverless::Function
@@ -134,10 +122,7 @@ Resources:
           CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME: !Ref ClickUpPurchaseRequestsConfigParameter
           CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
       Tags:
-        Application: facilities-automation-hub
         Project: purchase-request:slack-reorder
-        Workspace: facilities
-        Stage: !Ref Stage
 
   PurchaseRequestReactionRole:
     Type: AWS::IAM::Role
@@ -170,14 +155,8 @@ Resources:
                 Action: ssm:GetParameter
                 Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/config/reaction-handler/purchase-request'
       Tags:
-        - Key: Application
-          Value: facilities-automation-hub
         - Key: Project
           Value: purchase-request:slack-reaction
-        - Key: Workspace
-          Value: facilities
-        - Key: Stage
-          Value: !Ref Stage
 
   PurchaseRequestReactionFunction:
     Type: AWS::Serverless::Function
@@ -199,10 +178,7 @@ Resources:
           SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
           CLICKUP_SECRET_NAME: 'clickup/api/token'
       Tags:
-        Application: facilities-automation-hub
         Project: purchase-request:slack-reaction
-        Workspace: facilities
-        Stage: !Ref Stage
 
   NewPurchaseRequestReceivedRole:
     Type: AWS::IAM::Role
@@ -237,14 +213,8 @@ Resources:
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}'
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/purchaseRequests'
       Tags:
-        - Key: Application
-          Value: facilities-automation-hub
         - Key: Project
           Value: purchase-request:clickup-webhook
-        - Key: Workspace
-          Value: facilities
-        - Key: Stage
-          Value: !Ref Stage
 
   NewPurchaseRequestReceivedFunction:
     Type: AWS::Serverless::Function
@@ -271,10 +241,7 @@ Resources:
           CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME: !Ref ClickUpWorkspaceFieldIdParameterName
           CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME: !Ref ClickUpPurchaseRequestsConfigParameter
       Tags:
-        Application: facilities-automation-hub
         Project: purchase-request:clickup-webhook
-        Workspace: facilities
-        Stage: !Ref Stage
 
 Outputs:
   SlackSlashReorderFunctionArn:

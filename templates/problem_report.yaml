@@ -32,10 +32,7 @@ Resources:
             Parameters:
               Location: ../configs/clickup_facilities_problemReports.json
       Tags:
-        Application: facilities-automation-hub
         Project: problem-report:config
-        Workspace: facilities
-        Stage: !Ref Stage
 
   NewProblemReportRequestReceivedRole:
     Type: AWS::IAM::Role
@@ -71,14 +68,8 @@ Resources:
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/facilities/problemReports"
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}"
       Tags:
-        - Key: Application
-          Value: facilities-automation-hub
         - Key: Project
           Value: problem-report:new-request-received
-        - Key: Workspace
-          Value: facilities
-        - Key: Stage
-          Value: !Ref Stage
 
   NewProblemReportRequestReceivedFunction:
     Type: AWS::Serverless::Function
@@ -108,10 +99,7 @@ Resources:
           DISCOURSE_URL: 'https://yo.asmbly.org'
           DISCOURSE_PROBLEM_REPORT_CATEGORY: '59'
       Tags:
-        Application: facilities-automation-hub
         Project: problem-report:new-request-received
-        Workspace: facilities
-        Stage: !Ref Stage
 
   ProblemReportReactionRole:
     Type: AWS::IAM::Role
@@ -145,14 +133,8 @@ Resources:
                 Action: ssm:GetParameter
                 Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/config/reaction-handler/problem-report'
       Tags:
-        - Key: Application
-          Value: facilities-automation-hub
         - Key: Project
           Value: problem-report:slack-reaction
-        - Key: Workspace
-          Value: facilities
-        - Key: Stage
-          Value: !Ref Stage
 
   ProblemReportReactionFunction:
     Type: AWS::Serverless::Function
@@ -175,10 +157,7 @@ Resources:
           CLICKUP_SECRET_NAME: 'clickup/api/token'
           DISCOURSE_SECRET_NAME: 'prod/discourse-facilities-bot'
       Tags:
-        Application: facilities-automation-hub
         Project: problem-report:slack-reaction
-        Workspace: facilities
-        Stage: !Ref Stage
 
 Outputs:
   NewProblemReportRequestReceivedFunctionArn:

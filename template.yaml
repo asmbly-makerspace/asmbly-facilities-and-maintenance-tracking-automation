@@ -259,6 +259,10 @@ Resources:
         ClickUpWorkspaceFieldIdParameterName: !Ref ClickUpWorkspaceFieldIdParameter
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: facilities
+        Stage: !Ref Stage
 
   PurchaseRequestStack:
     Type: AWS::Serverless::Application
@@ -269,6 +273,10 @@ Resources:
         ClickUpWorkspaceFieldIdParameterName: !Ref ClickUpWorkspaceFieldIdParameter
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: facilities
+        Stage: !Ref Stage
 
   CeramicsStack:
     Type: AWS::Serverless::Application
@@ -278,6 +286,10 @@ Resources:
         Stage: !Ref Stage
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: ceramics
+        Stage: !Ref Stage
 
   ProblemReportStack:
     Type: AWS::Serverless::Application
@@ -288,6 +300,10 @@ Resources:
         ClickUpWorkspaceFieldIdParameterName: !Ref ClickUpWorkspaceFieldIdParameter
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: facilities
+        Stage: !Ref Stage
 
   RoutersStack:
     Type: AWS::Serverless::Application
@@ -299,6 +315,10 @@ Resources:
         PurchaseRequestReactionFunctionArn: !GetAtt PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn
         ProblemReportReactionFunctionArn: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
         RouterConfigParameterName: !Ref RouterConfigParameter
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: facilities
+        Stage: !Ref Stage
 
   AdministrativeStack:
     Type: AWS::Serverless::Application
@@ -309,6 +329,11 @@ Resources:
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
         NeonSecretName: !Ref NeonSecretName
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: administrative
+        Stage: !Ref Stage
+
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
