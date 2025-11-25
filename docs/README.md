@@ -75,9 +75,9 @@ These services automate tasks related to facilities management, problem reportin
 * **PM Reminder Bot** (`PMReminderBot`)
     * **What it does:** Automatically fetches upcoming and overdue maintenance tasks from ClickUp and posts them as weekly reminders in the relevant Slack channels.
     * **How it's triggered:** A scheduled cron job (via Amazon EventBridge), defined in `facilities.yaml`.
-* **Slack Purchase Reorder & Interaction Handler** (`FacilitiesSlackPurchaseReorderFunction`)
-    * **What it does:** Handles the `/reorder` slash command to open a modal for creating purchase requests in ClickUp. It also processes interactions within that modal, like submissions.
-    * **How it's triggered:** An HTTP `POST` from a Slack slash command. This single endpoint handles both the initial command and subsequent user interactions.
+* **Slack Reorder Item** (`FacilitiesSlackPurchaseReorderFunction`)
+    * **What it does:** Handles the `/reorder` slash command, which opens an interactive modal in Slack. Users can filter a list of master items, select one, and submit a new purchase request to ClickUp. The same function also handles all in-modal interactions (filtering, submission).
+    * **How it's triggered:** An HTTP `POST` from a Slack slash command and subsequent `block_actions` or `view_submission` events.
     * **Webhook URL:** `https://facilities.asmbly.org/SlackSlashReorder`
     * **Config Location:** Slack Bot - Maintenance Bot -> Slash Commands (`/reorder`) and Interactivity & Shortcuts.
 * **Problem Report Reaction Handler** (`FacilitiesSlackProblemReportReactionWebhook`)

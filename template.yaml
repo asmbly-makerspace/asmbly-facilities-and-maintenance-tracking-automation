@@ -34,10 +34,57 @@ Conditions:
   IsProd: !Equals [!Ref Stage, 'prod']
 
 Resources:
+  ApiGatewayCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayCloudWatchRole.Arn
+
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/apigateway/facilities-api-${Stage}"
+      RetentionInDays: 7
+
   FacilitiesApi:
     Type: AWS::Serverless::Api
+    DependsOn: ApiGatewayAccount
     Properties:
       StageName: !Ref Stage
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: >-
+          {
+          "requestId": "$context.requestId",
+          "ip": "$context.identity.sourceIp",
+          "caller": "$context.identity.caller",
+          "user": "$context.identity.user",
+          "requestTime": "$context.requestTime",
+          "httpMethod": "$context.httpMethod",
+          "resourcePath": "$context.resourcePath",
+          "status": "$context.status",
+          "protocol": "$context.protocol",
+          "responseLength": "$context.responseLength",
+          "integrationErrorMessage": "$context.integrationErrorMessage"
+          }
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          DataTraceEnabled: true
       DefinitionBody:
         openapi: '3.0.1'
         info:
@@ -144,7 +191,8 @@ Resources:
             Parameters:
               Location: ./configs/reactions_purchase_request.json
       Tags:
-        Project: slack-reaction-purchase-request
+        Application: facilities-automation-hub
+        Project: purchase-request:slack-reaction
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -161,7 +209,8 @@ Resources:
             Parameters:
               Location: ./configs/reactions_problem_report.json
       Tags:
-        Project: slack-reaction-problem-report
+        Application: facilities-automation-hub
+        Project: problem-report:slack-reaction
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -178,7 +227,8 @@ Resources:
             Parameters:
               Location: ./configs/router_config.json
       Tags:
-        Project: facilities-slack-event-router
+        Application: facilities-automation-hub
+        Project: router:slack-event
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -195,7 +245,8 @@ Resources:
             Parameters:
               Location: ./configs/clickup_field_workspace.json
       Tags:
-        Project: facilities-clickup-config
+        Application: facilities-automation-hub
+        Project: config:clickup
         Workspace: facilities
         Stage: !Ref Stage
 
@@ -208,6 +259,10 @@ Resources:
         ClickUpWorkspaceFieldIdParameterName: !Ref ClickUpWorkspaceFieldIdParameter
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: facilities
+        Stage: !Ref Stage
 
   PurchaseRequestStack:
     Type: AWS::Serverless::Application
@@ -218,6 +273,10 @@ Resources:
         ClickUpWorkspaceFieldIdParameterName: !Ref ClickUpWorkspaceFieldIdParameter
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: facilities
+        Stage: !Ref Stage
 
   CeramicsStack:
     Type: AWS::Serverless::Application
@@ -227,6 +286,10 @@ Resources:
         Stage: !Ref Stage
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: ceramics
+        Stage: !Ref Stage
 
   ProblemReportStack:
     Type: AWS::Serverless::Application
@@ -237,6 +300,10 @@ Resources:
         ClickUpWorkspaceFieldIdParameterName: !Ref ClickUpWorkspaceFieldIdParameter
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: facilities
+        Stage: !Ref Stage
 
   RoutersStack:
     Type: AWS::Serverless::Application
@@ -248,6 +315,10 @@ Resources:
         PurchaseRequestReactionFunctionArn: !GetAtt PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn
         ProblemReportReactionFunctionArn: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
         RouterConfigParameterName: !Ref RouterConfigParameter
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: facilities
+        Stage: !Ref Stage
 
   AdministrativeStack:
     Type: AWS::Serverless::Application
@@ -258,6 +329,11 @@ Resources:
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
         NeonSecretName: !Ref NeonSecretName
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: administrative
+        Stage: !Ref Stage
+
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -335,8 +411,10 @@ Resources:
         - DomainName: facilities.asmbly.org
           HostedZoneId: !Ref AsmblyHostedZoneId # Fetched from SSM
       Tags:
+        - Key: Application
+          Value: facilities-automation-hub
         - Key: Project
-          Value: facilities-api
+          Value: api:custom-domain
         - Key: Workspace
           Value: facilities
 
@@ -349,7 +427,8 @@ Resources:
         - CertificateArn: !Ref FacilitiesCertificate
           EndpointType: REGIONAL
       Tags:
-        Project: facilities-api
+        Application: facilities-automation-hub
+        Project: api:custom-domain
         Workspace: facilities
     DependsOn:
       - FacilitiesCertificate

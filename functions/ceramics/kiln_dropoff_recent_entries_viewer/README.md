@@ -120,10 +120,11 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 
 Tags in AWS will be:
 
-| Name      | Value                  |
-|-----------|------------------------|
-| Project   | kilnops-dropoff-viewer |
-| Workspace | ceramics               |
+| Name        | Value                        |
+|-------------|------------------------------|
+| Application | facilities-automation-hub    |
+| Project     | ceramics:kiln-dropoff-viewer |
+| Workspace   | ceramics                     |
 
 ## Configuration
 

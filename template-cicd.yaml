@@ -108,6 +108,16 @@ Resources:
             Effect: Allow
             Action: apigateway:*
             Resource: "*"
+          - Sid: AllowDynamoDBTableManagement
+            Effect: Allow
+            Action:
+              - dynamodb:CreateTable
+              - dynamodb:UpdateTable
+              - dynamodb:DeleteTable
+              - dynamodb:DescribeTable
+              - dynamodb:UpdateTimeToLive
+              - dynamodb:TagResource
+            Resource: "*"
           - Sid: AllowSSMParameterWrite
             Effect: Allow
             Action:

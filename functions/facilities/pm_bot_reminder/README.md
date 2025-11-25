@@ -100,10 +100,11 @@ The core infrastructure consists of an IAM Role, two secrets in Secrets Manager,
 
 ### Tags
 
-| Name      | Value           |
-|-----------|-----------------|
-| Project   | pm-reminder-bot |
-| Workspace | facilities      |
+| Name        | Value                       |
+|-------------|-----------------------------|
+| Application | facilities-automation-hub   |
+| Project     | facilities:pm-reminder-bot |
+| Workspace   | facilities                  |
 
 ## Configuration
 
