@@ -54,7 +54,8 @@ class TestSlackReorderWithDynamoDB(unittest.TestCase):
             AttributeDefinitions=[{"AttributeName": "view_id", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST"
         )
-        lambda_function.state_table = self.table
+        # Since we are using lazy loading, we need to ensure the global variable in the lambda is reset for each test
+        lambda_function.dynamodb_resource = self.dynamodb
 
         self.mock_context = MagicMock()
         self.mock_context.function_name = "test_function"
@@ -66,17 +67,21 @@ class TestSlackReorderWithDynamoDB(unittest.TestCase):
 
     def tearDown(self):
         self.table.delete()
+        # Reset the global resource after each test
+        lambda_function.dynamodb_resource = None
+        lambda_function.lambda_client = None
 
-    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}._get_lambda_client")
     @patch(f"{LAMBDA_FUNCTION_PATH}.requests.Session")
     @patch(f"{LAMBDA_FUNCTION_PATH}.get_secret")
-    def test_initial_open_invokes_async_lambda(self, mock_get_secret, mock_session_cls, mock_boto_client):
+    def test_initial_open_invokes_async_lambda(self, mock_get_secret, mock_session_cls, mock_get_lambda_client):
         # GIVEN
         mock_get_secret.return_value = "fake_slack_token"
         mock_session_cls.return_value = self.mock_http_session
         self.mock_http_session.post.return_value.json.return_value = {"ok": True, "view": {"id": "V_INITIAL"}}
         mock_lambda_client = MagicMock()
-        mock_boto_client.return_value = mock_lambda_client
+        mock_get_lambda_client.return_value = mock_lambda_client
         event = {'body': 'trigger_id=fake_trigger_id&user_id=U123'}
 
         # WHEN

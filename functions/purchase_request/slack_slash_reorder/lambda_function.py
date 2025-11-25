@@ -14,10 +14,23 @@ from common.slack import SlackState, get_slack_user_info
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize DynamoDB client
-dynamodb = boto3.resource('dynamodb')
-STATE_TABLE_NAME = os.environ.get("STATE_TABLE_NAME")
-state_table = dynamodb.Table(STATE_TABLE_NAME) if STATE_TABLE_NAME else None
+# Boto3 clients, initialized lazily to make testing easier
+dynamodb_resource = None
+lambda_client = None
+
+def _get_dynamodb_resource():
+    """Initializes and returns the DynamoDB resource, creating it if necessary."""
+    global dynamodb_resource
+    if dynamodb_resource is None:
+        dynamodb_resource = boto3.resource('dynamodb')
+    return dynamodb_resource
+
+def _get_lambda_client():
+    """Initializes and returns the Lambda client, creating it if necessary."""
+    global lambda_client
+    if lambda_client is None:
+        lambda_client = boto3.client('lambda')
+    return lambda_client
 
 class Config:
     """Loads and holds configuration from environment variables."""
@@ -27,6 +40,7 @@ class Config:
         self.master_items_list_config_param_name = os.environ["CLICKUP_MASTER_ITEMS_LIST_CONFIG_PARAM_NAME"]
         self.purchase_requests_config_param_name = os.environ["CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME"]
         self.workspace_field_id_param_name = os.environ["CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME"]
+        self.state_table_name = os.environ.get("STATE_TABLE_NAME")
 
         # These will be populated after fetching from SSM
         self.master_items_list_id = None
@@ -118,6 +132,8 @@ def handle_block_actions(payload, http_session, slack_bot_token):
     logger.info("Handling block action for view_id: %s", view_id)
 
     try:
+        state_table_name = os.environ.get("STATE_TABLE_NAME")
+        state_table = _get_dynamodb_resource().Table(state_table_name)
         response = state_table.get_item(Key={'view_id': view_id})
         if 'Item' not in response:
             raise ValueError(f"State not found in DynamoDB for view_id: {view_id}")
@@ -138,17 +154,8 @@ def handle_block_actions(payload, http_session, slack_bot_token):
 
     state = SlackState(view.get("state", {}).get("values"))
 
-    # Safe retrieval
-    current_workspace = None
-    try:
-        current_workspace = state.get_selected_option_value("workspace_filter", "selected_workspace")
-    except: pass
-
-    selected_item = None
-    try:
-        selected_item = state.get_selected_option_value("item_selection", "selected_item")
-    except: pass
-
+    current_workspace = state.get_selected_option_value("workspace_filter", "selected_workspace")
+    selected_item = state.get_selected_option_value("item_selection", "selected_item")
     description = ""
 
     if action_id == "selected_workspace":
@@ -256,6 +263,7 @@ def handle_load_data_and_update_view(view_id):
         all_tasks_prepared = prepare_tasks_for_state(all_tasks_full, config.workspace_field_id)
 
         ttl_timestamp = int((datetime.now() + timedelta(hours=1)).timestamp())
+        state_table = _get_dynamodb_resource().Table(config.state_table_name)
         state_table.put_item(
             Item={
                 'view_id': view_id,
@@ -297,11 +305,11 @@ def handle_initial_open(trigger_id, slack_headers, context):
     view_id = response.json()["view"]["id"]
     logger.info("Opened loading modal with view_id: %s", view_id)
 
-    lambda_client = boto3.client('lambda')
+    client = _get_lambda_client()
     payload = {"action": "load_data_and_update_view", "view_id": view_id}
 
     logger.info("Invoking self asynchronously to load data for view_id: %s", view_id)
-    lambda_client.invoke(
+    client.invoke(
         FunctionName=context.function_name,
         InvocationType='Event',
         Payload=json.dumps(payload)
