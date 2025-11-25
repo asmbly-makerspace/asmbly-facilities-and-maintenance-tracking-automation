@@ -124,6 +124,7 @@ Resources:
               - ssm:PutParameter
               - ssm:DeleteParameter
               - ssm:AddTagsToResource
+              - ssm:GetParameters
             Resource: "arn:aws:ssm:*:*:parameter/*"
           - Sid: AllowEventBridgeRuleManagement
             Effect: Allow
