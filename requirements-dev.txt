@@ -6,4 +6,5 @@ requests-mock
 boto3
 moto
 pytest-cov
+pytest-env
 tzdata
