@@ -35,9 +35,7 @@ Resources:
             Parameters:
               Location: ../configs/clickup_cmms_pmSchedule.json
       Tags:
-        Project: pm-reminder-bot
-        Workspace: facilities
-        Stage: !Ref Stage
+        Project: facilities:pm-reminder-bot
 
   PMReminderBotLambdaRole:
     Type: AWS::IAM::Role
@@ -80,11 +78,7 @@ Resources:
 
       Tags:
         - Key: Project
-          Value: pm-reminder-bot
-        - Key: Workspace
-          Value: facilities
-        - Key: Stage
-          Value: !Ref Stage
+          Value: facilities:pm-reminder-bot
 
   PMReminderBotFunction:
     Type: AWS::Serverless::Function
@@ -117,9 +111,7 @@ Resources:
             * Mark tasks with :loading: to show that they're being worked on!
             * Mark tasks with :white_check_mark: to call them done!
       Tags:
-        Project: pm-reminder-bot
-        Workspace: facilities
-        Stage: !Ref Stage
+        Project: facilities:pm-reminder-bot
 
   # Explicit EventBridge Rule and Permission (replaces the 'Events' block)
   PMReminderBotScheduleRule:

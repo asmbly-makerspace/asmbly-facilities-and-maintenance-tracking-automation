@@ -32,9 +32,7 @@ Resources:
             Parameters:
               Location: ../configs/clickup_facilities_problemReports.json
       Tags:
-        Project: asmbly-facilities-and-maintenance-tracking-automation
-        Workspace: facilities
-        Stage: !Ref Stage
+        Project: problem-report:config
 
   NewProblemReportRequestReceivedRole:
     Type: AWS::IAM::Role
@@ -71,11 +69,7 @@ Resources:
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClickUpWorkspaceFieldIdParameterName}"
       Tags:
         - Key: Project
-          Value: new-problem-report-request-received
-        - Key: Workspace
-          Value: facilities
-        - Key: Stage
-          Value: !Ref Stage
+          Value: problem-report:new-request-received
 
   NewProblemReportRequestReceivedFunction:
     Type: AWS::Serverless::Function
@@ -105,9 +99,7 @@ Resources:
           DISCOURSE_URL: 'https://yo.asmbly.org'
           DISCOURSE_PROBLEM_REPORT_CATEGORY: '59'
       Tags:
-        Project: new-problem-report-request-received
-        Workspace: facilities
-        Stage: !Ref Stage
+        Project: problem-report:new-request-received
 
   ProblemReportReactionRole:
     Type: AWS::IAM::Role
@@ -142,11 +134,7 @@ Resources:
                 Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/config/reaction-handler/problem-report'
       Tags:
         - Key: Project
-          Value: slack-reaction-problem-report
-        - Key: Workspace
-          Value: facilities
-        - Key: Stage
-          Value: !Ref Stage
+          Value: problem-report:slack-reaction
 
   ProblemReportReactionFunction:
     Type: AWS::Serverless::Function
@@ -169,9 +157,7 @@ Resources:
           CLICKUP_SECRET_NAME: 'clickup/api/token'
           DISCOURSE_SECRET_NAME: 'prod/discourse-facilities-bot'
       Tags:
-        Project: slack-reaction-problem-report
-        Workspace: facilities
-        Stage: !Ref Stage
+        Project: problem-report:slack-reaction
 
 Outputs:
   NewProblemReportRequestReceivedFunctionArn:

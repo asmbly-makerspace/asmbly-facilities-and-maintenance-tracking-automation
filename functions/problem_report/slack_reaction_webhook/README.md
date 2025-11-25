@@ -90,10 +90,11 @@ The core infrastructure consists of an IAM Role, secrets in Secrets Manager, an 
 
 ### Tags
 
-| Name      | Value                           |
-|-----------|---------------------------------|
-| Project   | slack-reaction-problem-report |
-| Workspace | facilities                      |
+| Name        | Value                        |
+|-------------|------------------------------|
+| Application | facilities-automation-hub    |
+| Project     | problem-report:slack-reaction |
+| Workspace   | facilities                   |
 
 ## Configuration
 

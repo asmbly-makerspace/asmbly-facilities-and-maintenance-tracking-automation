@@ -151,6 +151,7 @@ def fetch_clickup_tasks_page(list_id, api_token, page_num, due_date_lt_ms=None, 
         "page": page_num,
         "subtasks": str(include_subtasks).lower(),
         "include_closed": str(include_closed).lower(),
+        "include_markdown_description": "true", # Explicitly request the description
     }
     if due_date_lt_ms is not None:
         query_params["due_date_lt"] = due_date_lt_ms

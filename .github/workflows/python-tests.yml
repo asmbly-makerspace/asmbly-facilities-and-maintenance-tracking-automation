@@ -14,18 +14,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v3
-      with:
-        python-version: '3.x'
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.12' # Specify 3.12 to match your Lambda runtime
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
 
-    - name: Test with pytest
-      run: |
-        pytest
+      - name: Test with pytest
+        env:
+          AWS_DEFAULT_REGION: us-east-2
+          AWS_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_SECURITY_TOKEN: testing
+          AWS_SESSION_TOKEN: testing
+        run: |
+          pytest
