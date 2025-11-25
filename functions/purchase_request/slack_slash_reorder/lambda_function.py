@@ -85,7 +85,6 @@ def build_slack_modal(tasks_to_display, all_workspaces, initial_description="", 
         "options": [{"text": {"type": "plain_text", "text": task["name"]}, "value": task["id"]} for task in sorted_tasks]
     }
     if selected_item:
-        # Find the full task object to get its name for the initial_option
         task_name = next((t['name'] for t in tasks_to_display if t['id'] == selected_item), None)
         if task_name:
             item_element["initial_option"] = {
@@ -93,78 +92,111 @@ def build_slack_modal(tasks_to_display, all_workspaces, initial_description="", 
                 "value": selected_item
             }
 
+    # Dynamic block ID to force description refresh
+    description_block_id = f"description_block_{selected_item}" if selected_item else "description_block"
+
     view = {
         "type": "modal", "callback_id": "reorder_modal_submit",
-        "private_metadata": "", # Keep this empty
+        "private_metadata": "",
         "title": {"type": "plain_text", "text": "Reorder Item"},
         "submit": {"type": "plain_text", "text": "Submit"},
         "blocks": [
             {"type": "input", "block_id": "workspace_filter", "label": {"type": "plain_text", "text": "Filter by Workspace"}, "dispatch_action": True, "element": workspace_element, "optional": True},
             {"type": "input", "block_id": "delivery_date_block", "label": {"type": "plain_text", "text": "Required Delivery Date"}, "hint": {"type": "plain_text", "text": "Efforts will be made to meet this date, but it is not a guarantee."}, "element": {"type": "datepicker", "action_id": "delivery_date_action", "placeholder": {"type": "plain_text", "text": "Select a date"}}, "optional": True},
             {"type": "input", "block_id": "item_selection", "label": {"type": "plain_text", "text": "Select an item to reorder"}, "dispatch_action": True, "element": item_element},
-            {"type": "input", "block_id": "description_block", "label": {"type": "plain_text", "text": "Description"}, "element": {"type": "plain_text_input", "action_id": "description_action", "multiline": True, "initial_value": initial_description}, "optional": True},
+            {"type": "input", "block_id": description_block_id, "label": {"type": "plain_text", "text": "Description"}, "element": {"type": "plain_text_input", "action_id": "description_action", "multiline": True, "initial_value": initial_description}, "optional": True},
         ]
     }
     return view
 
-def handle_block_actions(payload):
+def handle_block_actions(payload, http_session, slack_bot_token):
     """
-    Handles interactive events from the Slack modal by reading state from DynamoDB
-    and returning a direct response_action to update the view.
+    Handles interactive events using views.update (Required for block_actions).
     """
     view = payload["view"]
     view_id = view["id"]
-    
+    logger.info("Handling block action for view_id: %s", view_id)
+
     try:
         response = state_table.get_item(Key={'view_id': view_id})
         if 'Item' not in response:
             raise ValueError(f"State not found in DynamoDB for view_id: {view_id}")
-        
+
         all_tasks_prepared = json.loads(response['Item']['tasks_data'])
         all_workspaces = get_all_workspaces_from_tasks(all_tasks_prepared)
+        logger.info("Retrieved %d tasks from DynamoDB state", len(all_tasks_prepared))
 
     except Exception as e:
-        logger.error("Failed to get or parse state from DynamoDB for view_id %s: %s", view_id, e, exc_info=True)
-        error_view = {"type": "modal", "title": {"type": "plain_text", "text": "Error"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Sorry, an error occurred while processing your request."}}], "close": {"type": "plain_text", "text": "Close"}}
-        return {"statusCode": 200, "body": json.dumps({"response_action": "update", "view": error_view})}
+        logger.error("Failed to get state for view_id %s: %s", view_id, e, exc_info=True)
+        # We can't return an error view in a body for block_actions, we must post it.
+        # But for now, we'll just log it to avoid complexity.
+        return {"statusCode": 200, "body": ""}
 
     action = payload["actions"][0]
     action_id = action["action_id"]
-    
+    logger.info("Action triggered: %s", action_id)
+
     state = SlackState(view.get("state", {}).get("values"))
-    current_workspace = state.get_selected_option_value("workspace_filter", "selected_workspace")
-    selected_item = state.get_selected_option_value("item_selection", "selected_item")
-    description = state.get_value("description_block", "description_action", "value") or ""
+
+    # Safe retrieval
+    current_workspace = None
+    try:
+        current_workspace = state.get_selected_option_value("workspace_filter", "selected_workspace")
+    except: pass
+
+    selected_item = None
+    try:
+        selected_item = state.get_selected_option_value("item_selection", "selected_item")
+    except: pass
+
+    description = ""
 
     if action_id == "selected_workspace":
-        current_workspace = action.get("selected_option", {}).get("value")
-        # Reset item selection when workspace changes
+        current_workspace = (action.get("selected_option") or {}).get("value")
         selected_item = None
         description = ""
+        logger.info("Filter changed to workspace: %s", current_workspace)
     elif action_id == "selected_item":
-        selected_item = action.get("selected_option", {}).get("value")
+        selected_item = (action.get("selected_option") or {}).get("value")
         if selected_item:
             task_details = next((t for t in all_tasks_prepared if t['id'] == selected_item), None)
             if task_details:
                 description = task_details.get("description", "")
+        logger.info("Item selected: %s", selected_item)
 
     tasks_to_display = [t for t in all_tasks_prepared if not current_workspace or t.get('workspace_name') == current_workspace]
+    logger.info("Filtering tasks: %d tasks match criteria", len(tasks_to_display))
 
     updated_view = build_slack_modal(tasks_to_display, all_workspaces, initial_description=description, selected_workspace=current_workspace, selected_item=selected_item)
-    
-    # Using "push" forces Slack to re-render the view completely, fixing UI bugs.
-    return {"statusCode": 200, "body": json.dumps({"response_action": "push", "view": updated_view})}
+
+    # CRITICAL FIX: block_actions MUST use views.update via HTTP, not return body.
+    slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
+    api_response = http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": updated_view})
+
+    if api_response.status_code != 200 or not api_response.json().get("ok"):
+        logger.error("Error updating Slack view: %s", api_response.text)
+    else:
+        logger.info("Successfully updated view via API")
+
+    return {"statusCode": 200, "body": ""}
 
 def handle_view_submission(payload, http_session, clickup_api_token, slack_bot_token, config):
-    """Handles the final submission of the modal and creates the ClickUp task."""
+    """Handles the final submission of the modal."""
+    logger.info("Handling view submission")
     state = SlackState(payload["view"]["state"]["values"])
 
     selected_item_id = state.get_selected_option_value("item_selection", "selected_item")
     delivery_date = state.get_value("delivery_date_block", "delivery_date_action", "selected_date")
-    description_text = state.get_value("description_block", "description_action", "value") or ""
+
+    description_text = ""
+    values = payload["view"]["state"]["values"]
+    for block_id, fields in values.items():
+        if block_id.startswith("description_block"):
+            if "description_action" in fields:
+                description_text = fields["description_action"].get("value") or ""
+                break
 
     if not selected_item_id:
-        logger.error("Could not find selected_item_id in view submission.")
         error_view = {"type": "modal", "title": {"type": "plain_text", "text": "Error"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Could not determine the selected item. Please try again."}}], "close": {"type": "plain_text", "text": "Close"}}
         return {"statusCode": 200, "body": json.dumps({"response_action": "update", "view": error_view})}
 
@@ -222,8 +254,6 @@ def handle_load_data_and_update_view(view_id):
             return
 
         all_tasks_prepared = prepare_tasks_for_state(all_tasks_full, config.workspace_field_id)
-        
-        logger.info("Data being written to DynamoDB: %s", json.dumps(all_tasks_prepared, indent=2))
 
         ttl_timestamp = int((datetime.now() + timedelta(hours=1)).timestamp())
         state_table.put_item(
@@ -237,7 +267,7 @@ def handle_load_data_and_update_view(view_id):
 
         all_workspaces = get_all_workspaces_from_tasks(all_tasks_prepared)
         modal_view = build_slack_modal(all_tasks_prepared, all_workspaces)
-        
+
         logger.info("Updating view %s with loaded data.", view_id)
         response = http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": modal_view})
         response.raise_for_status()
@@ -269,7 +299,7 @@ def handle_initial_open(trigger_id, slack_headers, context):
 
     lambda_client = boto3.client('lambda')
     payload = {"action": "load_data_and_update_view", "view_id": view_id}
-    
+
     logger.info("Invoking self asynchronously to load data for view_id: %s", view_id)
     lambda_client.invoke(
         FunctionName=context.function_name,
@@ -295,9 +325,15 @@ def lambda_handler(event, context):
             payload_type = payload.get("type")
 
             if payload_type == "block_actions":
-                return handle_block_actions(payload)
-            
+                # For interactive blocks (filtering), we need to fetch the token to make an API call
+                # We do NOT fetch ClickUp configs here to save time.
+                config = Config()
+                http_session = requests.Session()
+                slack_bot_token = get_secret(config.slack_bot_token_secret_name, 'SLACK_MAINTENANCE_BOT_TOKEN')
+                return handle_block_actions(payload, http_session, slack_bot_token)
+
             elif payload_type == "view_submission":
+                # For submission, we need everything.
                 config = Config()
                 http_session = requests.Session()
                 clickup_api_token = get_secret(config.clickup_api_token_secret_name, 'CLICKUP_API_TOKEN')
@@ -311,11 +347,11 @@ def lambda_handler(event, context):
         trigger_id = parsed_body.get("trigger_id", [None])[0]
         if not trigger_id:
             raise ValueError("trigger_id not found in request body")
-        
+
         config = Config()
         slack_bot_token = get_secret(config.slack_bot_token_secret_name, 'SLACK_MAINTENANCE_BOT_TOKEN')
         slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
-        
+
         return handle_initial_open(trigger_id, slack_headers, context)
 
     except Exception as e:
