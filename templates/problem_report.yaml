@@ -74,7 +74,7 @@ Resources:
   NewProblemReportRequestReceivedLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/NewProblemReportRequestReceived-${Stage}"
+      LogGroupName: !Sub "/asmbly/lambda/NewProblemReportRequestReceived-${Stage}"
       RetentionInDays: 14
       Tags:
         - Key: Project
@@ -82,7 +82,6 @@ Resources:
 
   NewProblemReportRequestReceivedFunction:
     Type: AWS::Serverless::Function
-    DependsOn: NewProblemReportRequestReceivedLogGroup
     Properties:
       FunctionName: !Sub "NewProblemReportRequestReceived-${Stage}"
       Description: "Handles a new problem report request from a Google Form."
@@ -92,6 +91,8 @@ Resources:
       MemorySize: 512
       Timeout: 20
       Role: !GetAtt NewProblemReportRequestReceivedRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref NewProblemReportRequestReceivedLogGroup
       Layers:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN
@@ -149,7 +150,7 @@ Resources:
   ProblemReportReactionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/ProblemReport-ReactionFunction-${Stage}"
+      LogGroupName: !Sub "/asmbly/lambda/ProblemReport-ReactionFunction-${Stage}"
       RetentionInDays: 14
       Tags:
         - Key: Project
@@ -157,7 +158,6 @@ Resources:
 
   ProblemReportReactionFunction:
     Type: AWS::Serverless::Function
-    DependsOn: ProblemReportReactionLogGroup
     Properties:
       FunctionName: !Sub "ProblemReport-ReactionFunction-${Stage}"
       Description: "Handles a Slack reaction on a problem report to update ClickUp and Discourse."
@@ -167,6 +167,8 @@ Resources:
       MemorySize: 512
       Timeout: 20
       Role: !GetAtt ProblemReportReactionRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref ProblemReportReactionLogGroup
       Layers:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN
