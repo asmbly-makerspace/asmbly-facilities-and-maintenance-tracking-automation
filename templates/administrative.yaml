@@ -14,8 +14,18 @@ Parameters:
     Type: String
 
 Resources:
+  NewWaiverCompletedLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/NewWaiverCompletedFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: administrative:new-waiver-completed
+
   NewWaiverCompletedFunction:
     Type: AWS::Serverless::Function
+    DependsOn: NewWaiverCompletedLogGroup
     Properties:
       FunctionName: !Sub "NewWaiverCompletedFunction-${Stage}"
       Description: "Receives new waiver completion webhooks and updates NeonCRM."
