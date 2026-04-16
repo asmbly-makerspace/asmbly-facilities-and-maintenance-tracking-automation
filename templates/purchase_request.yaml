@@ -66,8 +66,18 @@ Resources:
         - Key: Project
           Value: purchase-request:slack-reorder
 
+  SlackSlashReorderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/SlackSlashReorderFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: purchase-request:slack-reorder
+
   SlackSlashReorderFunction:
     Type: AWS::Serverless::Function
+    DependsOn: SlackSlashReorderLogGroup
     Properties:
       FunctionName: !Sub "SlackSlashReorderFunction-${Stage}"
       Description: "Handles a Slack slash command to create a reorder/purchase request in ClickUp."
@@ -158,8 +168,18 @@ Resources:
         - Key: Project
           Value: purchase-request:slack-reaction
 
+  PurchaseRequestReactionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/PurchaseRequest-ReactionFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: purchase-request:slack-reaction
+
   PurchaseRequestReactionFunction:
     Type: AWS::Serverless::Function
+    DependsOn: PurchaseRequestReactionLogGroup
     Properties:
       FunctionName: !Sub "PurchaseRequest-ReactionFunction-${Stage}"
       Description: "Handles a Slack reaction webhook to update a ClickUp task status."
@@ -216,8 +236,18 @@ Resources:
         - Key: Project
           Value: purchase-request:clickup-webhook
 
+  NewPurchaseRequestReceivedLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/NewPurchaseRequestReceivedFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: purchase-request:clickup-webhook
+
   NewPurchaseRequestReceivedFunction:
     Type: AWS::Serverless::Function
+    DependsOn: NewPurchaseRequestReceivedLogGroup
     Properties:
       FunctionName: !Sub "NewPurchaseRequestReceivedFunction-${Stage}"
       Description: "Handles a ClickUp webhook for new purchase requests, posts to Slack, and updates the task."

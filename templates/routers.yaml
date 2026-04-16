@@ -13,8 +13,18 @@ Parameters:
   RouterConfigParameterName: { Type: String }
 
 Resources:
+  SlackEventRouterLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/facilities-slack-event-router-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: router:slack-event
+
   SlackEventSubscriptionsRouterFunction:
     Type: AWS::Serverless::Function
+    DependsOn: SlackEventRouterLogGroup
     Properties:
       FunctionName: !Sub "facilities-slack-event-router-${Stage}"
       Description: "Routes incoming Slack events to the correct handler function."

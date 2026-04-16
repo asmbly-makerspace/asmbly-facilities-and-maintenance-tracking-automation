@@ -84,7 +84,7 @@ Resources:
         - ResourcePath: "/*"
           HttpMethod: "*"
           LoggingLevel: INFO
-          DataTraceEnabled: true
+          DataTraceEnabled: false
       DefinitionBody:
         openapi: '3.0.1'
         info:
@@ -166,7 +166,7 @@ Resources:
       ContentUri: layers/requests_layer/
       CompatibleRuntimes:
         - python3.12
-      RetentionPolicy: Retain
+      RetentionPolicy: Delete
 
   CommonLayer:
     Type: AWS::Serverless::LayerVersion
@@ -176,7 +176,7 @@ Resources:
       ContentUri: layers/common/
       CompatibleRuntimes:
         - python3.12
-      RetentionPolicy: Retain
+      RetentionPolicy: Delete
 
   ReactionMapPurchaseRequestParameter:
     Type: AWS::SSM::Parameter

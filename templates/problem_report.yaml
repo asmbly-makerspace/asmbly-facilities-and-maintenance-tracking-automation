@@ -71,8 +71,18 @@ Resources:
         - Key: Project
           Value: problem-report:new-request-received
 
+  NewProblemReportRequestReceivedLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/NewProblemReportRequestReceived-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: problem-report:new-request-received
+
   NewProblemReportRequestReceivedFunction:
     Type: AWS::Serverless::Function
+    DependsOn: NewProblemReportRequestReceivedLogGroup
     Properties:
       FunctionName: !Sub "NewProblemReportRequestReceived-${Stage}"
       Description: "Handles a new problem report request from a Google Form."
@@ -136,8 +146,18 @@ Resources:
         - Key: Project
           Value: problem-report:slack-reaction
 
+  ProblemReportReactionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/ProblemReport-ReactionFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: problem-report:slack-reaction
+
   ProblemReportReactionFunction:
     Type: AWS::Serverless::Function
+    DependsOn: ProblemReportReactionLogGroup
     Properties:
       FunctionName: !Sub "ProblemReport-ReactionFunction-${Stage}"
       Description: "Handles a Slack reaction on a problem report to update ClickUp and Discourse."
