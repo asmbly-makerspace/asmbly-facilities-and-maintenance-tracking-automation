@@ -72,8 +72,18 @@ Resources:
         - Key: Project
           Value: ceramics:kiln-dropoff-viewer
 
+  KilnDropoffViewerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/KilnDropoffRecentEntriesViewerFunction-${Stage}"
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: ceramics:kiln-dropoff-viewer
+
   KilnDropoffRecentEntriesViewerFunction:
     Type: AWS::Serverless::Function
+    DependsOn: KilnDropoffViewerLogGroup
     Properties:
       FunctionName: !Sub "KilnDropoffRecentEntriesViewerFunction-${Stage}"
       Description: "Generates a public-facing HTML page showing recent kiln drop-off submissions from ClickUp for the last 24 hours. Triggered by API Gateway."
