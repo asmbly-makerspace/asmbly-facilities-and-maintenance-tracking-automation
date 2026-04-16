@@ -1,0 +1,60 @@
+name: Deploy Staging Pipeline
+
+on:
+  push:
+    branches:
+      - staging # This pipeline triggers on pushes to the 'staging' branch
+
+env:
+  AWS_REGION: us-east-2
+  SAM_STACK_NAME: AsmblyFacilitiesMaintTrackingStack-stage
+
+jobs:
+  # =================================================================
+  # JOB 1: Deploy the SAM application to AWS (staging)
+  # =================================================================
+  deploy:
+    outputs:
+      FACILITIES_API_URL: ${{ steps.get-api-url.outputs.API_URL }}
+    name: Deploy to AWS (staging)
+    environment: stage
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for OIDC
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::110104886034:role/GitHub-OIDC-facilities-automation-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Build SAM Application
+        run: sam build --use-container
+
+      - name: Deploy SAM Application
+        run: |
+          # Use the 'stage' environment config from samconfig.toml
+          # --no-confirm-changeset is required for automation
+          sam deploy --config-env stage --no-confirm-changeset
+
+      - name: Get API Gateway URL Output
+        id: get-api-url
+        run: |
+          echo "Fetching API Gateway URL from CloudFormation stack outputs..."
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name ${{ env.SAM_STACK_NAME }} \
+            --query "Stacks[0].Outputs[?OutputKey=='FacilitiesApiUrl'].OutputValue" \
+            --output text)
+          if [ -z "$API_URL" ]; then
+            echo "::error::Failed to retrieve 'FacilitiesApiUrl' from stack outputs."
+            exit 1
+          fi
+          echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
