@@ -25,7 +25,6 @@ Resources:
 
   NewWaiverCompletedFunction:
     Type: AWS::Serverless::Function
-    DependsOn: NewWaiverCompletedLogGroup
     Properties:
       FunctionName: !Sub "NewWaiverCompletedFunction-${Stage}"
       Description: "Receives new waiver completion webhooks and updates NeonCRM."

@@ -77,7 +77,6 @@ Resources:
 
   SlackSlashReorderFunction:
     Type: AWS::Serverless::Function
-    DependsOn: SlackSlashReorderLogGroup
     Properties:
       FunctionName: !Sub "SlackSlashReorderFunction-${Stage}"
       Description: "Handles a Slack slash command to create a reorder/purchase request in ClickUp."
@@ -181,7 +180,6 @@ Resources:
 
   PurchaseRequestReactionFunction:
     Type: AWS::Serverless::Function
-    DependsOn: PurchaseRequestReactionLogGroup
     Properties:
       FunctionName: !Sub "PurchaseRequest-ReactionFunction-${Stage}"
       Description: "Handles a Slack reaction webhook to update a ClickUp task status."
@@ -251,7 +249,6 @@ Resources:
 
   NewPurchaseRequestReceivedFunction:
     Type: AWS::Serverless::Function
-    DependsOn: NewPurchaseRequestReceivedLogGroup
     Properties:
       FunctionName: !Sub "NewPurchaseRequestReceivedFunction-${Stage}"
       Description: "Handles a ClickUp webhook for new purchase requests, posts to Slack, and updates the task."

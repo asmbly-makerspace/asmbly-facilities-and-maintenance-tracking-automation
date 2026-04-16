@@ -91,7 +91,6 @@ Resources:
 
   PMReminderBotFunction:
     Type: AWS::Serverless::Function
-    DependsOn: PMReminderBotLogGroup
     Properties:
       FunctionName: !Sub "PMReminderBotFunction-${Stage}"
       Description: "Scheduled function that fetches overdue and upcoming preventative maintenance tasks from ClickUp and sends reminder notifications to the appropriate Slack channels."

@@ -24,7 +24,6 @@ Resources:
 
   SlackEventSubscriptionsRouterFunction:
     Type: AWS::Serverless::Function
-    DependsOn: SlackEventRouterLogGroup
     Properties:
       FunctionName: !Sub "facilities-slack-event-router-${Stage}"
       Description: "Routes incoming Slack events to the correct handler function."

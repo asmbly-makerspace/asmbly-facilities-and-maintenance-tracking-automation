@@ -75,7 +75,7 @@ Resources:
   KilnDropoffViewerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/KilnDropoffRecentEntriesViewerFunction-${Stage}"
+      LogGroupName: !Sub "/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-${Stage}"
       RetentionInDays: 30
       Tags:
         - Key: Project
@@ -83,7 +83,6 @@ Resources:
 
   KilnDropoffRecentEntriesViewerFunction:
     Type: AWS::Serverless::Function
-    DependsOn: KilnDropoffViewerLogGroup
     Properties:
       FunctionName: !Sub "KilnDropoffRecentEntriesViewerFunction-${Stage}"
       Description: "Generates a public-facing HTML page showing recent kiln drop-off submissions from ClickUp for the last 24 hours. Triggered by API Gateway."
@@ -92,6 +91,8 @@ Resources:
       Runtime: python3.12
       Timeout: 10
       Role: !GetAtt KilnDropoffViewerLambdaRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref KilnDropoffViewerLogGroup
       Layers:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN

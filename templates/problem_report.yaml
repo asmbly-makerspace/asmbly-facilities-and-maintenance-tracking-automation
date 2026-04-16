@@ -82,7 +82,6 @@ Resources:
 
   NewProblemReportRequestReceivedFunction:
     Type: AWS::Serverless::Function
-    DependsOn: NewProblemReportRequestReceivedLogGroup
     Properties:
       FunctionName: !Sub "NewProblemReportRequestReceived-${Stage}"
       Description: "Handles a new problem report request from a Google Form."
@@ -159,7 +158,6 @@ Resources:
 
   ProblemReportReactionFunction:
     Type: AWS::Serverless::Function
-    DependsOn: ProblemReportReactionLogGroup
     Properties:
       FunctionName: !Sub "ProblemReport-ReactionFunction-${Stage}"
       Description: "Handles a Slack reaction on a problem report to update ClickUp and Discourse."
