@@ -204,26 +204,20 @@ def lambda_handler(event, context):
         # 3. Get API token from Secrets Manager
         api_token = get_secret(SECRET_NAME, 'CLICKUP_API_TOKEN')
         
-        # --- MORE DEBUGGING CODE ---
-        if api_token:
-            print(f"--- DEBUG: API Token loaded successfully.")
-            # NEW: More detailed logging to verify the token string is clean
-            print(f"--- DEBUG: Token Length: {len(api_token)}")
-            print(f"--- DEBUG: Token Starts With: '{api_token[:8]}...'")
-            print(f"--- DEBUG: Token Ends With: '...{api_token[-4:]}'")
-        else:
-            print("--- DEBUG ERROR: API Token IS MISSING OR NULL after calling get_clickup_api_token().")
-        # --- END OF MORE DEBUGGING CODE ---
-        
+        if not api_token:
+            print("ERROR: API Token is missing or null.")
+
         # 4. Fetch recent tasks from ClickUp API
         twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
         timestamp_ms = int(twenty_four_hours_ago.timestamp() * 1000)
+        print(f"--- INFO: Fetching tasks created after {twenty_four_hours_ago.isoformat()} (timestamp: {timestamp_ms})")
 
-        tasks = get_all_clickup_tasks(list_id, api_token, date_created_gt=timestamp_ms)
-        
-        # MODIFIED: Sort the tasks manually since the API parameter was removed
+        tasks = get_all_clickup_tasks(list_id, api_token, date_created_gt_ms=timestamp_ms)
+        print(f"--- INFO: Retrieved {len(tasks)} tasks from ClickUp")
+
+        # Sort by date_created descending (newest first)
         tasks.sort(key=lambda x: int(x.get('date_created', 0)), reverse=True)
-        
+
         # 5. Generate and return the HTML page
         html_body = generate_html_page(tasks)
         
