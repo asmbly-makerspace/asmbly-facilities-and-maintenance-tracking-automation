@@ -3,7 +3,7 @@ name: Deploy Staging Pipeline
 on:
   push:
     branches:
-      - staging # This pipeline triggers on pushes to the 'staging' branch
+      - stage # This pipeline triggers on pushes to the 'stage' branch
 
 env:
   AWS_REGION: us-east-2
