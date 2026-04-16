@@ -80,8 +80,18 @@ Resources:
         - Key: Project
           Value: facilities:pm-reminder-bot
 
+  PMReminderBotLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/PMReminderBotFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: facilities:pm-reminder-bot
+
   PMReminderBotFunction:
     Type: AWS::Serverless::Function
+    DependsOn: PMReminderBotLogGroup
     Properties:
       FunctionName: !Sub "PMReminderBotFunction-${Stage}"
       Description: "Scheduled function that fetches overdue and upcoming preventative maintenance tasks from ClickUp and sends reminder notifications to the appropriate Slack channels."
