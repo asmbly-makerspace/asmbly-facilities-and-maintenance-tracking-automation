@@ -141,7 +141,7 @@ def get_custom_field_value(task, field_id):
 
     return None
 
-def fetch_clickup_tasks_page(list_id, api_token, page_num, due_date_lt_ms=None, due_date_gt_ms=None, include_subtasks=False, include_closed=False):
+def fetch_clickup_tasks_page(list_id, api_token, page_num, due_date_lt_ms=None, due_date_gt_ms=None, date_created_gt_ms=None, date_created_lt_ms=None, include_subtasks=False, include_closed=False):
     """
     Fetches a single page of tasks from the ClickUp API with optional date ranges.
     """
@@ -157,13 +157,17 @@ def fetch_clickup_tasks_page(list_id, api_token, page_num, due_date_lt_ms=None, 
         query_params["due_date_lt"] = due_date_lt_ms
     if due_date_gt_ms is not None:
         query_params["due_date_gt"] = due_date_gt_ms
+    if date_created_gt_ms is not None:
+        query_params["date_created_gt"] = date_created_gt_ms
+    if date_created_lt_ms is not None:
+        query_params["date_created_lt"] = date_created_lt_ms
 
     data = _make_clickup_request(api_token, "GET", endpoint, params=query_params)
     tasks_on_page = data.get('tasks', [])
     is_last_page = data.get('last_page', True) if not tasks_on_page else data.get('last_page', False)
     return tasks_on_page, is_last_page
 
-def get_all_clickup_tasks(list_id, api_token, due_date_lt_ms=None, due_date_gt_ms=None, max_pages=20, **kwargs):
+def get_all_clickup_tasks(list_id, api_token, due_date_lt_ms=None, due_date_gt_ms=None, date_created_gt_ms=None, date_created_lt_ms=None, max_pages=20):
     """
     Fetches all tasks from a ClickUp list, paginating as necessary.
     """
@@ -180,6 +184,7 @@ def get_all_clickup_tasks(list_id, api_token, due_date_lt_ms=None, due_date_gt_m
         tasks_on_page, is_last_page = fetch_clickup_tasks_page(
             list_id, api_token, current_page,
             due_date_lt_ms=due_date_lt_ms, due_date_gt_ms=due_date_gt_ms,
+            date_created_gt_ms=date_created_gt_ms, date_created_lt_ms=date_created_lt_ms,
             include_subtasks=include_subtasks, include_closed=include_closed
         )
 
