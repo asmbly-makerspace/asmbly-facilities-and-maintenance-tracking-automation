@@ -17,7 +17,7 @@ Resources:
   NewWaiverCompletedLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/NewWaiverCompletedFunction-${Stage}"
+      LogGroupName: !Sub "/asmbly/lambda/NewWaiverCompletedFunction-${Stage}"
       RetentionInDays: 14
       Tags:
         - Key: Project
@@ -25,7 +25,6 @@ Resources:
 
   NewWaiverCompletedFunction:
     Type: AWS::Serverless::Function
-    DependsOn: NewWaiverCompletedLogGroup
     Properties:
       FunctionName: !Sub "NewWaiverCompletedFunction-${Stage}"
       Description: "Receives new waiver completion webhooks and updates NeonCRM."
@@ -33,6 +32,8 @@ Resources:
       Handler: lambda_function.lambda_handler
       Timeout: 30
       Runtime: python3.12
+      LoggingConfig:
+        LogGroup: !Ref NewWaiverCompletedLogGroup
       Layers:
         - !Ref CommonLayerARN
         - !Ref RequestsLayerARN
