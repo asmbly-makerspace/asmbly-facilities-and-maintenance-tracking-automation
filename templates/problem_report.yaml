@@ -74,7 +74,7 @@ Resources:
   NewProblemReportRequestReceivedLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/NewProblemReportRequestReceived-${Stage}"
+      LogGroupName: !Sub "/asmbly/lambda/NewProblemReportRequestReceived-${Stage}"
       RetentionInDays: 14
       Tags:
         - Key: Project
@@ -92,6 +92,8 @@ Resources:
       MemorySize: 512
       Timeout: 20
       Role: !GetAtt NewProblemReportRequestReceivedRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref NewProblemReportRequestReceivedLogGroup
       Layers:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN
@@ -149,7 +151,7 @@ Resources:
   ProblemReportReactionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/ProblemReport-ReactionFunction-${Stage}"
+      LogGroupName: !Sub "/asmbly/lambda/ProblemReport-ReactionFunction-${Stage}"
       RetentionInDays: 14
       Tags:
         - Key: Project
@@ -167,6 +169,8 @@ Resources:
       MemorySize: 512
       Timeout: 20
       Role: !GetAtt ProblemReportReactionRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref ProblemReportReactionLogGroup
       Layers:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN

@@ -69,7 +69,7 @@ Resources:
   SlackSlashReorderLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/SlackSlashReorderFunction-${Stage}"
+      LogGroupName: !Sub "/asmbly/lambda/SlackSlashReorderFunction-${Stage}"
       RetentionInDays: 14
       Tags:
         - Key: Project
@@ -86,6 +86,8 @@ Resources:
       Runtime: python3.12
       MemorySize: 512
       Timeout: 10
+      LoggingConfig:
+        LogGroup: !Ref SlackSlashReorderLogGroup
       Layers:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN
@@ -171,7 +173,7 @@ Resources:
   PurchaseRequestReactionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/PurchaseRequest-ReactionFunction-${Stage}"
+      LogGroupName: !Sub "/asmbly/lambda/PurchaseRequest-ReactionFunction-${Stage}"
       RetentionInDays: 14
       Tags:
         - Key: Project
@@ -189,6 +191,8 @@ Resources:
       MemorySize: 512
       Timeout: 10
       Role: !GetAtt PurchaseRequestReactionRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref PurchaseRequestReactionLogGroup
       Layers:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN
@@ -239,7 +243,7 @@ Resources:
   NewPurchaseRequestReceivedLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/NewPurchaseRequestReceivedFunction-${Stage}"
+      LogGroupName: !Sub "/asmbly/lambda/NewPurchaseRequestReceivedFunction-${Stage}"
       RetentionInDays: 14
       Tags:
         - Key: Project
@@ -257,6 +261,8 @@ Resources:
       MemorySize: 512
       Timeout: 15
       Role: !GetAtt NewPurchaseRequestReceivedRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref NewPurchaseRequestReceivedLogGroup
       Layers:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN

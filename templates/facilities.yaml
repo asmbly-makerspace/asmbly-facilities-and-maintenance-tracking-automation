@@ -83,7 +83,7 @@ Resources:
   PMReminderBotLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/PMReminderBotFunction-${Stage}"
+      LogGroupName: !Sub "/asmbly/lambda/PMReminderBotFunction-${Stage}"
       RetentionInDays: 14
       Tags:
         - Key: Project
@@ -100,6 +100,8 @@ Resources:
       Runtime: python3.12
       Timeout: 180
       Role: !GetAtt PMReminderBotLambdaRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref PMReminderBotLogGroup
       Layers:
         - !Ref RequestsLayerARN
         - !Ref CommonLayerARN

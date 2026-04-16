@@ -16,7 +16,7 @@ Resources:
   SlackEventRouterLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/facilities-slack-event-router-${Stage}"
+      LogGroupName: !Sub "/asmbly/lambda/facilities-slack-event-router-${Stage}"
       RetentionInDays: 14
       Tags:
         - Key: Project
@@ -31,6 +31,8 @@ Resources:
       CodeUri: ../functions/routers/slack_event_subscriptions/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
+      LoggingConfig:
+        LogGroup: !Ref SlackEventRouterLogGroup
       Layers:
         - !Ref CommonLayerARN
       Environment:
