@@ -30,6 +30,17 @@ Parameters:
     Default: /config/route53/asmbly/hosted-zone-id
     Description: The Route 53 Hosted Zone ID for asmbly.org. Fetched from SSM Parameter Store.
 
+  DdnsHostnames:
+    Type: CommaDelimitedList
+    Description: >
+      Hostnames (in the asmbly.org zone) the Dynamic DNS credential is
+      allowed to update. Must stay in sync with the secret's `allowed_hostnames`.
+    Default: "shop.asmbly.org.,vpn.asmbly.org."
+  DdnsSecretName:
+    Type: String
+    Description: The name of the AWS Secrets Manager secret containing the DDNS router credential.
+    Default: "ddns/router-credential"
+
 Conditions:
   IsProd: !Equals [!Ref Stage, 'prod']
 
@@ -85,6 +96,10 @@ Resources:
           HttpMethod: "*"
           LoggingLevel: INFO
           DataTraceEnabled: false
+        - ResourcePath: "/nic/update"
+          HttpMethod: GET
+          ThrottlingRateLimit: 1
+          ThrottlingBurstLimit: 10
       DefinitionBody:
         openapi: '3.0.1'
         info:
@@ -157,6 +172,14 @@ Resources:
                 type: aws_proxy
                 uri:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AdministrativeStack.Outputs.NewWaiverCompletedFunctionArn}/invocations"
+              responses: {}
+          /nic/update:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NetworkingStack.Outputs.DynamicDnsUpdateFunctionArn}/invocations"
               responses: {}
   RequestsLambdaLayer:
     Type: AWS::Serverless::LayerVersion
@@ -334,6 +357,22 @@ Resources:
         Workspace: administrative
         Stage: !Ref Stage
 
+  NetworkingStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./templates/networking.yaml
+      Parameters:
+        Stage: !Ref Stage
+        CommonLayerARN: !Ref CommonLayer
+        HostedZoneId: !Ref AsmblyHostedZoneId
+        DdnsHostnames: !Join [',', !Ref DdnsHostnames]
+        DdnsSecretName: !Ref DdnsSecretName
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: networking
+        Stage: !Ref Stage
+
+
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -394,6 +433,14 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt AdministrativeStack.Outputs.NewWaiverCompletedFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
+
+  DynamicDnsUpdateInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt NetworkingStack.Outputs.DynamicDnsUpdateFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
