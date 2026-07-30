@@ -39,6 +39,11 @@ def normalize_hostnames(hostnames: List[str]) -> List[str]:
     return [hostname.strip().lower() for hostname in hostnames]
 
 
+def format_cloudformation_hostnames(hostnames: List[str]) -> str:
+    """Format application hostnames for the Route 53 IAM condition."""
+    return ",".join(f"{hostname.rstrip('.')}." for hostname in hostnames)
+
+
 def put_credential_secret(
     secret_name: str,
     username: str,
@@ -76,8 +81,8 @@ def put_credential_secret(
 
     print(f"allowed_hostnames: {allowed_hostnames}")
     print(
-        "Reminder: keep this list in sync with the `DdnsHostnames` "
-        "CloudFormation parameter for this stage."
+        "DdnsHostnames parameter value: "
+        f"{format_cloudformation_hostnames(allowed_hostnames)}"
     )
 
 

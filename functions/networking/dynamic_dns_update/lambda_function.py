@@ -1,5 +1,6 @@
 import base64
 import hmac
+import ipaddress
 import logging
 import os
 from typing import Optional
@@ -56,9 +57,13 @@ def lambda_handler(event, context):
     supplied_username, supplied_password = credentials
 
     try:
-        username = aws.get_secret(DDNS_SECRET_NAME, "username")
-        password = aws.get_secret(DDNS_SECRET_NAME, "password")
-        allowed_hostnames = aws.get_secret(DDNS_SECRET_NAME, "allowed_hostnames")
+        secret = aws.get_secret_json(DDNS_SECRET_NAME)
+        username = secret["username"]
+        password = secret["password"]
+        allowed_hostnames = {
+            hostname.strip().lower().rstrip(".")
+            for hostname in secret["allowed_hostnames"]
+        }
     except Exception as e:
         logger.error("Failed to retrieve DDNS credential secret: %s", e)
         return _text_response(500, "911")
@@ -75,7 +80,18 @@ def lambda_handler(event, context):
     if not hostname_param or not myip:
         return _text_response(400, "notfqdn")
 
-    hostnames = [h.strip() for h in hostname_param.split(",") if h.strip()]
+    try:
+        ip_address = ipaddress.ip_address(myip)
+    except ValueError:
+        return _text_response(400, "dnserr")
+    if ip_address.version != 4:
+        return _text_response(400, "dnserr")
+
+    hostnames = [
+        hostname.strip().lower().rstrip(".")
+        for hostname in hostname_param.split(",")
+        if hostname.strip()
+    ]
     if not hostnames:
         return _text_response(400, "notfqdn")
 
@@ -85,7 +101,11 @@ def lambda_handler(event, context):
         logger.warning("Rejected update for disallowed hostname(s): %s", hostname_param)
         return _text_response(200, "nohost")
 
-    route53_client = boto3.client("route53")
+    try:
+        route53_client = boto3.client("route53")
+    except Exception as e:
+        logger.error("Failed to create Route53 client: %s", e)
+        return _text_response(500, "911")
     results = []
     for hostname in hostnames:
         try:

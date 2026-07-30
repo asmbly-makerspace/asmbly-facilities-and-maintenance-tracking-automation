@@ -14,10 +14,15 @@ Parameters:
     Type: String
     Description: The Route 53 Hosted Zone ID for asmbly.org.
   DdnsHostnames:
-    Type: CommaDelimitedList
+    Type: String
     Description: >
       Hostnames (in the asmbly.org zone) this credential is allowed to
       update. Must stay in sync with the secret's `allowed_hostnames`.
+      Note: Each hostname MUST have a trailing dot (e.g. 'shop.asmbly.org.')
+      because Route53's ChangeResourceRecordSetsNormalizedRecordNames condition
+      evaluates against normalized domain names.
+    AllowedPattern: '^[-A-Za-z0-9.]+\.(,[-A-Za-z0-9.]+\.)*$'
+    ConstraintDescription: Each comma-separated hostname must end with a trailing dot.
     Default: "shop.asmbly.org.,vpn.asmbly.org."
   DdnsSecretName:
     Type: String
@@ -60,7 +65,7 @@ Resources:
               Resource: !Sub 'arn:aws:route53:::hostedzone/${HostedZoneId}'
               Condition:
                 ForAllValues:StringEquals:
-                  route53:ChangeResourceRecordSetsNormalizedRecordNames: !Ref DdnsHostnames
+                  route53:ChangeResourceRecordSetsNormalizedRecordNames: !Split [',', !Ref DdnsHostnames]
                   route53:ChangeResourceRecordSetsRecordTypes: ['A']
                   route53:ChangeResourceRecordSetsActions: ['UPSERT']
             - Effect: Allow

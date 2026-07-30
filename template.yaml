@@ -31,10 +31,13 @@ Parameters:
     Description: The Route 53 Hosted Zone ID for asmbly.org. Fetched from SSM Parameter Store.
 
   DdnsHostnames:
-    Type: CommaDelimitedList
+    Type: String
     Description: >
       Hostnames (in the asmbly.org zone) the Dynamic DNS credential is
       allowed to update. Must stay in sync with the secret's `allowed_hostnames`.
+      Note: Each hostname MUST have a trailing dot (e.g. 'shop.asmbly.org.').
+    AllowedPattern: '^[-A-Za-z0-9.]+\.(,[-A-Za-z0-9.]+\.)*$'
+    ConstraintDescription: Each comma-separated hostname must end with a trailing dot.
     Default: "shop.asmbly.org.,vpn.asmbly.org."
   DdnsSecretName:
     Type: String
@@ -365,7 +368,7 @@ Resources:
         Stage: !Ref Stage
         CommonLayerARN: !Ref CommonLayer
         HostedZoneId: !Ref AsmblyHostedZoneId
-        DdnsHostnames: !Join [',', !Ref DdnsHostnames]
+        DdnsHostnames: !Ref DdnsHostnames
         DdnsSecretName: !Ref DdnsSecretName
       Tags:
         Application: facilities-automation-hub

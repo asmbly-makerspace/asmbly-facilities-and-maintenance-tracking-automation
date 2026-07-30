@@ -128,7 +128,7 @@ with:
 | Hostname  | `shop.asmbly.org,vpn.asmbly.org` (comma-separated)             |
 | Username  | Value of `username` in the Secrets Manager secret              |
 | Password  | Value of `password` in the Secrets Manager secret              |
-| Server    | The `FacilitiesApi` invoke URL, e.g. `<api-id>.execute-api.<region>.amazonaws.com/nic/update` |
+| Server    | `https://<api-id>.execute-api.<region>.amazonaws.com/<stage>/nic/update` |
 
 ## Testing
 
