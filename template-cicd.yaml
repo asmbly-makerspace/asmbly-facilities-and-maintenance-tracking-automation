@@ -103,6 +103,8 @@ Resources:
               - lambda:RemovePermission
               - lambda:TagResource
               - lambda:UntagResource
+              - lambda:PutFunctionConcurrency
+              - lambda:DeleteFunctionConcurrency
             Resource: "*"
           - Sid: AllowAPIGatewayManagement
             Effect: Allow
