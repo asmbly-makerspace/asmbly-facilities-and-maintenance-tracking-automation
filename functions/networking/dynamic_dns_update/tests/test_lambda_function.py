@@ -43,7 +43,11 @@ class TestDynamicDnsUpdate(TestCase):
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
     def test_single_hostname_success(self, mock_aws, mock_boto3_client):
-        mock_aws.get_secret.side_effect = ["router", "s3cr3t", ["shop.asmbly.org", "vpn.asmbly.org"]]
+        mock_aws.get_secret_json.return_value = {
+            "username": "router",
+            "password": "s3cr3t",
+            "allowed_hostnames": ["shop.asmbly.org", "vpn.asmbly.org"],
+        }
         mock_route53 = MagicMock()
         mock_boto3_client.return_value = mock_route53
 
@@ -72,7 +76,11 @@ class TestDynamicDnsUpdate(TestCase):
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
     def test_multiple_hostnames_success(self, mock_aws, mock_boto3_client):
-        mock_aws.get_secret.side_effect = ["router", "s3cr3t", ["shop.asmbly.org", "vpn.asmbly.org"]]
+        mock_aws.get_secret_json.return_value = {
+            "username": "router",
+            "password": "s3cr3t",
+            "allowed_hostnames": ["shop.asmbly.org", "vpn.asmbly.org"],
+        }
         mock_route53 = MagicMock()
         mock_boto3_client.return_value = mock_route53
 
@@ -86,7 +94,11 @@ class TestDynamicDnsUpdate(TestCase):
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
     def test_bad_credentials(self, mock_aws, mock_boto3_client):
-        mock_aws.get_secret.side_effect = ["router", "correct-password", ["shop.asmbly.org"]]
+        mock_aws.get_secret_json.return_value = {
+            "username": "router",
+            "password": "correct-password",
+            "allowed_hostnames": ["shop.asmbly.org"],
+        }
 
         event = self._make_event(password="wrong-password")
         response = lambda_function.lambda_handler(event, None)
@@ -107,7 +119,11 @@ class TestDynamicDnsUpdate(TestCase):
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
     def test_disallowed_hostname_rejects_whole_request(self, mock_aws, mock_boto3_client):
-        mock_aws.get_secret.side_effect = ["router", "s3cr3t", ["shop.asmbly.org"]]
+        mock_aws.get_secret_json.return_value = {
+            "username": "router",
+            "password": "s3cr3t",
+            "allowed_hostnames": ["shop.asmbly.org"],
+        }
 
         event = self._make_event(hostname="shop.asmbly.org,not-allowed.asmbly.org")
         response = lambda_function.lambda_handler(event, None)
@@ -119,7 +135,11 @@ class TestDynamicDnsUpdate(TestCase):
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
     def test_missing_query_params(self, mock_aws, mock_boto3_client):
-        mock_aws.get_secret.side_effect = ["router", "s3cr3t", ["shop.asmbly.org"]]
+        mock_aws.get_secret_json.return_value = {
+            "username": "router",
+            "password": "s3cr3t",
+            "allowed_hostnames": ["shop.asmbly.org"],
+        }
 
         event = self._make_event(hostname=None, myip=None)
         response = lambda_function.lambda_handler(event, None)
@@ -131,7 +151,11 @@ class TestDynamicDnsUpdate(TestCase):
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
     def test_route53_error_returns_dnserr_for_that_hostname(self, mock_aws, mock_boto3_client):
-        mock_aws.get_secret.side_effect = ["router", "s3cr3t", ["shop.asmbly.org", "vpn.asmbly.org"]]
+        mock_aws.get_secret_json.return_value = {
+            "username": "router",
+            "password": "s3cr3t",
+            "allowed_hostnames": ["shop.asmbly.org", "vpn.asmbly.org"],
+        }
         mock_route53 = MagicMock()
         mock_route53.change_resource_record_sets.side_effect = [None, Exception("boom")]
         mock_boto3_client.return_value = mock_route53
