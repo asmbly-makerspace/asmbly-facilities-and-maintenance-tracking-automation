@@ -10,6 +10,29 @@ on:
       - stage
 
 jobs:
+  lint-templates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.12'
+
+      - name: Install cfn-lint
+        run: pip install cfn-lint
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Lint root application template
+        run: sam validate --lint --template-file template.yaml
+
+      - name: Lint CI/CD (deployer role) template
+        run: sam validate --lint --template-file template-cicd.yaml
+
   test:
     runs-on: ubuntu-latest
 
