@@ -56,21 +56,14 @@ For example, if you add a function `FooFunction-${Stage}` with a log group `/asm
     aws cloudformation describe-stacks --stack-name AsmblyFacilitiesMaintTrackingStack-stage --region us-east-2 \
       --query "Stacks[0].Outputs[?OutputKey=='FacilitiesApiUrl'].OutputValue" --output text
     ```
-3.  **Dry run the change** (nothing is deployed). This checks that every call a stage or prod deploy makes is allowed, that calls against other projects' resources are denied, that the trust policy matches the deploy workflows, and that each policy is under the IAM size limit:
-    ```bash
-    pip install pyyaml boto3
-    python scripts/check_deploy_role.py --offline   # no AWS access needed
-    python scripts/check_deploy_role.py             # read-only AWS calls, admin credentials
-    ```
-    The online run uses the real stack resources, the IAM policy simulator, IAM Access Analyzer, and the actions the current role has actually used. It is the only mode that checks the real IAM role names against `FacilitiesRoleNamePrefix`. Fix any `FAIL` before deploying.
-4.  **Deploy the CICD stack** from your local machine:
+3.  **Deploy the CICD stack** from your local machine:
     ```bash
     sam deploy --template-file template-cicd.yaml --stack-name AsmblyFacilitiesMaintTrackingStack-cicd \
       --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND --region us-east-2 \
       --parameter-overrides StageRestApiId=<stage id> ProdRestApiId=<prod id>
     ```
     `CAPABILITY_AUTO_EXPAND` is required because the template uses `AWS::LanguageExtensions` (`Fn::ForEach`).
-5.  **Re-run** the failed GitHub Actions job.
+4.  **Re-run** the failed GitHub Actions job.
 
 If the FacilitiesApi REST API is ever replaced (new ID), or a stack is created from scratch, redeploy this stack with the new ID first; the role cannot create new REST APIs.
 

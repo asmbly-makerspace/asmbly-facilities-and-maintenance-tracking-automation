@@ -17,11 +17,13 @@ Parameters:
     Default: "asmbly-facilities-and-maintenance-tracking-automation"
   FacilitiesRoleNamePrefix:
     Type: String
-    Default: "AsmblyFacilitiesMaintTrackingSt"
+    Default: "AsmblyFacilitiesMaintTrac"
     Description: >
       Name prefix of the IAM roles CloudFormation generates for the facilities
-      stacks. Generated role names truncate the stack name, so this must match
-      the roles that actually exist (check with `aws iam list-roles`).
+      stacks. Generated role names truncate the stack name to 25-27 characters
+      (for example AsmblyFacilitiesMaintTrac- and AsmblyFacilitiesMaintTracki-),
+      so this must match the roles that actually exist (check with
+      `aws iam list-roles`).
     AllowedPattern: '^[A-Za-z0-9+=,.@_-]{16,}$'
   StageRestApiId:
     Type: String
