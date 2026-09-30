@@ -29,20 +29,43 @@ Before the application can be deployed, the **deployer itself** must exist. This
 * **What it is:** This template defines the `GitHub-OIDC-facilities-automation-deploy` role and its exact, least-privilege IAM policy. This is the role that GitHub Actions assumes to deploy the main application.
 * **Why it's separate:** It separates the "application" (`template.yaml`) from the "deployer" (`template-cicd.yaml`). This is a critical security practice.
 
+### What the Deployer Role Can Do
+
+The account is shared with other Asmbly projects, so the role is locked down to this project:
+
+* **Who can assume it:** only the two deploy jobs, identified by their GitHub environment. The trust policy accepts exactly these OIDC subjects (with audience `sts.amazonaws.com`):
+    * `repo:asmbly-makerspace/asmbly-facilities-and-maintenance-tracking-automation:environment:stage` (`deploy-staging.yml`, `stage` branch)
+    * `repo:asmbly-makerspace/asmbly-facilities-and-maintenance-tracking-automation:environment:prod` (`deploy.yml`, `main` branch)
+
+    Workflows on other branches, and jobs without one of these `environment:` values, cannot get credentials. The subject names the environment, not the branch, so the `stage` and `prod` GitHub environments must be limited to their branch (**Settings → Environments → Deployment branches and tags**).
+* **What it can touch:** only the `AsmblyFacilitiesMaintTrackingStack-stage` and `-prod` stacks (and their nested stacks) and the resources they create, listed **by name** in the policy. Dev is deployed by hand and is not covered. There are three managed policies:
+    * `GitHubDeployPolicy`: resources shared by both stages (generated IAM role names, the FacilitiesApi REST APIs, the `facilities.asmbly.org` domain, certificate and DNS records).
+    * `GitHubDeployPolicystage` / `GitHubDeployPolicyprod`: generated from one definition with `Fn::ForEach`, one per stage (Lambda functions and layers, log groups, SSM parameters, DynamoDB table, EventBridge rule, SAM artifacts).
+
 ### How to Manage the Deployer Role
 
 This stack (`AsmblyFacilitiesMaintTrackingStack-cicd`) is **NEVER** deployed by GitHub Actions. It is **ONLY** deployed manually from your local machine using administrator credentials.
 
-**You will only touch this file if a deployment fails with a permissions error.**
+**You will touch this file when a deployment fails with a permissions error.** Because permissions are granted per resource name, this includes **adding a new named resource** (a new Lambda function, log group, SSM parameter, table, rule, and so on), not just a new kind of resource.
 
-For example, if you add an SQS queue to `template.yaml` and the `prod` deploy fails with `is not authorized to perform: sqs:CreateQueue`, you must:
+For example, if you add a function `FooFunction-${Stage}` with a log group `/asmbly/lambda/FooFunction-${Stage}`, add both names to the `Fn::ForEach::StageDeployPolicies` block. If you add an SQS queue and the `prod` deploy fails with `is not authorized to perform: sqs:CreateQueue`, add `sqs:CreateQueue` scoped to that queue's ARN. Never use `Resource: "*"` unless the action does not support resource-level permissions.
 
-1.  **Edit `template-cicd.yaml`:** Add `sqs:CreateQueue` to the `GitHubDeployPolicy`.
-2.  **Deploy the CICD stack** from your local machine:
+1.  **Edit `template-cicd.yaml`.**
+2.  **Look up the REST API IDs.** They are the host prefix of each stack's `FacilitiesApiUrl` output:
     ```bash
-    sam deploy --template-file template-cicd.yaml --stack-name AsmblyFacilitiesMaintTrackingStack-cicd --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region us-east-2
+    aws cloudformation describe-stacks --stack-name AsmblyFacilitiesMaintTrackingStack-stage --region us-east-2 \
+      --query "Stacks[0].Outputs[?OutputKey=='FacilitiesApiUrl'].OutputValue" --output text
     ```
-3.  **Re-run** the failed GitHub Actions job.
+3.  **Deploy the CICD stack** from your local machine:
+    ```bash
+    sam deploy --template-file template-cicd.yaml --stack-name AsmblyFacilitiesMaintTrackingStack-cicd \
+      --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND --region us-east-2 \
+      --parameter-overrides StageRestApiId=<stage id> ProdRestApiId=<prod id>
+    ```
+    `CAPABILITY_AUTO_EXPAND` is required because the template uses `AWS::LanguageExtensions` (`Fn::ForEach`).
+4.  **Re-run** the failed GitHub Actions job.
+
+If the FacilitiesApi REST API is ever replaced (new ID), or a stack is created from scratch, redeploy this stack with the new ID first; the role cannot create new REST APIs.
 
 ## Automated Production Deployment (via GitHub Actions)
 

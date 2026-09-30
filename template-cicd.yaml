@@ -1,8 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
+Transform:
+  - AWS::LanguageExtensions
+  - AWS::Serverless-2016-10-31
 Description: >
   Stack for the CI/CD infrastructure, including the GitHub OIDC role
   and its deployment permissions for the facilities automation project.
+  The role may only be assumed by the stage and prod deploy jobs, and every
+  permission is scoped to the facilities stacks and the resources they own.
 
 Parameters:
   GitHubOrg:
@@ -11,9 +15,37 @@ Parameters:
   GitHubRepo:
     Type: String
     Default: "asmbly-facilities-and-maintenance-tracking-automation"
+  FacilitiesRoleNamePrefix:
+    Type: String
+    Default: "AsmblyFacilitiesMaintTrackingSt"
+    Description: >
+      Name prefix of the IAM roles CloudFormation generates for the facilities
+      stacks. Generated role names truncate the stack name, so this must match
+      the roles that actually exist (check with `aws iam list-roles`).
+    AllowedPattern: '^[A-Za-z0-9+=,.@_-]{16,}$'
+  StageRestApiId:
+    Type: String
+    Description: ID of the stage FacilitiesApi REST API (the host prefix of the stack's FacilitiesApiUrl output).
+    AllowedPattern: '^[a-z0-9]{10}$'
+  ProdRestApiId:
+    Type: String
+    Description: ID of the prod FacilitiesApi REST API (the host prefix of the stack's FacilitiesApiUrl output).
+    AllowedPattern: '^[a-z0-9]{10}$'
+  FacilitiesDomainName:
+    Type: String
+    Default: "facilities.asmbly.org"
+  AsmblyHostedZoneId:
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: /config/route53/asmbly/hosted-zone-id
+    Description: The Route 53 Hosted Zone ID for asmbly.org. Fetched from SSM Parameter Store.
+  SamArtifactBucket:
+    Type: String
+    Default: "aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6"
 
 Resources:
-  # This is the OIDC Role that GitHub Actions will assume
+  # This is the OIDC Role that GitHub Actions will assume.
+  # Both deploy jobs set `environment:`, so their tokens carry the
+  # `environment:<name>` subject rather than `ref:refs/heads/<branch>`.
   GitHubOidcDeployRole:
     Type: AWS::IAM::Role
     Properties:
@@ -28,52 +60,59 @@ Resources:
             Condition:
               StringEquals:
                 "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-              StringLike:
-                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubOrg}/${GitHubRepo}:*"
+                "token.actions.githubusercontent.com:sub":
+                  - !Sub "repo:${GitHubOrg}/${GitHubRepo}:environment:stage"
+                  - !Sub "repo:${GitHubOrg}/${GitHubRepo}:environment:prod"
       ManagedPolicyArns:
         - !Ref GitHubDeployPolicy
+        - !Ref GitHubDeployPolicystage
+        - !Ref GitHubDeployPolicyprod
       Tags:
         - Key: Project
           Value: facilities-automation
         - Key: Purpose
           Value: GitHub-Actions-Deploy
 
-  # The updated policy with permissions for logs, tagging, rollbacks, and TTL
+  # Permissions shared by both stages: resources whose names don't carry the
+  # stage (generated IAM role names, the API Gateway account setting, the
+  # custom domain) and the SAM/CloudFormation plumbing.
   GitHubDeployPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
       ManagedPolicyName: GitHub-OIDC-facilities-automation-deploy-policy
-      Description: "Least-privilege policy for the facilities automation GitHub Actions deployer."
+      Description: "Least-privilege policy for the facilities automation GitHub Actions deployer (stage-independent resources)."
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Sid: AllowCloudFormationStackOperations
+          # These read-only calls take a template rather than a stack and do
+          # not support resource-level permissions.
+          - Sid: AllowCloudFormationTemplateChecks
             Effect: Allow
             Action:
-              - cloudformation:DescribeStacks
-              - cloudformation:DescribeStackEvents
-              - cloudformation:DescribeChangeSet
-              - cloudformation:CreateChangeSet
-              - cloudformation:ExecuteChangeSet
-              - cloudformation:DeleteChangeSet
-              - cloudformation:CreateStack
-              - cloudformation:UpdateStack
-              - cloudformation:DeleteStack
               - cloudformation:ValidateTemplate
               - cloudformation:GetTemplateSummary
-              - cloudformation:ContinueUpdateRollback
             Resource: "*"
-          - Sid: AllowSAMArtifactBucketAccess
+          # `resolve_s3 = true` makes SAM look up its managed bucket stack.
+          - Sid: AllowSAMManagedStackLookup
+            Effect: Allow
+            Action: cloudformation:DescribeStacks
+            Resource: !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/aws-sam-cli-managed-default/*"
+          - Sid: AllowTemplateTransforms
+            Effect: Allow
+            Action: cloudformation:CreateChangeSet
+            Resource:
+              - !Sub "arn:aws:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31"
+              - !Sub "arn:aws:cloudformation:${AWS::Region}:aws:transform/LanguageExtensions"
+              - !Sub "arn:aws:cloudformation:${AWS::Region}:aws:transform/Include"
+          - Sid: AllowSAMArtifactBucketLookup
             Effect: Allow
             Action:
-              - s3:PutObject
-              - s3:GetObject
               - s3:ListBucket
               - s3:GetBucketLocation
-            Resource:
-              - "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6"
-              - "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6/*"
-          - Sid: AllowIAMRoleAndPolicyManagement
+            Resource: !Sub "arn:aws:s3:::${SamArtifactBucket}"
+          # Generated role names drop the stage, so one prefix covers every
+          # facilities role.
+          - Sid: AllowFacilitiesRoleManagement
             Effect: Allow
             Action:
               - iam:CreateRole
@@ -83,73 +122,48 @@ Resources:
               - iam:GetRole
               - iam:PutRolePolicy
               - iam:DeleteRolePolicy
-              - iam:AttachRolePolicy
               - iam:DetachRolePolicy
-              - iam:PassRole
-            Resource: "arn:aws:iam::*:role/*"
-          - Sid: AllowLambdaFunctionsAndLayers
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${FacilitiesRoleNamePrefix}*"
+          - Sid: AllowAttachingFacilitiesManagedPolicies
+            Effect: Allow
+            Action: iam:AttachRolePolicy
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${FacilitiesRoleNamePrefix}*"
+            Condition:
+              ArnEquals:
+                iam:PolicyARN:
+                  - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+                  - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+          - Sid: AllowPassingFacilitiesRoles
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${FacilitiesRoleNamePrefix}*"
+            Condition:
+              StringEquals:
+                iam:PassedToService:
+                  - lambda.amazonaws.com
+                  - apigateway.amazonaws.com
+          - Sid: AllowFacilitiesApiGatewayManagement
             Effect: Allow
             Action:
-              - lambda:CreateFunction
-              - lambda:DeleteFunction
-              - lambda:UpdateFunctionCode
-              - lambda:UpdateFunctionConfiguration
-              - lambda:GetFunction
-              - lambda:GetLayerVersion
-              - lambda:CreateLayerVersion
-              - lambda:PublishLayerVersion
-              - lambda:DeleteLayerVersion
-              - lambda:AddPermission
-              - lambda:RemovePermission
-              - lambda:TagResource
-              - lambda:UntagResource
-              - lambda:PutFunctionConcurrency
-              - lambda:DeleteFunctionConcurrency
-            Resource: "*"
-          - Sid: AllowAPIGatewayManagement
+              - apigateway:GET
+              - apigateway:POST
+              - apigateway:PUT
+              - apigateway:PATCH
+              - apigateway:DELETE
+            Resource:
+              - !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/${StageRestApiId}"
+              - !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/${StageRestApiId}/*"
+              - !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/${ProdRestApiId}"
+              - !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/${ProdRestApiId}/*"
+              - !Sub "arn:aws:apigateway:${AWS::Region}::/domainnames/${FacilitiesDomainName}"
+              - !Sub "arn:aws:apigateway:${AWS::Region}::/domainnames/${FacilitiesDomainName}/*"
+              # AWS::ApiGateway::Account (CloudWatch role) is a region-wide setting.
+              - !Sub "arn:aws:apigateway:${AWS::Region}::/account"
+          # DescribeLogGroups does not support resource-level permissions;
+          # it is read-only. Log group writes are scoped per stage.
+          - Sid: AllowLogGroupLookup
             Effect: Allow
-            Action: apigateway:*
-            Resource: "*"
-          - Sid: AllowCloudWatchLogsManagement
-            Effect: Allow
-            Action:
-              - logs:CreateLogGroup
-              - logs:DeleteLogGroup
-              - logs:DescribeLogGroups
-              - logs:CreateLogStream
-              - logs:PutRetentionPolicy
-              - logs:TagLogGroup
-              - logs:UntagLogGroup
-            Resource: "*"
-          - Sid: AllowDynamoDBTableManagement
-            Effect: Allow
-            Action:
-              - dynamodb:CreateTable
-              - dynamodb:UpdateTable
-              - dynamodb:DeleteTable
-              - dynamodb:DescribeTable
-              - dynamodb:DescribeTimeToLive
-              - dynamodb:UpdateTimeToLive
-              - dynamodb:TagResource
-              - dynamodb:UntagResource
-            Resource: "*"
-          - Sid: AllowSSMParameterWrite
-            Effect: Allow
-            Action:
-              - ssm:PutParameter
-              - ssm:DeleteParameter
-              - ssm:AddTagsToResource
-              - ssm:RemoveTagsFromResource
-              - ssm:GetParameters
-            Resource: "arn:aws:ssm:*:*:parameter/*"
-          - Sid: AllowEventBridgeRuleManagement
-            Effect: Allow
-            Action:
-              - events:PutRule
-              - events:DeleteRule
-              - events:DescribeRule
-              - events:PutTargets
-              - events:RemoveTargets
+            Action: logs:DescribeLogGroups
             Resource: "*"
           - Sid: AllowSSMParameterRead
             Effect: Allow
@@ -157,15 +171,191 @@ Resources:
               - ssm:GetParameter
               - ssm:GetParameters
             Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/route53/asmbly/hosted-zone-id"
-          - Sid: AllowACMAndRoute53Management
+          # RequestCertificate has no resource ARN before it runs; limit it to
+          # the facilities domain instead.
+          - Sid: AllowFacilitiesCertificateRequest
+            Effect: Allow
+            Action: acm:RequestCertificate
+            Resource: "*"
+            Condition:
+              ForAllValues:StringEquals:
+                acm:DomainNames:
+                  - !Ref FacilitiesDomainName
+              "Null":
+                acm:DomainNames: "false"
+          - Sid: AllowCertificateLookup
+            Effect: Allow
+            Action: acm:DescribeCertificate
+            Resource: !Sub "arn:aws:acm:${AWS::Region}:${AWS::AccountId}:certificate/*"
+          - Sid: AllowFacilitiesCertificateManagement
             Effect: Allow
             Action:
-              - acm:RequestCertificate
-              - acm:DescribeCertificate
               - acm:DeleteCertificate
               - acm:AddTagsToCertificate
               - acm:RemoveTagsFromCertificate
-              - route53:GetChange
-              - route53:ChangeResourceRecordSets
-              - route53:GetHostedZone
-            Resource: "*"
+            Resource: !Sub "arn:aws:acm:${AWS::Region}:${AWS::AccountId}:certificate/*"
+            Condition:
+              StringEquals:
+                aws:ResourceTag/Application: facilities-automation-hub
+          - Sid: AllowHostedZoneLookup
+            Effect: Allow
+            Action: route53:GetHostedZone
+            Resource: !Sub "arn:aws:route53:::hostedzone/${AsmblyHostedZoneId}"
+          # Change IDs are only known after the change is submitted.
+          - Sid: AllowRoute53ChangeStatus
+            Effect: Allow
+            Action: route53:GetChange
+            Resource: "arn:aws:route53:::change/*"
+          # The asmbly.org zone is shared: only the facilities alias record and
+          # its ACM validation CNAME may be written. Both name forms are listed
+          # in case the normalized name keeps the trailing dot.
+          - Sid: AllowFacilitiesDnsRecords
+            Effect: Allow
+            Action: route53:ChangeResourceRecordSets
+            Resource: !Sub "arn:aws:route53:::hostedzone/${AsmblyHostedZoneId}"
+            Condition:
+              ForAllValues:StringLike:
+                route53:ChangeResourceRecordSetsNormalizedRecordNames:
+                  - !Ref FacilitiesDomainName
+                  - !Sub "${FacilitiesDomainName}."
+                  - !Sub "_*.${FacilitiesDomainName}"
+                  - !Sub "_*.${FacilitiesDomainName}."
+              ForAllValues:StringEquals:
+                route53:ChangeResourceRecordSetsRecordTypes:
+                  - A
+                  - CNAME
+
+  # One policy per CI-deployed stage, scoped to the resource names each
+  # stage's stack creates. Dev is deployed by hand and is not covered.
+  Fn::ForEach::StageDeployPolicies:
+    - DeployStage
+    - [stage, prod]
+    - GitHubDeployPolicy${DeployStage}:
+        Type: AWS::IAM::ManagedPolicy
+        Properties:
+          ManagedPolicyName: !Sub "GitHub-OIDC-facilities-automation-deploy-${DeployStage}-policy"
+          Description: !Sub "Least-privilege policy for the facilities automation GitHub Actions deployer (${DeployStage} resources)."
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # The root stack and its nested stacks, which are named
+              # <root stack>-<logical id>-<suffix>. The -cicd stack is excluded.
+              - Sid: AllowCloudFormationStackOperations
+                Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:ContinueUpdateRollback
+                Resource:
+                  - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/AsmblyFacilitiesMaintTrackingStack-${DeployStage}/*"
+                  - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/AsmblyFacilitiesMaintTrackingStack-${DeployStage}-*/*"
+              - Sid: AllowSAMArtifactAccess
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${SamArtifactBucket}/AsmblyFacilitiesMaintTrackingStack-${DeployStage}/*"
+              - Sid: AllowLambdaFunctionManagement
+                Effect: Allow
+                Action:
+                  - lambda:CreateFunction
+                  - lambda:DeleteFunction
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:GetFunction
+                  - lambda:AddPermission
+                  - lambda:RemovePermission
+                  - lambda:TagResource
+                  - lambda:UntagResource
+                  - lambda:PutFunctionConcurrency
+                  - lambda:DeleteFunctionConcurrency
+                Resource:
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewWaiverCompletedFunction-${DeployStage}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:KilnDropoffRecentEntriesViewerFunction-${DeployStage}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PMReminderBotFunction-${DeployStage}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewProblemReportRequestReceived-${DeployStage}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ProblemReport-ReactionFunction-${DeployStage}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SlackSlashReorderFunction-${DeployStage}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PurchaseRequest-ReactionFunction-${DeployStage}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewPurchaseRequestReceivedFunction-${DeployStage}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:facilities-slack-event-router-${DeployStage}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DynamicDnsUpdateFunction-${DeployStage}"
+              - Sid: AllowLambdaLayerManagement
+                Effect: Allow
+                Action:
+                  - lambda:GetLayerVersion
+                  - lambda:PublishLayerVersion
+                  - lambda:DeleteLayerVersion
+                Resource:
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:requests-layer-${DeployStage}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:requests-layer-${DeployStage}:*"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:common-layer-${DeployStage}"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:common-layer-${DeployStage}:*"
+              # NAME* covers both log-group:NAME and log-group:NAME:* ARNs.
+              - Sid: AllowCloudWatchLogsManagement
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutRetentionPolicy
+                  - logs:TagLogGroup
+                  - logs:UntagLogGroup
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/facilities-api-${DeployStage}*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewWaiverCompletedFunction-${DeployStage}*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-${DeployStage}*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PMReminderBotFunction-${DeployStage}*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewProblemReportRequestReceived-${DeployStage}*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ProblemReport-ReactionFunction-${DeployStage}*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/SlackSlashReorderFunction-${DeployStage}*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PurchaseRequest-ReactionFunction-${DeployStage}*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewPurchaseRequestReceivedFunction-${DeployStage}*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/facilities-slack-event-router-${DeployStage}*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/DynamicDnsUpdateFunction-${DeployStage}*"
+              - Sid: AllowDynamoDBTableManagement
+                Effect: Allow
+                Action:
+                  - dynamodb:CreateTable
+                  - dynamodb:UpdateTable
+                  - dynamodb:DeleteTable
+                  - dynamodb:DescribeTable
+                  - dynamodb:DescribeTimeToLive
+                  - dynamodb:UpdateTimeToLive
+                  - dynamodb:TagResource
+                  - dynamodb:UntagResource
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-${DeployStage}"
+              - Sid: AllowSSMParameterWrite
+                Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                  - ssm:DeleteParameter
+                  - ssm:AddTagsToResource
+                  - ssm:RemoveTagsFromResource
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/config/reaction-handler/purchase-request"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/config/reaction-handler/problem-report"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/config/router/slack-event-router"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/config/clickup/field/workspace"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/config/clickup/ceramics/dropOffRequests"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/clickup/cmms/pmSchedule"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/clickup/facilities/problemReports"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/clickup/facilities/masterItemsList"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/clickup/facilities/purchaseRequests"
+              - Sid: AllowEventBridgeRuleManagement
+                Effect: Allow
+                Action:
+                  - events:PutRule
+                  - events:DeleteRule
+                  - events:DescribeRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/pm-reminder-bot-schedule-${DeployStage}"
