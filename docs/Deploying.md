@@ -40,7 +40,7 @@ The account is shared with other Asmbly projects, so the role is locked down to 
     Workflows on other branches, and jobs without one of these `environment:` values, cannot get credentials. The subject names the environment, not the branch, so the `stage` and `prod` GitHub environments must be limited to their branch (**Settings → Environments → Deployment branches and tags**).
 * **What it can touch:** only the `AsmblyFacilitiesMaintTrackingStack-stage` and `-prod` stacks (and their nested stacks) and the resources they create, listed **by name** in the policy. Dev is deployed by hand and is not covered. There are three managed policies:
     * `GitHubDeployPolicy`: resources shared by both stages (generated IAM role names, the FacilitiesApi REST APIs, the `facilities.asmbly.org` domain, certificate and DNS records).
-    * `GitHubDeployPolicystage` / `GitHubDeployPolicyprod`: generated from one definition with `Fn::ForEach`, one per stage (Lambda functions and layers, log groups, SSM parameters, DynamoDB table, EventBridge rule, SAM artifacts).
+    * `GitHubDeployPolicystage` / `GitHubDeployPolicyprod`: one per stage, identical apart from the stage name (Lambda functions and layers, log groups, SSM parameters, DynamoDB table, EventBridge rule, SAM artifacts).
 
 ### How to Manage the Deployer Role
 
@@ -48,7 +48,7 @@ This stack (`AsmblyFacilitiesMaintTrackingStack-cicd`) is **NEVER** deployed by 
 
 **You will touch this file when a deployment fails with a permissions error.** Because permissions are granted per resource name, this includes **adding a new named resource** (a new Lambda function, log group, SSM parameter, table, rule, and so on), not just a new kind of resource.
 
-For example, if you add a function `FooFunction-${Stage}` with a log group `/asmbly/lambda/FooFunction-${Stage}`, add both names to the `Fn::ForEach::StageDeployPolicies` block. If you add an SQS queue and the `prod` deploy fails with `is not authorized to perform: sqs:CreateQueue`, add `sqs:CreateQueue` scoped to that queue's ARN. Never use `Resource: "*"` unless the action does not support resource-level permissions.
+For example, if you add a function `FooFunction-${Stage}` with a log group `/asmbly/lambda/FooFunction-${Stage}`, add both names to **both** `GitHubDeployPolicystage` and `GitHubDeployPolicyprod`. If you add an SQS queue and the `prod` deploy fails with `is not authorized to perform: sqs:CreateQueue`, add `sqs:CreateQueue` scoped to that queue's ARN. Never use `Resource: "*"` unless the action does not support resource-level permissions.
 
 1.  **Edit `template-cicd.yaml`.**
 2.  **Look up the REST API IDs.** They are the host prefix of each stack's `FacilitiesApiUrl` output:
@@ -62,7 +62,8 @@ For example, if you add a function `FooFunction-${Stage}` with a log group `/asm
       --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND --region us-east-2 \
       --parameter-overrides StageRestApiId=<stage id> ProdRestApiId=<prod id>
     ```
-    `CAPABILITY_AUTO_EXPAND` is required because the template uses `AWS::LanguageExtensions` (`Fn::ForEach`).
+    Add `--no-execute-changeset` first to preview the changes, and check that nothing shows `Replacement: True` (for example, changing a managed policy's `Description` replaces it, which fails because the policy has a fixed name).
+    `CAPABILITY_AUTO_EXPAND` is required because the template uses the `AWS::LanguageExtensions` and SAM transforms.
 4.  **Re-run** the failed GitHub Actions job.
 
 If the FacilitiesApi REST API is ever replaced (new ID), or a stack is created from scratch, redeploy this stack with the new ID first; the role cannot create new REST APIs.

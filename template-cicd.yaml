@@ -82,7 +82,9 @@ Resources:
     Type: AWS::IAM::ManagedPolicy
     Properties:
       ManagedPolicyName: GitHub-OIDC-facilities-automation-deploy-policy
-      Description: "Least-privilege policy for the facilities automation GitHub Actions deployer (stage-independent resources)."
+      # Description must stay unchanged: changing it replaces the policy,
+      # which fails because the policy has a fixed name.
+      Description: "Least-privilege policy for the facilities automation GitHub Actions deployer."
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -227,137 +229,266 @@ Resources:
                   - A
                   - CNAME
 
-  # One policy per CI-deployed stage, scoped to the resource names each
+  # One policy per CI-deployed stage (stage, prod), scoped to the resource names each
   # stage's stack creates. Dev is deployed by hand and is not covered.
-  Fn::ForEach::StageDeployPolicies:
-    - DeployStage
-    - [stage, prod]
-    - GitHubDeployPolicy${DeployStage}:
-        Type: AWS::IAM::ManagedPolicy
-        Properties:
-          ManagedPolicyName: !Sub "GitHub-OIDC-facilities-automation-deploy-${DeployStage}-policy"
-          Description: !Sub "Least-privilege policy for the facilities automation GitHub Actions deployer (${DeployStage} resources)."
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              # The root stack and its nested stacks, which are named
-              # <root stack>-<logical id>-<suffix>. The -cicd stack is excluded.
-              - Sid: AllowCloudFormationStackOperations
-                Effect: Allow
-                Action:
-                  - cloudformation:DescribeStacks
-                  - cloudformation:DescribeStackEvents
-                  - cloudformation:DescribeChangeSet
-                  - cloudformation:CreateChangeSet
-                  - cloudformation:ExecuteChangeSet
-                  - cloudformation:DeleteChangeSet
-                  - cloudformation:CreateStack
-                  - cloudformation:UpdateStack
-                  - cloudformation:DeleteStack
-                  - cloudformation:ContinueUpdateRollback
-                Resource:
-                  - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/AsmblyFacilitiesMaintTrackingStack-${DeployStage}/*"
-                  - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/AsmblyFacilitiesMaintTrackingStack-${DeployStage}-*/*"
-              - Sid: AllowSAMArtifactAccess
-                Effect: Allow
-                Action:
-                  - s3:PutObject
-                  - s3:GetObject
-                Resource: !Sub "arn:aws:s3:::${SamArtifactBucket}/AsmblyFacilitiesMaintTrackingStack-${DeployStage}/*"
-              - Sid: AllowLambdaFunctionManagement
-                Effect: Allow
-                Action:
-                  - lambda:CreateFunction
-                  - lambda:DeleteFunction
-                  - lambda:UpdateFunctionCode
-                  - lambda:UpdateFunctionConfiguration
-                  - lambda:GetFunction
-                  - lambda:AddPermission
-                  - lambda:RemovePermission
-                  - lambda:TagResource
-                  - lambda:UntagResource
-                  - lambda:PutFunctionConcurrency
-                  - lambda:DeleteFunctionConcurrency
-                Resource:
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewWaiverCompletedFunction-${DeployStage}"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:KilnDropoffRecentEntriesViewerFunction-${DeployStage}"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PMReminderBotFunction-${DeployStage}"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewProblemReportRequestReceived-${DeployStage}"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ProblemReport-ReactionFunction-${DeployStage}"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SlackSlashReorderFunction-${DeployStage}"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PurchaseRequest-ReactionFunction-${DeployStage}"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewPurchaseRequestReceivedFunction-${DeployStage}"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:facilities-slack-event-router-${DeployStage}"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DynamicDnsUpdateFunction-${DeployStage}"
-              - Sid: AllowLambdaLayerManagement
-                Effect: Allow
-                Action:
-                  - lambda:GetLayerVersion
-                  - lambda:PublishLayerVersion
-                  - lambda:DeleteLayerVersion
-                Resource:
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:requests-layer-${DeployStage}"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:requests-layer-${DeployStage}:*"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:common-layer-${DeployStage}"
-                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:common-layer-${DeployStage}:*"
-              # NAME* covers both log-group:NAME and log-group:NAME:* ARNs.
-              - Sid: AllowCloudWatchLogsManagement
-                Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:DeleteLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutRetentionPolicy
-                  - logs:TagLogGroup
-                  - logs:UntagLogGroup
-                Resource:
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/facilities-api-${DeployStage}*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewWaiverCompletedFunction-${DeployStage}*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-${DeployStage}*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PMReminderBotFunction-${DeployStage}*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewProblemReportRequestReceived-${DeployStage}*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ProblemReport-ReactionFunction-${DeployStage}*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/SlackSlashReorderFunction-${DeployStage}*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PurchaseRequest-ReactionFunction-${DeployStage}*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewPurchaseRequestReceivedFunction-${DeployStage}*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/facilities-slack-event-router-${DeployStage}*"
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/DynamicDnsUpdateFunction-${DeployStage}*"
-              - Sid: AllowDynamoDBTableManagement
-                Effect: Allow
-                Action:
-                  - dynamodb:CreateTable
-                  - dynamodb:UpdateTable
-                  - dynamodb:DeleteTable
-                  - dynamodb:DescribeTable
-                  - dynamodb:DescribeTimeToLive
-                  - dynamodb:UpdateTimeToLive
-                  - dynamodb:TagResource
-                  - dynamodb:UntagResource
-                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-${DeployStage}"
-              - Sid: AllowSSMParameterWrite
-                Effect: Allow
-                Action:
-                  - ssm:PutParameter
-                  - ssm:DeleteParameter
-                  - ssm:AddTagsToResource
-                  - ssm:RemoveTagsFromResource
-                  - ssm:GetParameters
-                Resource:
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/config/reaction-handler/purchase-request"
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/config/reaction-handler/problem-report"
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/config/router/slack-event-router"
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/config/clickup/field/workspace"
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/config/clickup/ceramics/dropOffRequests"
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/clickup/cmms/pmSchedule"
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/clickup/facilities/problemReports"
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/clickup/facilities/masterItemsList"
-                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${DeployStage}/clickup/facilities/purchaseRequests"
-              - Sid: AllowEventBridgeRuleManagement
-                Effect: Allow
-                Action:
-                  - events:PutRule
-                  - events:DeleteRule
-                  - events:DescribeRule
-                  - events:PutTargets
-                  - events:RemoveTargets
-                Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/pm-reminder-bot-schedule-${DeployStage}"
+  # The two policies are identical apart from the stage name; keep them in sync.
+  # (Fn::ForEach would remove the duplication, but SAM CLI cannot deploy it.)
+  GitHubDeployPolicystage:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "GitHub-OIDC-facilities-automation-deploy-stage-policy"
+      Description: !Sub "Least-privilege policy for the facilities automation GitHub Actions deployer (stage resources)."
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # The root stack and its nested stacks, which are named
+          # <root stack>-<logical id>-<suffix>. The -cicd stack is excluded.
+          - Sid: AllowCloudFormationStackOperations
+            Effect: Allow
+            Action:
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeChangeSet
+              - cloudformation:CreateChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:ContinueUpdateRollback
+            Resource:
+              - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/AsmblyFacilitiesMaintTrackingStack-stage/*"
+              - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/AsmblyFacilitiesMaintTrackingStack-stage-*/*"
+          - Sid: AllowSAMArtifactAccess
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${SamArtifactBucket}/AsmblyFacilitiesMaintTrackingStack-stage/*"
+          - Sid: AllowLambdaFunctionManagement
+            Effect: Allow
+            Action:
+              - lambda:CreateFunction
+              - lambda:DeleteFunction
+              - lambda:UpdateFunctionCode
+              - lambda:UpdateFunctionConfiguration
+              - lambda:GetFunction
+              - lambda:AddPermission
+              - lambda:RemovePermission
+              - lambda:TagResource
+              - lambda:UntagResource
+              - lambda:PutFunctionConcurrency
+              - lambda:DeleteFunctionConcurrency
+            Resource:
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewWaiverCompletedFunction-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:KilnDropoffRecentEntriesViewerFunction-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PMReminderBotFunction-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewProblemReportRequestReceived-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ProblemReport-ReactionFunction-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SlackSlashReorderFunction-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PurchaseRequest-ReactionFunction-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewPurchaseRequestReceivedFunction-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:facilities-slack-event-router-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DynamicDnsUpdateFunction-stage"
+          - Sid: AllowLambdaLayerManagement
+            Effect: Allow
+            Action:
+              - lambda:GetLayerVersion
+              - lambda:PublishLayerVersion
+              - lambda:DeleteLayerVersion
+            Resource:
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:requests-layer-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:requests-layer-stage:*"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:common-layer-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:common-layer-stage:*"
+          # NAME* covers both log-group:NAME and log-group:NAME:* ARNs.
+          - Sid: AllowCloudWatchLogsManagement
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:CreateLogStream
+              - logs:PutRetentionPolicy
+              - logs:TagLogGroup
+              - logs:UntagLogGroup
+            Resource:
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/facilities-api-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewWaiverCompletedFunction-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PMReminderBotFunction-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewProblemReportRequestReceived-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ProblemReport-ReactionFunction-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/SlackSlashReorderFunction-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PurchaseRequest-ReactionFunction-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewPurchaseRequestReceivedFunction-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/facilities-slack-event-router-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/DynamicDnsUpdateFunction-stage*"
+          - Sid: AllowDynamoDBTableManagement
+            Effect: Allow
+            Action:
+              - dynamodb:CreateTable
+              - dynamodb:UpdateTable
+              - dynamodb:DeleteTable
+              - dynamodb:DescribeTable
+              - dynamodb:DescribeTimeToLive
+              - dynamodb:UpdateTimeToLive
+              - dynamodb:TagResource
+              - dynamodb:UntagResource
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-stage"
+          - Sid: AllowSSMParameterWrite
+            Effect: Allow
+            Action:
+              - ssm:PutParameter
+              - ssm:DeleteParameter
+              - ssm:AddTagsToResource
+              - ssm:RemoveTagsFromResource
+              - ssm:GetParameters
+            Resource:
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/config/reaction-handler/purchase-request"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/config/reaction-handler/problem-report"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/config/router/slack-event-router"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/config/clickup/field/workspace"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/config/clickup/ceramics/dropOffRequests"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/clickup/cmms/pmSchedule"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/clickup/facilities/problemReports"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/clickup/facilities/masterItemsList"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/clickup/facilities/purchaseRequests"
+          - Sid: AllowEventBridgeRuleManagement
+            Effect: Allow
+            Action:
+              - events:PutRule
+              - events:DeleteRule
+              - events:DescribeRule
+              - events:PutTargets
+              - events:RemoveTargets
+            Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/pm-reminder-bot-schedule-stage"
+
+  GitHubDeployPolicyprod:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "GitHub-OIDC-facilities-automation-deploy-prod-policy"
+      Description: !Sub "Least-privilege policy for the facilities automation GitHub Actions deployer (prod resources)."
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # The root stack and its nested stacks, which are named
+          # <root stack>-<logical id>-<suffix>. The -cicd stack is excluded.
+          - Sid: AllowCloudFormationStackOperations
+            Effect: Allow
+            Action:
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeChangeSet
+              - cloudformation:CreateChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:ContinueUpdateRollback
+            Resource:
+              - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/AsmblyFacilitiesMaintTrackingStack-prod/*"
+              - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/AsmblyFacilitiesMaintTrackingStack-prod-*/*"
+          - Sid: AllowSAMArtifactAccess
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${SamArtifactBucket}/AsmblyFacilitiesMaintTrackingStack-prod/*"
+          - Sid: AllowLambdaFunctionManagement
+            Effect: Allow
+            Action:
+              - lambda:CreateFunction
+              - lambda:DeleteFunction
+              - lambda:UpdateFunctionCode
+              - lambda:UpdateFunctionConfiguration
+              - lambda:GetFunction
+              - lambda:AddPermission
+              - lambda:RemovePermission
+              - lambda:TagResource
+              - lambda:UntagResource
+              - lambda:PutFunctionConcurrency
+              - lambda:DeleteFunctionConcurrency
+            Resource:
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewWaiverCompletedFunction-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:KilnDropoffRecentEntriesViewerFunction-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PMReminderBotFunction-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewProblemReportRequestReceived-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ProblemReport-ReactionFunction-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SlackSlashReorderFunction-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PurchaseRequest-ReactionFunction-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewPurchaseRequestReceivedFunction-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:facilities-slack-event-router-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DynamicDnsUpdateFunction-prod"
+          - Sid: AllowLambdaLayerManagement
+            Effect: Allow
+            Action:
+              - lambda:GetLayerVersion
+              - lambda:PublishLayerVersion
+              - lambda:DeleteLayerVersion
+            Resource:
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:requests-layer-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:requests-layer-prod:*"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:common-layer-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:layer:common-layer-prod:*"
+          # NAME* covers both log-group:NAME and log-group:NAME:* ARNs.
+          - Sid: AllowCloudWatchLogsManagement
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:CreateLogStream
+              - logs:PutRetentionPolicy
+              - logs:TagLogGroup
+              - logs:UntagLogGroup
+            Resource:
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/facilities-api-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewWaiverCompletedFunction-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PMReminderBotFunction-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewProblemReportRequestReceived-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ProblemReport-ReactionFunction-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/SlackSlashReorderFunction-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PurchaseRequest-ReactionFunction-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewPurchaseRequestReceivedFunction-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/facilities-slack-event-router-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/DynamicDnsUpdateFunction-prod*"
+          - Sid: AllowDynamoDBTableManagement
+            Effect: Allow
+            Action:
+              - dynamodb:CreateTable
+              - dynamodb:UpdateTable
+              - dynamodb:DeleteTable
+              - dynamodb:DescribeTable
+              - dynamodb:DescribeTimeToLive
+              - dynamodb:UpdateTimeToLive
+              - dynamodb:TagResource
+              - dynamodb:UntagResource
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-prod"
+          - Sid: AllowSSMParameterWrite
+            Effect: Allow
+            Action:
+              - ssm:PutParameter
+              - ssm:DeleteParameter
+              - ssm:AddTagsToResource
+              - ssm:RemoveTagsFromResource
+              - ssm:GetParameters
+            Resource:
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/config/reaction-handler/purchase-request"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/config/reaction-handler/problem-report"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/config/router/slack-event-router"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/config/clickup/field/workspace"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/config/clickup/ceramics/dropOffRequests"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/clickup/cmms/pmSchedule"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/clickup/facilities/problemReports"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/clickup/facilities/masterItemsList"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/clickup/facilities/purchaseRequests"
+          - Sid: AllowEventBridgeRuleManagement
+            Effect: Allow
+            Action:
+              - events:PutRule
+              - events:DeleteRule
+              - events:DescribeRule
+              - events:PutTargets
+              - events:RemoveTargets
+            Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/pm-reminder-bot-schedule-prod"
