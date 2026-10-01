@@ -2,6 +2,23 @@ import boto3
 import json
 import os
 
+
+def get_secret_json(secret_name):
+    """Retrieve and parse a JSON secret with a single Secrets Manager call."""
+    region_name = os.environ.get("AWS_REGION", "us-east-2")
+    session = boto3.session.Session()
+    client = session.client(
+        service_name="secretsmanager",
+        region_name=region_name,
+    )
+    try:
+        response = client.get_secret_value(SecretId=secret_name)
+        return json.loads(response["SecretString"])
+    except Exception as e:
+        print(f"ERROR: Unable to retrieve or parse secret '{secret_name}': {e}")
+        raise
+
+
 def get_secret(secret_name, secret_key):
     """
     Retrieves a specific key from a secret stored in AWS Secrets Manager.

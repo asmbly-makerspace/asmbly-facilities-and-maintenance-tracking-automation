@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Stack for networking automation functions.
+
+Parameters:
+  Stage:
+    Type: String
+    Description: The deployment stage (e.g., dev, stage, prod).
+  CommonLayerARN:
+    Type: String
+    Description: The ARN of the shared Common Utilities Lambda Layer.
+  HostedZoneId:
+    Type: String
+    Description: The Route 53 Hosted Zone ID for asmbly.org.
+  DdnsHostnames:
+    Type: String
+    Description: >
+      Hostnames (in the asmbly.org zone) this credential is allowed to
+      update. Must stay in sync with the secret's `allowed_hostnames`.
+      Note: Each hostname MUST have a trailing dot (e.g. 'shop.asmbly.org.')
+      because Route53's ChangeResourceRecordSetsNormalizedRecordNames condition
+      evaluates against normalized domain names.
+    AllowedPattern: '^[-A-Za-z0-9.]+\.(,[-A-Za-z0-9.]+\.)*$'
+    ConstraintDescription: Each comma-separated hostname must end with a trailing dot.
+    Default: "shop.asmbly.org.,vpn.asmbly.org."
+  DdnsSecretName:
+    Type: String
+    Description: The name of the AWS Secrets Manager secret containing the DDNS router credential.
+
+Resources:
+  DynamicDnsUpdateLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/asmbly/lambda/DynamicDnsUpdateFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: networking:dynamic-dns-update
+
+  DynamicDnsUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "DynamicDnsUpdateFunction-${Stage}"
+      Description: "Validates DynDNS2 update requests from the UDM and upserts Route53 A records."
+      CodeUri: ../functions/networking/dynamic_dns_update/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Timeout: 10
+      ReservedConcurrentExecutions: 2
+      LoggingConfig:
+        LogGroup: !Ref DynamicDnsUpdateLogGroup
+      Layers:
+        - !Ref CommonLayerARN
+      Environment:
+        Variables:
+          STAGE: !Ref Stage
+          DDNS_SECRET_NAME: !Ref DdnsSecretName
+          HOSTED_ZONE_ID: !Ref HostedZoneId
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: route53:ChangeResourceRecordSets
+              Resource: !Sub 'arn:aws:route53:::hostedzone/${HostedZoneId}'
+              Condition:
+                ForAllValues:StringEquals:
+                  route53:ChangeResourceRecordSetsNormalizedRecordNames: !Split [',', !Ref DdnsHostnames]
+                  route53:ChangeResourceRecordSetsRecordTypes: ['A']
+                  route53:ChangeResourceRecordSetsActions: ['UPSERT']
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource:
+                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${DdnsSecretName}-*'
+      Tags:
+        Project: networking:dynamic-dns-update
+
+Outputs:
+  DynamicDnsUpdateFunctionArn:
+    Description: "ARN for the Dynamic DNS Update function"
+    Value: !GetAtt DynamicDnsUpdateFunction.Arn
+  DynamicDnsUpdateFunctionIamRole:
+    Description: "Implicit IAM Role created for the Dynamic DNS Update function"
+    Value: !GetAtt DynamicDnsUpdateFunctionRole.Arn
+
