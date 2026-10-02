@@ -79,4 +79,5 @@ class NeonCRM:
             response.raise_for_status()
             logger.info(f"Successfully updated custom field for account ID: {account_id}")
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error updating NeonCRM account {account_id}: {e}")
+            body = e.response.text if e.response is not None else ""
+            logger.error(f"Error updating NeonCRM account {account_id}: {e} {body}")
