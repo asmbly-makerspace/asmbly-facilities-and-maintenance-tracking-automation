@@ -5,6 +5,7 @@
 - [Prerequisites](#prerequisites)
 - [Architecture Overview](#architecture-overview)
 - [CI/CD Infrastructure (The Deployer Role)](#cicd-infrastructure-the-deployer-role)
+- [Linting & Validating Templates](#linting--validating-templates)
 - [Automated Production Deployment (via GitHub Actions)](#automated-production-deployment-via-github-actions)
 - [Manual Deployment (for Dev & Stage)](#manual-deployment-for-dev--stage)
 
@@ -67,6 +68,20 @@ For example, if you add a function `FooFunction-${Stage}` with a log group `/asm
 4.  **Re-run** the failed GitHub Actions job.
 
 If the FacilitiesApi REST API is ever replaced (new ID), or a stack is created from scratch, redeploy this stack with the new ID first; the role cannot create new REST APIs.
+
+> **Note:** Some `AWS::Serverless::Function` properties imply extra IAM actions the deployer role needs, beyond the obvious `lambda:CreateFunction`/`UpdateFunctionConfiguration`. For example, setting `ReservedConcurrentExecutions` requires `lambda:PutFunctionConcurrency` (and `lambda:DeleteFunctionConcurrency` if it's ever removed). Watch the `CREATE_FAILED`/`UPDATE_FAILED` reason in the CloudFormation console or `aws cloudformation describe-stack-events` output — it names the exact missing action.
+
+## Linting & Validating Templates
+
+Before pushing changes, validate all SAM templates locally to catch schema errors, obsolete `DependsOn`, and other issues without waiting on a full deploy:
+
+```bash
+pip install -r requirements-dev.txt  # installs cfn-lint
+sam validate --lint --template-file template.yaml
+sam validate --lint --template-file template-cicd.yaml
+```
+
+`sam validate --lint` runs `cfn-lint` after the SAM transform is applied, so `Fn::GetAtt` references into nested stack (`/templates/*.yaml`) outputs resolve correctly (running raw `cfn-lint` against `template.yaml` directly produces false-positive `E1010`/`E1019` errors for these cross-stack references). This check also runs automatically in the `Python Tests` GitHub Actions workflow on every push and PR.
 
 ## Automated Production Deployment (via GitHub Actions)
 
