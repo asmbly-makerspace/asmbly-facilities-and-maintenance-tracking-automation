@@ -46,7 +46,8 @@ Then these sections:
   more than one phase delivers lists them all. Only the pull request that lands the
   last phase in that cell says `Closes #N`; earlier ones say `Refs #N`.
 - `## Phase tracker`: `| Phase | Title | Domain | Size | Status |`, with Status
-  `[ ] Pending`, `[~] In progress`, or `[x] Complete`.
+  `[ ] Pending` (written by `/plan-tech`), `[~] In progress` (set by `/build` when it
+  starts the phase), or `[x] Complete` (set by `/build` when it finishes).
 - `## Dependencies`: what must exist first (other plans, secrets, third-party setup),
   and which phases depend on which.
 - `## Parallelism`: for each pair of phases with no dependency between them, whether
@@ -54,7 +55,11 @@ Then these sections:
 - `## Admin actions`: everything a person with admin rights must do, and when:
   secrets to create, the deploy role to redeploy, webhooks and Slack app settings to
   change. Write "None" if there are none.
+- `## Related work`: other plans, open issues or pull requests that touch the same
+  files or depend on this work. "None" if there are none.
 - `## Out of scope` and `## Security`.
+- `## Decisions`, only when decisions were made without asking (inside `/offshore`):
+  each decision, the alternative, and why.
 
 ## Phase documents
 

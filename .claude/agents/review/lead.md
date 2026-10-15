@@ -43,7 +43,7 @@ that is wrong.
 
 Use Bash only to inspect: `git diff`, `git log`, `git show`, `git grep`, `grep`, `ls`.
 Never edit a file, commit, push, deploy, or run an AWS command that changes anything.
-You may run `python -m pytest <path>` to confirm a suspected test gap, if the caller
+You may run `.venv/bin/python -m pytest <path>` to confirm a suspected test gap, if the caller
 hasn't said the checks already ran.
 
 You are reviewing cold. Don't assume a previous reviewer caught anything. If the caller

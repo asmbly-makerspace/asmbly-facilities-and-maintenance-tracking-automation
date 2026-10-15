@@ -1,7 +1,7 @@
 ---
 name: build
 description: Build one phase of an implementation plan (or a set of written instructions) with the build team - architect, coder and critic, validator, self-review, fixer - followed by a mandatory independent review from a fresh review-lead subagent, then mark the phase complete. Use when asked to build or implement a plan phase, or when /offshore or /bug-fix calls it.
-argument-hint: "<plan> [phase N] | instructions: <path or text>"
+argument-hint: "<plan> [phase N] | instructions: <path or text>  [base <sha>]"
 model: opus
 effort: high
 ---
@@ -63,8 +63,13 @@ If you're on `stage`, `main`, or someone else's branch, create one:
 bug). If you're already on a `feature/`, `fix/`, or `chore/` branch for this work, use
 it. Never commit to `stage` or `main`.
 
-Record the base now: `BASE=$(git merge-base HEAD origin/stage)`. Every "base" below
-means this SHA.
+Record the base now. If the request says `base <sha>` (`/offshore` and `/bug-fix` pass
+the commit the phase started from), use that SHA. Otherwise use
+`git merge-base HEAD origin/stage`. Every "base" and `$BASE` below means this SHA; shell
+variables don't carry over between Bash calls, so write the SHA itself into each command.
+
+For a plan phase, set its row in the README's phase tracker to `[~] In progress`. It goes
+into the first step's commit.
 
 ## Step 4: Architect
 
@@ -79,7 +84,10 @@ Show a 5–10 line summary of the manifest and carry on. Don't wait for approval
 For each step in the manifest:
 
 1. **Coder writes.** Adopt the Coder. Follow the manifest's order and reference
-   patterns. Tests go in the same step as the code. The template, the deploy role, and
+   patterns. Tests go in the same step as the code. When the instructions ask for a
+   regression test (`/bug-fix` does), write it first, run it, and confirm it fails for the
+   reported reason before writing the fix; commit it on its own (`test: reproduce ...`)
+   and note the failing output for the report. The template, the deploy role, and
    the code that reads an environment variable change in the same step, so they never
    disagree.
 2. **Critic checks.** Adopt the Critic. Check what was just written, and how it fits
@@ -94,7 +102,7 @@ Then move to the next step.
 
 ## Step 6: Validator
 
-Adopt the Validator. It runs, in order: `python -m pytest`; for template changes,
+Adopt the Validator. It runs, in order: `.venv/bin/python -m pytest`; for template changes,
 `cfn-lint` and `sam validate`; for template, layer, or requirements changes,
 `sam build`; then the standards scan over the diff. Output: a validation report.
 
@@ -194,6 +202,9 @@ A merged phase whose document still says Pending is a defect.
 
 ### Admin actions
 - <secrets to create, the CI/CD stack to redeploy, webhooks to set>, or "None"
+
+### Regression test (when one was asked for)
+- <test name>: failed before the fix (<one-line failure>), passes after
 
 ### Next
 - `/review` for a formal review, then open a pull request to `stage`.

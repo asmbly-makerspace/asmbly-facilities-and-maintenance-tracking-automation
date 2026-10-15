@@ -84,6 +84,17 @@ subagent runs `/prep`, `/build` and `/review` (and those spawn `drift-detector`,
   subagent isolation above, plans of 1 to 10 phases fit.
 - **Very large plans:** `/loop 10m /offshore <plan>`. Each firing reads the checkpoint and
   continues from the next pending step; a finished run is a no-op.
+- **Permissions.** `.claude/settings.json` allows only the tests, the template checks, and
+  read-only `git` and `gh`. An unattended run also commits, pushes, edits files, and
+  creates issues and a pull request, so it stops at the first permission prompt unless the
+  owner starts it in a mode that allows those (for example, accepting edits and approving
+  the `git`/`gh` commands for the session, or auto mode). The guardrail hook still blocks
+  the dangerous commands in any mode. If a prompt is denied, record it and treat that step
+  as blocked; don't look for a way around it.
+
+**Shell variables don't carry over between your Bash calls.** The blocks below use
+`$PLAN_NAME`, `$PLAN_DIR` and SHAs as placeholders: write the literal values into each
+command, or set them at the top of the same block.
 
 ## Step 0: Pre-flight
 
@@ -110,6 +121,7 @@ Derive `PLAN_NAME` from the input:
 - otherwise a kebab-case name from the description.
 
 ```bash
+PLAN_NAME=<plan-name>                                          # the literal name
 mkdir -p .offshore && date +%s > .offshore/active.sentinel   # turns the guardrails on
 PLAN_DIR=".implementation_plans/$PLAN_NAME"
 CHECKPOINT="$PLAN_DIR/CHECKPOINT.json"
@@ -227,9 +239,10 @@ Agent(
     Read CLAUDE.md first. Don't edit CHECKPOINT.json.
 
     1. PREP: Skill(skill: "prep", args: "<PLAN_NAME> phase <id>").
-       READY → continue. NEEDS REVISION → apply the amendments to the phase doc, commit,
-       continue. Too large → return needs-split. BLOCKED → return blocked.
-    2. BUILD: Skill(skill: "build", args: "<PLAN_NAME> phase <id>").
+       READY → continue. NEEDS_REVISION → prep applies its amendments under /offshore
+       (amendments_applied: true); if it didn't, apply them and commit; then continue.
+       split is set → return needs-split with it. BLOCKED → return blocked.
+    2. BUILD: Skill(skill: "build", args: "<PLAN_NAME> phase <id> base <PRE_PHASE_SHA>").
        Commit in logical chunks. Push nothing. If checks fail and you can't fix them,
        return blocked.
     3. REVIEW: rounds by size, from `git diff --shortstat <PRE_PHASE_SHA>..HEAD`:
@@ -358,7 +371,7 @@ Agent(
   subagent_type: "general-purpose",
   prompt: """
     Write .implementation_plans/<PLAN_NAME>/MANUAL_QA.md from
-    .claude/agents/offshore/templates/MANUAL_QA.template.md. Organize it by story, not by
+    .claude/skills/offshore/templates/MANUAL_QA.template.md. Organize it by story, not by
     phase. Read only: the README's Stories table, the diff (git diff origin/stage...HEAD),
     the function READMEs it touches, and CHECKPOINT.json's integration results.
 
@@ -401,26 +414,31 @@ Agent(
       stack after merge".
     - Briefing: .implementation_plans/<PLAN_NAME>/BRIEFING.md (written after this).
 
-    gh pr create --base stage --head feature/<PLAN_NAME> --title ... --body-file <file>
+    Write the body to .offshore/pr-body.md with the Write tool (not a heredoc), then
+    gh pr create --base stage --head feature/<PLAN_NAME> --title "..." --body-file .offshore/pr-body.md
     Write the number to .offshore/final-pr.txt straight away.
 
     Then loop, for at most 60 minutes:
     - gh pr checks <N> --watch --interval 30. The required check is `test`.
     - Read new comments: gh pr view <N> --comments, and
       gh api repos/{owner}/{repo}/pulls/<N>/comments.
-    - CI failure with a readable log (gh run view <id> --log-failed): fix it with
-      Skill(skill: "address-pr-comments", args: "<N>").
+    - Call /address-pr-comments as
+      Skill(skill: "address-pr-comments", args: "<N> offshore round <R> since <round start SHA> plan <PLAN_NAME>"),
+      where R counts the rounds from 1 and the round start SHA is HEAD before the round.
+      It squashes the round into one "fix(<PLAN_NAME>): review round <R>" commit and pushes.
+    - CI failure with a readable log (gh run view <id> --log-failed): /address-pr-comments.
     - CI failure you can't read: at most 2 diagnostic commits, then return stuck.
-    - Review comments (bug, security, failing test): Skill("address-pr-comments", "<N>").
+    - Review comments (bug, security, failing test): /address-pr-comments.
       Style comments already answered twice: reply pointing at the earlier answer.
-    - Merge conflicts: rebase onto origin/stage, re-run the checks, push.
+    - Merge conflicts: rebase onto origin/stage, re-run the checks, and push with
+      --force-with-lease.
     - Ready when: the checks are green, no comment is unanswered, and the branch has no
       conflicts. If the repository has an automated review workflow, also wait for its
       comment to be newer than the head commit.
 
-    Before each push of fixes, squash that round's commits into one
-    "fix(<plan>): review round <N>" commit (git reset --soft <round start SHA>), then
-    git push --force-with-lease. Skip the squash for a round that changed no code.
+    If you fix something yourself instead, squash it the same way before pushing:
+    one "fix(<PLAN_NAME>): review round <R>" commit (git reset --soft <round start SHA>),
+    then git push --force-with-lease. Skip the squash for a round that changed no code.
     Update the pull request description when commits are added.
 
     Return ONLY:
@@ -435,7 +453,7 @@ unresolved.
 
 ## Step 8: The briefing
 
-Copy `.claude/agents/offshore/templates/BRIEFING.template.md` to `$PLAN_DIR/BRIEFING.md`
+Copy `.claude/skills/offshore/templates/BRIEFING.template.md` to `$PLAN_DIR/BRIEFING.md`
 and fill in every section from the checkpoint: the pull request (green, **not merged**),
 the admin actions first, the phases table with each squashed SHA, run health, decisions,
 deferrals, blockers, environment skips, integration results, and review rounds.
@@ -447,8 +465,12 @@ Commit the briefing together with the final checkpoint (`status: "complete"` and
 git add "$PLAN_DIR/BRIEFING.md" "$PLAN_DIR/CHECKPOINT.json"
 git commit -m "docs(<plan>): offshore briefing"
 git push --force-with-lease origin "feature/$PLAN_NAME"
+gh pr checks <N> --watch --interval 30      # the push starts the checks again
 rm -rf .offshore
 ```
+
+If the checks fail now, go back to Step 7's loop before printing anything. Report the
+result you watched, not the earlier one.
 
 Print:
 
@@ -475,8 +497,9 @@ Next: <phase id | integration gate | docs | manual QA | pull request | briefing>
 Run /offshore <plan> again to continue.
 ```
 
-and exit, leaving the sentinel in place. The next run reads the checkpoint and
-continues.
+and exit. Remove `.offshore/active.sentinel` first, so ordinary sessions in this checkout
+aren't held to offshore's rules; Step 1 creates it again when the run resumes. The
+checkpoint is what carries the state.
 
 ## The branch at the end
 

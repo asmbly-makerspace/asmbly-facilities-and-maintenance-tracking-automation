@@ -40,8 +40,11 @@ Don't work from memory.
 ## Running inside `/offshore`
 
 When the prompt says you are running inside `/offshore` (or non-interactively), never ask
-the user anything. Where this skill says "ask", decide, write the decision and its
-reason under `## Decisions` in the plan README, and continue.
+the user anything and never wait. Where this skill says "ask", "wait for" or "approval",
+decide, write the decision and its reason under `## Decisions` in the plan README, and
+continue. That covers Step 0's "continue", Step 3's approval of the breakdown, and the
+"rewrite" choice: inside `/offshore`, an existing legacy plan is left as it is and the new
+plan gets its own name.
 
 ---
 
@@ -248,14 +251,14 @@ the last phase in a story's row says `Closes #N`; earlier ones say `Refs #N`.
 
 ## Step 6: Commit and report
 
-Commit the plan in one commit on the current branch (don't push):
+If you're on `stage` or `main`, first create the branch:
+`git fetch origin stage && git switch -c feature/<plan> origin/stage && git branch --unset-upstream`.
+Then commit the plan in one commit (don't push):
 
 ```bash
 git add .implementation_plans/<plan>/
 git commit -m "docs(<plan>): implementation plan"
 ```
-
-If you're on `stage` or `main`, create `feature/<plan>` from `origin/stage` first.
 
 Then report:
 

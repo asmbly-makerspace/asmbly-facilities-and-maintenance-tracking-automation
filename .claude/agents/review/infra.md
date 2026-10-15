@@ -89,7 +89,7 @@ Your files: `template.yaml`, `templates/*.yaml`, `template-cicd.yaml`, `samconfi
 
 - A `Project` tag on new resources, following the `<area>:<feature>` form used nearby.
 - New `cfn-lint` or `sam validate` findings compared with `stage`. Run
-  `cfn-lint template.yaml templates/*.yaml template-cicd.yaml` and say which findings
+  `.venv/bin/cfn-lint template.yaml templates/*.yaml template-cicd.yaml` and say which findings
   were already there.
 - `MemorySize` and `Timeout` set deliberately for functions that call slow services
   (ClickUp, Neon), with a comment when they differ from the defaults.

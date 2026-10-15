@@ -8,7 +8,7 @@ Your files: `functions/**`, `layers/common/**`, `scripts/**`, `requirements*.txt
 `pytest.ini`.
 
 The reference for how new code looks is `functions/networking/dynamic_dns_update/`: it
-checks its caller with `hmac.compare_digest`, logs lazily, has type hints, and answers
+checks its caller with `hmac.compare_digest`, logs lazily, types its helpers, and answers
 errors without details. Much older code predates the rules. Hold new and changed lines
 to them; don't flag untouched lines.
 

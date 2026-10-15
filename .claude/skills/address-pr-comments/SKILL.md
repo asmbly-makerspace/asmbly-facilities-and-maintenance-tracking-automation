@@ -100,7 +100,8 @@ For every FIX item:
 2. Read what it touches: the template for a function, the callers of a helper, the tests.
 3. Look for the same pattern elsewhere. If the comment is about one handler sending
    `str(e)` to the caller and three others do too, decide with the person whether they
-   belong in this pull request; don't silently widen it.
+   belong in this pull request; don't silently widen it. Inside `/offshore`, keep the pull
+   request to what the comment covers and list the other places in your return.
 4. Find the rule in `CLAUDE.md` the comment invokes and cite it in the commit or reply.
 
 ---
@@ -115,8 +116,8 @@ For every FIX item:
    moving on:
 
    ```bash
-   python -m pytest                                              # always
-   cfn-lint template.yaml templates/*.yaml template-cicd.yaml    # after a template change
+   .venv/bin/python -m pytest                                              # always
+   .venv/bin/cfn-lint template.yaml templates/*.yaml template-cicd.yaml    # after a template change
    sam validate --region us-east-2                               # after a template change
    sam build                                                     # after a template, layer, or requirements change
    ```
@@ -193,8 +194,9 @@ failing test), a rule in `CLAUDE.md` that changed, or the person telling you to.
 
 **Two diagnostic commits at most.** If you can't read why a check failed, you may push up
 to two commits that only add diagnostic output (verbose flags, `::group::` markers). If
-that doesn't reveal the cause, stop and ask the person for the log. Revert diagnostic
-commits before the pull request is merged.
+that doesn't reveal the cause, stop and ask the person for the log (inside `/offshore`,
+return `stuck` with what you tried). Revert diagnostic commits before the pull request is
+merged.
 
 ---
 
@@ -221,15 +223,15 @@ git commit -m "fix: <summary>
 
 Review-fix commits carry no `Closes #N`: the pull request body says what it closes.
 
-**When called by `/offshore` (a review round):** squash the round's fix commits into one
-before pushing, because the push starts the next round:
+**When called by `/offshore`** (its arguments read `<N> offshore round <R> since <sha> plan
+<plan>`): squash the round's fix commits into one before pushing, because the push starts
+the next round. Write the SHA from the arguments into the commands (shell variables don't
+carry over between Bash calls):
 
 ```bash
-ROUND_BODY=$(git log --pretty=format:'- %s%n%n%b' "$PRE_ROUND_SHA"..HEAD)
-git reset --soft "$PRE_ROUND_SHA"
-git commit -m "fix(review-round-<N>): <one-line summary>
-
-$ROUND_BODY"
+git log --reverse --pretty=format:'- %s%n%b' <sha>..HEAD > .offshore/round-body.txt
+git reset --soft <sha>
+git commit -m "fix(<plan>): review round <R>" -m "$(cat .offshore/round-body.txt)"
 git push --force-with-lease origin HEAD
 ```
 
@@ -297,3 +299,6 @@ Under 200 words.
 - **No assumptions.** Read the file, grep the pattern, verify the fix on this branch.
 - **No `sam deploy` and no AWS command that changes anything.**
 - **No flip-flopping** (Step 4a).
+- **Inside `/offshore`, never ask.** Decide using `CLAUDE.md` and the code, and record the
+  decision in your report. When a decision is genuinely the person's, or a failure stays
+  unreadable after two diagnostic commits, return `stuck` with what you know.

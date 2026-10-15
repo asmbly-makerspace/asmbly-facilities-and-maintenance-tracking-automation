@@ -42,7 +42,7 @@ For each finding:
 2. Make the fix, matching the patterns already there.
 3. Check the second-order effects: imports, `patch` targets in tests, the template, the
    deploy role, the README.
-4. Run the tests for the area you touched: `python -m pytest functions/<area>/<name>/`.
+4. Run the tests for the area you touched: `.venv/bin/python -m pytest functions/<area>/<name>/`.
 
 Common fixes:
 

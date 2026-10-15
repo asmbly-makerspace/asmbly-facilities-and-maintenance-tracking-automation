@@ -83,10 +83,14 @@ that failed before the fix and passes after it.
 able to do. Approve the stories. `/plan-tech <plan-name>`, approve the phases. Then for
 each phase: `/prep`, `/build`, `/review`. Push and open the pull request to `stage`.
 
-**A feature, unattended.** `/offshore <description>`. Come back to a green pull request,
-`.implementation_plans/<plan>/BRIEFING.md` (start with its **Admin actions**), and
-`MANUAL_QA.md`. For a very large plan, `/loop 10m /offshore <plan>` lets it continue
-across sessions.
+**A feature, unattended.** `/offshore <description>`. The shared settings only let agents
+run the tests, the template checks and read-only `git` and `gh` commands without asking.
+An unattended run also edits files, commits, pushes, and creates issues and a pull
+request, so start it in a permission mode that allows those, or it will wait for you at
+the first prompt. The guardrail hook below still applies in any mode. Come back to a green
+pull request, `.implementation_plans/<plan>/BRIEFING.md` (start with its **Admin
+actions**), and `MANUAL_QA.md`. For a very large plan, `/loop 10m /offshore <plan>` lets
+it continue across sessions.
 
 **A release.** After the pull request merges to `stage`, the stage deploy runs. Do the
 manual QA on the stage stack, then `/promote`.
@@ -118,14 +122,20 @@ its invoke permission.
 
 ## What agents never do
 
-These rules are in [CLAUDE.md](../CLAUDE.md). During `/offshore`,
-`.claude/hooks/offshore-guardrails.sh` also enforces them, because nobody is watching:
+These rules are in [CLAUDE.md](../CLAUDE.md), and every agent follows them:
 
 - deploy (`sam deploy`) or change anything in AWS;
-- push to `stage` or `main`, or merge a pull request;
-- skip a failing test, or bypass hooks with `--no-verify`;
+- push to `stage` or `main`, or merge a pull request without being told to;
+- skip or delete a failing test, or bypass hooks with `--no-verify`;
 - force-push without `--force-with-lease`;
 - log or return secrets, tokens, or people's personal details.
+
+During `/offshore`, nobody is watching, so `.claude/hooks/offshore-guardrails.sh` also
+blocks the commands it can recognize: deploys and AWS commands that change something,
+pushes to `stage` or `main`, `gh pr merge`, force pushes without a lease, `--no-verify`,
+`git commit --amend`, `git reset --hard`, and questions to you. It can't see whether a
+test was skipped or what a log line contains; the reviewers check those. It is a
+guardrail, not a sandbox: it checks commands, not code that a script runs.
 
 ## What a person still does
 

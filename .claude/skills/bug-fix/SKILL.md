@@ -90,15 +90,17 @@ a top-level session when you can.
 ```bash
 git fetch origin stage
 git switch -c fix/<short-slug> origin/stage
-git branch --unset-upstream    # a bare `git push` must never target stage
+git branch --unset-upstream 2>/dev/null || true   # a bare `git push` must never target stage
 ```
 
-Run this whatever branch you're on; `-c` from `origin/stage` keeps earlier work out. If
-the harness gave you a `claude/...` branch, rename it before the first push
-(`git branch -M fix/<short-slug>`); if it forbids that, keep it and say so in the report.
-Never work on `stage`, `main`, or someone else's branch.
+Run this whatever branch you're on, including a `claude/...` branch the harness gave you:
+`-c` from `origin/stage` starts clean and keeps earlier work out. If the harness forbids
+pushing any branch but its own, stay on the harness branch instead (reset it to
+`origin/stage` only if it has no commits of yours) and say so in the report. Never work on
+`stage`, `main`, or someone else's branch.
 
-Record `BASE=$(git merge-base HEAD origin/stage)`. Every later "base" means this SHA.
+Record the base SHA now: `git merge-base HEAD origin/stage`. Every later `<BASE>` means
+this SHA, written out in full: shell variables don't carry over between Bash calls.
 
 ## Step 2: Plan
 
@@ -152,7 +154,7 @@ Return only:
 Spawn a `general-purpose` agent:
 
 ```
-Implement the bug-fix plan at <plan path>: invoke Skill(skill: "build", args: "instructions: <plan path>").
+Implement the bug-fix plan at <plan path>: invoke Skill(skill: "build", args: "instructions: <plan path> base <BASE>").
 Branch: <branch> (checked out). Base: <BASE>. Follow CLAUDE.md.
 - Write the regression test that reproduces the reported scenario first. Run it and confirm it
   fails before the fix and passes after.
@@ -187,7 +189,7 @@ Each cycle:
 2. **Review and fix agent.** Spawn a `general-purpose` agent:
 
    ```
-   Invoke Skill(skill: "review", args: "against stage"). Then fix every real finding from that
+   Invoke Skill(skill: "review", args: "against <BASE>"). Then fix every real finding from that
    review AND from these independent findings: <review-lead's findings, verbatim>.
    Read .claude/agents/build/fixer.md for how to fix. BLOCKs, bugs, security gaps and failing
    tests are always fixed; straightforward WARNs are fixed. No one is present to answer
@@ -217,7 +219,7 @@ stop before the pull request.
 | contradicts or fills a gap in a function's `README.md` or `docs/` | |
 
 When it runs, spawn a `general-purpose` agent that invokes
-`Skill(skill: "write-docs", args: "<bug summary: expected vs. actual, root cause, fix>; branch <branch>; base stage")`.
+`Skill(skill: "write-docs", args: "<bug summary: expected vs. actual, root cause, fix>; branch <branch>; base origin/stage")`.
 It returns `DOCS_CREATED / DOCS_UPDATED / COMMIT_SHAS / BRANCH / NOTES`. Check that what
 the docs now say matches the code. Record the decision either way ("docs: updated
 `functions/.../README.md`" or "docs: skipped, <reason>").

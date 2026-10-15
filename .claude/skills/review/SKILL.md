@@ -30,7 +30,8 @@ $ARGUMENTS
   cycle 1 only.
 - **On-demand:** everything else, including empty input.
 
-**Base branch:** "against main", "vs stage". If none, detect it in Step 2.
+**Base:** "against main", "vs stage", or a commit: "against <sha>" (`/offshore` passes the
+SHA a phase started from, so only that phase is reviewed). If none, detect it in Step 2.
 
 **Scope:** "just infra", "lambda only", "docs only". If none, Step 5 decides from the
 changed files.
@@ -49,18 +50,24 @@ If the current branch is `stage` or `main` and there is no pull request, stop:
 > You're on `<branch>` with no open pull request. I need a feature branch to review, or a
 > base: `/review against stage`.
 
-Run `git fetch origin <base>` and diff against `origin/<base>`.
+Then set the diff base, `BASE`, once, and use it everywhere below:
+
+- a branch name: `git fetch origin <branch>`, then `BASE=origin/<branch>`;
+- a commit SHA (`git cat-file -e <sha>^{commit}` succeeds): `BASE=<sha>`, no fetch.
+
+Shell variables don't carry over between your Bash calls: write the value itself into each
+command.
 
 ---
 
 ## Step 3: Get the diff
 
 ```bash
-git diff --name-only origin/<base>...HEAD
-git diff --stat origin/<base>...HEAD
+git diff --name-only <BASE>...HEAD
+git diff --stat <BASE>...HEAD
 ```
 
-- No files changed: "No changes between HEAD and `<base>`. Nothing to review." Stop.
+- No files changed: "No changes between HEAD and `<BASE>`. Nothing to review." Stop.
 - More than 100 files: warn and suggest a scope (`/review just lambda`), then continue.
 
 ---
@@ -156,7 +163,7 @@ findings.
 
 Give the reviewer context only, never your findings or your reasoning:
 
-- the repository path, the branch, and the base (`origin/<base>` or a SHA);
+- the repository path, the branch, and `<BASE>` (from Step 2);
 - the phase doc path in phase mode;
 - the check status ("pytest 112 passed, cfn-lint clean; don't re-run them");
 - `git diff --stat` output;
@@ -221,7 +228,7 @@ it, but if someone asks for it, run it.
 ## Review: <one line on what changed>
 
 **Mode:** <On-demand | Phase: <plan> phase <N>> <+ Multi-cycle (N)>
-**Base:** `<base>` (from <pull request | default>)
+**Base:** `<BASE>` (from <the request | the pull request | default>)
 **Files changed:** <count>
 **Specialists:** <list>
 ```

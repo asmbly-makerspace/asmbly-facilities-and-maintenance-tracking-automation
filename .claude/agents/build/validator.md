@@ -12,27 +12,29 @@ deploys too.
 
 ## Environment
 
-Use a Python 3.12 virtual environment with the test tools. If `.venv` exists and has
-them, activate it. Otherwise:
+Use the Python 3.12 virtual environment in `.venv`, calling its programs by path
+(activating it doesn't carry over between shell commands). If it is missing or lacks the
+tools:
 
 ```bash
-python3.12 -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
+[ -x .venv/bin/python ] || python3.12 -m venv .venv
+.venv/bin/pip install -q -r requirements-dev.txt cfn-lint
 ```
 
-`cfn-lint` and `sam` are needed for template changes: `pip install cfn-lint` if it's
-missing. If `sam` isn't installed, report the SAM checks as SKIP with the reason; don't
-pretend they passed.
+`sam` is needed for template changes. If `sam` isn't installed, report the SAM checks as
+SKIP with the reason; don't pretend they passed.
 
-Set `BASE` to the branch's base (`git merge-base HEAD origin/stage`) and list the
-changes: `git diff --name-only $BASE..HEAD`.
+The base is the SHA the caller gave you (`/build` passes its base), else
+`git merge-base HEAD origin/stage`. List the changes with
+`git diff --name-only <base SHA>..HEAD`. Shell variables don't carry over between your
+Bash calls, so start every block below that uses `$BASE` with `BASE=<base SHA>`.
 
 ## The checks
 
 ### 1. Tests (always)
 
 ```bash
-python -m pytest
+.venv/bin/python -m pytest
 ```
 
 Report the summary line (`N passed, M failed`) and each failure with its file, test
@@ -41,15 +43,16 @@ name, and assertion.
 ### 2. Templates (when `template.yaml`, `templates/`, `template-cicd.yaml`, `configs/`, or `samconfig.toml` changed)
 
 ```bash
-cfn-lint template.yaml templates/*.yaml template-cicd.yaml
+.venv/bin/cfn-lint template.yaml templates/*.yaml template-cicd.yaml
 sam validate --region us-east-2
 ```
 
 If `cfn-lint` reports findings, check whether the base has them too:
 
 ```bash
-BASE_DIR=$(mktemp -d) && git worktree add --quiet "$BASE_DIR" "$BASE"
-(cd "$BASE_DIR" && cfn-lint template.yaml templates/*.yaml template-cicd.yaml)
+ROOT=$(git rev-parse --show-toplevel)
+BASE_DIR=$(mktemp -d) && git worktree add --quiet "$BASE_DIR" <base SHA>
+(cd "$BASE_DIR" && "$ROOT/.venv/bin/cfn-lint" template.yaml templates/*.yaml template-cicd.yaml)
 git worktree remove --force "$BASE_DIR"
 ```
 
@@ -64,11 +67,11 @@ sam build
 
 ### 4. Unused imports and undefined names (advisory)
 
-If `ruff` is available (or `pip install ruff` works), run it on the changed Python files
-only:
+If `.venv/bin/ruff` exists (or `.venv/bin/pip install -q ruff` works), run it on the
+changed Python files only:
 
 ```bash
-ruff check --select F $(git diff --name-only $BASE..HEAD -- '*.py')
+.venv/bin/ruff check --select F $(git diff --name-only <base SHA>..HEAD -- '*.py')
 ```
 
 The project doesn't require ruff, so report it as advisory, but an undefined name is a

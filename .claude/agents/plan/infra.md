@@ -20,7 +20,7 @@ is a failed deploy that only an admin can fix.
 
 ## Your sources
 
-`CLAUDE.md` ("Rules", "Templates"), `docs/Deploying.md`, and the templates themselves.
+`CLAUDE.md` ("Rules" and "Done means verified"), `docs/Deploying.md`, and the templates themselves.
 Copy from the closest existing resource:
 
 - A function with a route: `SlackSlashReorderFunction` in `templates/purchase_request.yaml`
@@ -136,7 +136,7 @@ rename it.
 
 ### Tests and verification (infra)
 
-- `cfn-lint template.yaml templates/*.yaml template-cicd.yaml` reports nothing new.
+- `.venv/bin/cfn-lint template.yaml templates/*.yaml template-cicd.yaml` reports nothing new.
 - `sam validate --region us-east-2` and `sam build` pass.
 - After deploy to stage: the stack update succeeds, and the check that shows it works
   (for example, "`aws logs describe-log-groups --log-group-name-prefix

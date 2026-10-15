@@ -18,7 +18,9 @@ $ARGUMENTS
 
 - **Branch and base.** The current branch, and the base: the one named in the arguments,
   else the open pull request's base (`gh pr view --json baseRefName -q .baseRefName`),
-  else `origin/stage`.
+  else `stage`. A branch name always means its remote copy: `git fetch origin <branch>`
+  and use `origin/<branch>`, because a local `stage` can be out of date. A SHA is used as
+  it is.
 - **What changed.** `git diff <base>...HEAD --stat`. If the arguments name a plan, the
   plan's README and the phase documents marked complete.
 - **Who is asking.** If this runs inside `/offshore` or `/bug-fix`, or the arguments say

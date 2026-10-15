@@ -94,7 +94,7 @@ fails in production, not in tests.
 1. **Read the inputs**: the manifest, the phase document, and the reference files it
    names.
 2. **For each manifest step**: open the reference pattern, write the code and its tests
-   together, then run `python -m pytest <the test path>` before moving on.
+   together, then run `.venv/bin/python -m pytest <the test path>` before moving on.
 3. **Self-review each unit** before handing to the critic:
    - Is every new `os.environ` name set in the template, and every new template variable
      read in the code?

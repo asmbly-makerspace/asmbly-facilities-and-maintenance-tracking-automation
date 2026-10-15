@@ -7,9 +7,9 @@ wrong instead of quietly following either.
 
 | Area | Path | Read first |
 | --- | --- | --- |
-| A Lambda function | `functions/<area>/<name>/` | Its `README.md`, its tests, and "Python" below |
+| A Lambda function | `functions/<area>/<name>/` | Its `README.md`, its tests, and "Rules" below |
 | Shared helpers (AWS, ClickUp, Slack, Neon, Discourse, Google Forms) | `layers/common/python/common/` | The module you call, and its tests in `layers/common/` |
-| Application templates | `template.yaml`, `templates/*.yaml`, `configs/*.json`, `samconfig.toml` | "Templates" below, [docs/Deploying.md](docs/Deploying.md) |
+| Application templates | `template.yaml`, `templates/*.yaml`, `configs/*.json`, `samconfig.toml` | "Rules" below, [docs/Deploying.md](docs/Deploying.md) |
 | The deploy role | `template-cicd.yaml` | [docs/Deploying.md](docs/Deploying.md), "CI/CD Infrastructure" |
 | CI and deploy | `.github/workflows/` | [docs/Deploying.md](docs/Deploying.md) |
 | What each service does and how it is triggered | | [docs/README.md](docs/README.md) |
@@ -17,9 +17,9 @@ wrong instead of quietly following either.
 | The agent team and its skills | `.claude/` | [docs/Working with AI Agents.md](docs/Working%20with%20AI%20Agents.md) |
 
 The closest example of how new code should look is
-`functions/networking/dynamic_dns_update/`: it logs lazily, has type hints, checks its
-caller, and never shows an error's details to the caller. Much of the older code does
-not do these things yet. Follow the rules below in the code you write or change, and
+`functions/networking/dynamic_dns_update/`: it logs lazily, checks its caller, never
+shows an error's details to the caller, and types its helpers (add hints to the handler
+too when you write one). Much of the older code does not do these things yet. Follow the rules below in the code you write or change, and
 leave unrelated code alone.
 
 ## What this repository does
@@ -42,14 +42,16 @@ Before you say a change is done, run the checks for what you touched and report 
 results, including failures:
 
 ```bash
-python -m pytest                                              # every change
-cfn-lint template.yaml templates/*.yaml template-cicd.yaml    # after a template change
-sam validate --region us-east-2                               # after a template change
-sam build                                                     # after a template, layer, or requirements change
+.venv/bin/python -m pytest                                          # every change
+.venv/bin/cfn-lint template.yaml templates/*.yaml template-cicd.yaml  # after a template change
+sam validate --region us-east-2                                     # after a template change
+sam build                                                           # after a template, layer, or requirements change
 ```
 
-Install the test tools with `pip install -r requirements-dev.txt` (and `pip install
-cfn-lint` if it is missing) in a Python 3.12 virtual environment. If a check also fails
+Create the environment once with `python3.12 -m venv .venv && .venv/bin/pip install -r
+requirements-dev.txt cfn-lint`. Call its programs by path as above: activating it doesn't
+carry over between an agent's shell commands. (On Windows the path is
+`.venv/Scripts/`.) If a check also fails
 on `stage` without your change, say so, and make sure your change adds no new failure.
 If you couldn't run a check, say which one and why. A check you didn't run is not a pass.
 

@@ -287,8 +287,10 @@ Brevity rules:
 - **READY TO IMPLEMENT:** tell the user to run `/build <plan> phase <N>`, which uses
   the reference patterns and findings above.
 - **NEEDS REVISION:** list the edits the phase document needs, and offer to make them.
-  Inside `/offshore`, apply them to the phase document and commit
-  `docs(<plan>): prep amendments for phase <N>`.
+  Inside `/offshore`, apply them to the phase document yourself, commit
+  `docs(<plan>): prep amendments for phase <N>`, and return `amendments_applied: true`.
+  If the phase is over 800 lines, don't apply a split: return it as `split`, and the
+  caller decides.
 - **BLOCKED:** say what blocks it and how to unblock it.
 
 **When another skill or agent called you** (`/offshore`, `/bug-fix`, `/build`), end with
@@ -297,6 +299,8 @@ exactly this structured return:
 ```
 { verdict: "READY" | "NEEDS_REVISION" | "BLOCKED",
   amendments: <replacement text for the phase document, or "none">,
+  amendments_applied: true | false,
+  split: <proposed sub-phases, one line each, or null>,
   findings: <top findings, one line each>,
   inline_roles: <specialists you ran inline instead of spawning, or "none"> }
 ```

@@ -19,7 +19,7 @@ it answers for each outcome, and what it logs.
 
 ## Your sources
 
-`CLAUDE.md` ("Rules", "Python"), the closest existing function, and the helpers:
+`CLAUDE.md` ("Rules" and "Done means verified"), the closest existing function, and the helpers:
 
 - New code looks like `functions/networking/dynamic_dns_update/lambda_function.py`:
   `logging` with lazy arguments, type hints, a caller check with `hmac.compare_digest`,
@@ -103,7 +103,7 @@ ID posts no second Slack message".
 
 ### Verification
 
-`python -m pytest functions/<area>/<name>` and then the whole suite. After the stage
+`.venv/bin/python -m pytest functions/<area>/<name>` and then the whole suite. After the stage
 deploy: what to send or click, and what should happen in Slack, ClickUp or the page.
 
 ### Hand-off
