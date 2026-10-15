@@ -167,6 +167,8 @@ def check(cmd):
                 block("git push --all or --mirror", "Push feature/<plan> only.")
             for ref in refs[1:]:
                 dest = ref.lstrip("+").split(":")[-1].replace("refs/heads/", "")
+                if dest in {"HEAD", "@"}:
+                    dest = branch
                 if dest in PROTECTED:
                     block(f"a push to {dest}",
                           "Offshore work stays on feature/<plan>. It reaches stage through the pull request the owner merges.")

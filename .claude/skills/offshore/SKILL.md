@@ -43,7 +43,7 @@ active.
 
 - **The pull request's branch is `feature/<plan-name>`.** If the session started on a
   `claude/<slug>` branch, rename it (Step 2). Never work on `stage`, `main`, or someone
-  else's branch.
+  else's branch, and never replace an existing `feature/<plan-name>`.
 - **No questions** (hook). Decide using `CLAUDE.md`, the plan, and the code; record each
   decision as a `CHECKPOINT.json` event; surface it in the briefing. A decision that is
   genuinely the owner's (a product choice the docs don't settle, a security trade-off)
@@ -111,7 +111,7 @@ If `sam` is missing, the integration gate can't run `sam validate` or `sam build
 Record `{ts, type: "env_missing", tool: "sam"}` and list it as an action item; don't
 fake the check. A missing Python 3.12 or `gh` stops the run: report it and exit.
 
-## Step 1: Resolve the plan and load the checkpoint
+## Step 1: Resolve the plan and turn on the guardrails
 
 Derive `PLAN_NAME` from the input:
 
@@ -121,12 +121,64 @@ Derive `PLAN_NAME` from the input:
 - otherwise a kebab-case name from the description.
 
 ```bash
-PLAN_NAME=<plan-name>                                          # the literal name
-mkdir -p .offshore && date +%s > .offshore/active.sentinel   # turns the guardrails on
-PLAN_DIR=".implementation_plans/$PLAN_NAME"
-CHECKPOINT="$PLAN_DIR/CHECKPOINT.json"
+ROOT=$(git rev-parse --show-toplevel)
+mkdir -p "$ROOT/.offshore" && date +%s > "$ROOT/.offshore/active.sentinel"   # turns the guardrails on
+```
+
+The hook looks for the sentinel at the repository root, so always create and remove it
+by that absolute path, whatever directory you are in. `.offshore/` is git-ignored; it
+holds the sentinel, the hook's log, and scratch files such as the pull request body.
+
+## Step 2: The feature branch
+
+The branch is `feature/<plan-name>`, from `stage`. On a resumed run it already exists,
+locally or on GitHub, and holds the earlier work: use it, never replace it. Run this on
+every firing; `stage` may have moved.
+
+```bash
+PLAN_NAME=<plan-name>
+B="feature/$PLAN_NAME"
+git fetch origin stage
+git fetch origin "$B" 2>/dev/null || true
+CURRENT=$(git rev-parse --abbrev-ref HEAD)
+if [ "$CURRENT" = "$B" ]; then
+  :
+elif git show-ref --verify --quiet "refs/heads/$B"; then
+  git switch "$B" || exit 1
+elif git show-ref --verify --quiet "refs/remotes/origin/$B"; then
+  git switch -c "$B" --track "origin/$B" || exit 1
+else
+  case "$CURRENT" in
+    claude/*) git branch -m "$B" || exit 1 ;;   # a fresh harness branch: rename it (-m never overwrites)
+    stage|main) git switch -c "$B" origin/stage || exit 1 ;;
+    *) echo "Refusing to take over '$CURRENT'. Check out stage, a claude/* branch, or $B." >&2; exit 1 ;;
+  esac
+fi
+# Someone (the owner) may have pushed to the branch since the last run: take it, or stop.
+if git show-ref --verify --quiet "refs/remotes/origin/$B"; then
+  git merge --ff-only "origin/$B" || { echo "$B and origin/$B have diverged. Stop and report it." >&2; exit 1; }
+fi
+git branch --unset-upstream 2>/dev/null || true   # never track stage; push -u below sets origin/$B
+git rebase --autostash origin/stage || { git rebase --abort; git merge --no-edit origin/stage || exit 1; }
+git push -u --force-with-lease origin "$B"
+```
+
+- `--autostash` keeps the uncommitted `CHECKPOINT.json` through the rebase.
+- Rebase, not merge: a merge commit is one no squash will absorb. Fall back to a merge
+  only when the rebase conflicts in a way you can't resolve mechanically.
+- A rebase gives the phase commits new SHAs, so the SHAs in the checkpoint go stale. The
+  briefing takes them from `git log` (Step 8).
+- If the push is refused because this environment only lets you push its own `claude/*`
+  branch, rename back (`git branch -m <the claude/* name>`), use that branch for the whole
+  run, record an `env_branch` event, and say in the briefing that the owner may want to
+  rename it. Never push anywhere else to get around it.
+
+### Step 2b: Load the checkpoint
+
+```bash
+PLAN_DIR=".implementation_plans/<plan-name>"
 mkdir -p "$PLAN_DIR"
-[ -f "$CHECKPOINT" ] || cat > "$CHECKPOINT" <<'EOF'
+[ -f "$PLAN_DIR/CHECKPOINT.json" ] || cat > "$PLAN_DIR/CHECKPOINT.json" <<'JSON'
 {
   "plan_name": "",
   "feature_branch": "",
@@ -138,37 +190,16 @@ mkdir -p "$PLAN_DIR"
   "admin_actions": [],
   "events": []
 }
-EOF
-cat "$CHECKPOINT"
+JSON
+cat "$PLAN_DIR/CHECKPOINT.json"
 ```
+
+This runs after Step 2, on the feature branch, so a resumed run finds the checkpoint it
+left there.
 
 - `status: "complete"` → print `OFFSHORE COMPLETE: see <PLAN_DIR>/BRIEFING.md`, remove
   the sentinel, exit.
 - `status: "blocked-all"` → print the blocking events, remove the sentinel, exit.
-
-`.offshore/` is git-ignored; it holds only the sentinel and the hook's log.
-
-## Step 2: The feature branch
-
-The branch is always `feature/$PLAN_NAME`, branched from `stage`.
-
-```bash
-CURRENT=$(git rev-parse --abbrev-ref HEAD)
-case "$CURRENT" in
-  "feature/$PLAN_NAME") : ;;
-  claude/*) git branch -M "$CURRENT" "feature/$PLAN_NAME" ;;   # a harness branch: rename it
-  stage|main) git fetch origin stage && git switch -c "feature/$PLAN_NAME" origin/stage ;;
-  *) echo "Refusing to take over '$CURRENT'. Check out stage, a claude/* branch, or feature/$PLAN_NAME." >&2; exit 1 ;;
-esac
-git branch --unset-upstream 2>/dev/null || true   # never track stage: a bare push must not reach it
-git fetch origin stage
-git rebase origin/stage || { git rebase --abort; git merge --no-edit origin/stage; }
-git push -u --force-with-lease origin "feature/$PLAN_NAME"
-```
-
-Rebase, not merge: a merge commit is one no squash will absorb. Fall back to a merge
-only when the rebase conflicts in a way you can't resolve mechanically. Run this step on
-every firing; `stage` may have moved.
 
 ## Step 3: Plan, if there is no plan
 
@@ -268,10 +299,20 @@ Handle the return:
 
 - `done` → mark the phase `done` in the checkpoint, append its admin actions, deferrals
   and decisions as events, then run Step 4a.
-- `blocked` / `review-stuck` → **don't squash**: the history is the post-mortem. Mark the
-  phase, commit the checkpoint as `chore(<plan>): phase <id> <blocked|review-stuck>:
-  <reason>` (the one legitimate standalone checkpoint commit), push, and continue with
-  the next phase unless it depends on this one (then mark it `blocked` too).
+- `blocked` / `review-stuck` → **don't squash**: the history is the post-mortem. But the
+  half-done code must not ship in the pull request, so move it aside:
+
+  ```bash
+  git branch wip/<plan>-phase-<id>              # keep the commits as they are
+  git push origin wip/<plan>-phase-<id>
+  git reset --keep <PRE_PHASE_SHA>              # the feature branch goes back to before the phase
+  ```
+
+  (`--keep` refuses to touch uncommitted changes, so the checkpoint on disk survives.)
+  Then mark the phase with its `wip/` branch, commit the checkpoint as
+  `chore(<plan>): phase <id> <blocked|review-stuck>: <reason>` (the one legitimate
+  standalone checkpoint commit), push with `--force-with-lease`, and continue with the
+  next phase unless it depends on this one (then mark it `blocked` too).
 - `needs-split` → split the phase doc as proposed (a small inline edit), update the
   README tracker and `phases[]`, and restart Step 4 with the first new sub-phase.
 
@@ -319,8 +360,11 @@ Agent(
     - every new API route has a DefinitionBody path, an AWS::Lambda::Permission, and the
       nested stack output it references.
 
-    Run the same commands on origin/stage (in a worktree) for any check that fails, so
-    you can tell a failure the branch caused from one that was already there.
+    Run the same commands on origin/stage for any check that fails, so you can tell a
+    failure the branch caused from one that was already there: `git worktree add <dir>
+    origin/stage`, run them from <dir> with the main checkout's tools
+    (`<repo root>/.venv/bin/python -m pytest`, `<repo root>/.venv/bin/cfn-lint ...`, since
+    the worktree has no .venv), then `git worktree remove --force <dir>`.
     Fix what the branch caused, commit, and re-run until clean. A failure that needs an
     architectural change → return stuck.
 
@@ -430,10 +474,11 @@ Agent(
     - CI failure you can't read: at most 2 diagnostic commits, then return stuck.
     - Review comments (bug, security, failing test): /address-pr-comments.
       Style comments already answered twice: reply pointing at the earlier answer.
-    - Merge conflicts: rebase onto origin/stage, re-run the checks, and push with
-      --force-with-lease.
-    - Ready when: the checks are green, no comment is unanswered, and the branch has no
-      conflicts. If the repository has an automated review workflow, also wait for its
+    - Conflicts, or behind stage (gh pr view <N> --json mergeStateStatus shows DIRTY or
+      BEHIND; stage requires an up-to-date branch): rebase onto origin/stage, re-run the
+      checks, and push with --force-with-lease.
+    - Ready when: the checks are green, no comment is unanswered, and mergeStateStatus is
+      neither DIRTY nor BEHIND. If the repository has an automated review workflow, also wait for its
       comment to be newer than the head commit.
 
     If you fix something yourself instead, squash it the same way before pushing:
@@ -455,7 +500,10 @@ unresolved.
 
 Copy `.claude/skills/offshore/templates/BRIEFING.template.md` to `$PLAN_DIR/BRIEFING.md`
 and fill in every section from the checkpoint: the pull request (green, **not merged**),
-the admin actions first, the phases table with each squashed SHA, run health, decisions,
+the admin actions first, the phases table with each phase's commit (from
+`git log --oneline origin/stage..HEAD`, matched by the `phase <id>` subject: a rebase may
+have changed the SHAs the checkpoint recorded) and each blocked phase's `wip/` branch, run
+health, decisions,
 deferrals, blockers, environment skips, integration results, and review rounds.
 
 Commit the briefing together with the final checkpoint (`status: "complete"` and a
@@ -466,7 +514,7 @@ git add "$PLAN_DIR/BRIEFING.md" "$PLAN_DIR/CHECKPOINT.json"
 git commit -m "docs(<plan>): offshore briefing"
 git push --force-with-lease origin "feature/$PLAN_NAME"
 gh pr checks <N> --watch --interval 30      # the push starts the checks again
-rm -rf .offshore
+rm -rf "$(git rev-parse --show-toplevel)/.offshore"
 ```
 
 If the checks fail now, go back to Step 7's loop before printing anything. Report the
@@ -488,7 +536,9 @@ If the owner used `/loop`, tell them to stop it.
 ## Stopping early (only at a boundary)
 
 If your context is getting heavy and you are between steps (not inside a phase or the
-pull-request loop): make sure the checkpoint is on disk, then print
+pull-request loop): commit the checkpoint as `chore(<plan>): offshore checkpoint` and push
+it with `--force-with-lease`, so a run in a fresh checkout can resume (it is uncommitted
+between steps otherwise), then print
 
 ```
 OFFSHORE PARTIAL
@@ -497,9 +547,9 @@ Next: <phase id | integration gate | docs | manual QA | pull request | briefing>
 Run /offshore <plan> again to continue.
 ```
 
-and exit. Remove `.offshore/active.sentinel` first, so ordinary sessions in this checkout
-aren't held to offshore's rules; Step 1 creates it again when the run resumes. The
-checkpoint is what carries the state.
+and exit. Remove `"$(git rev-parse --show-toplevel)/.offshore/active.sentinel"` first, so
+ordinary sessions in this checkout aren't held to offshore's rules; Step 1 creates it
+again when the run resumes. The checkpoint is what carries the state.
 
 ## The branch at the end
 
@@ -516,7 +566,9 @@ feat(<plan>): phase 1 <title>
 docs(<plan>): implementation plan (epic #N)
 ```
 
-That is `phases + 4 + review rounds`, plus one for an integration commit. Before the
+That is `phases + 4 + review rounds`, plus one for an integration commit. A blocked or
+stuck phase counts as its one `chore(<plan>): phase <id> blocked` commit; its work is on
+its `wip/` branch, not here. Each early stop adds one `offshore checkpoint` commit. Before the
 briefing, count: `git log --oneline origin/stage..HEAD | wc -l`. More than that plus 2
 means a squash was skipped. Find it (standalone checkpoint commits, per-file plan
 commits, unsquashed review fixes) and squash it before you finish.

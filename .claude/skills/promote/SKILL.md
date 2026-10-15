@@ -27,6 +27,27 @@ gh pr list --base stage --state merged --limit 30 --json number,title,mergedAt,m
 Keep the pull requests whose merge commit is in `origin/main..origin/stage`. If there is
 nothing, say so and stop.
 
+## 1b. Is stage up to date with main?
+
+```bash
+git log --oneline origin/stage..origin/main
+```
+
+`main`'s ruleset requires a pull request's branch to be up to date with `main` before it
+can merge. Every promotion leaves a merge commit on `main` that `stage` doesn't have, so
+this usually lists the previous promotion's merge commit (and any change that went
+straight to `main`). If it lists anything, `stage` must take it first:
+
+```bash
+gh pr create --base stage --head main --title "Sync main into stage" \
+  --body "Brings the commits on main that stage lacks, so the promotion can merge. No new changes."
+gh pr checks <sync N> --watch --interval 30
+```
+
+Ask the person to merge it with a merge commit (it changes no files when `main` only has
+merge commits). Don't use "Update branch" on the promotion pull request: that would push
+to `stage` directly, which its ruleset forbids. When the sync has merged, fetch and go on.
+
 ## 2. Is stage healthy?
 
 ```bash
@@ -85,8 +106,10 @@ SHA=$(gh pr view <N> --json headRefOid --jq .headRefOid)
 gh pr merge <N> --merge --match-head-commit "$SHA"
 ```
 
-Use `--merge`, never `--squash` or `--rebase`: a squash would give `main` a commit that
-isn't on `stage`, and the branches would drift. Never delete the `stage` branch.
+Use `--merge`, as every earlier promotion did: `main` keeps each commit from `stage`, so
+the next sync from `main` to `stage` (step 1b) brings back only this merge commit and no
+changes. A squash would put the same changes on `main` as a different commit, and every
+later sync would have to reconcile the two. Never delete the `stage` branch.
 
 ## 7. Watch the prod deploy
 

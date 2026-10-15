@@ -51,11 +51,12 @@ This stack (`AsmblyFacilitiesMaintTrackingStack-cicd`) is **NEVER** deployed by 
 For example, if you add a function `FooFunction-${Stage}` with a log group `/asmbly/lambda/FooFunction-${Stage}`, add both names to **both** `GitHubDeployPolicystage` and `GitHubDeployPolicyprod`. If you add an SQS queue and the `prod` deploy fails with `is not authorized to perform: sqs:CreateQueue`, add `sqs:CreateQueue` scoped to that queue's ARN. Never use `Resource: "*"` unless the action does not support resource-level permissions.
 
 1.  **Edit `template-cicd.yaml`.**
-2.  **Look up the REST API IDs.** They are the host prefix of each stack's `FacilitiesApiUrl` output:
+2.  **Look up the REST API IDs.** Each is the physical ID of the stack's `FacilitiesApi` resource (run it once for `-stage` and once for `-prod`):
     ```bash
-    aws cloudformation describe-stacks --stack-name AsmblyFacilitiesMaintTrackingStack-stage --region us-east-2 \
-      --query "Stacks[0].Outputs[?OutputKey=='FacilitiesApiUrl'].OutputValue" --output text
+    aws cloudformation describe-stack-resource --stack-name AsmblyFacilitiesMaintTrackingStack-stage --region us-east-2 \
+      --logical-resource-id FacilitiesApi --query StackResourceDetail.PhysicalResourceId --output text
     ```
+    Don't use the stacks' `FacilitiesApiUrl` output for this: today it reads `https://{FacilitiesApi}.execute-api...` because the template's `!Sub` is missing a `$`.
 3.  **Deploy the CICD stack** from your local machine:
     ```bash
     sam deploy --template-file template-cicd.yaml --stack-name AsmblyFacilitiesMaintTrackingStack-cicd \
@@ -70,24 +71,23 @@ If the FacilitiesApi REST API is ever replaced (new ID), or a stack is created f
 
 ## Automated Production Deployment (via GitHub Actions)
 
-The `prod` environment is deployed automatically. **Any push or merge to the `main` branch will trigger the `Deploy Production Pipeline` workflow.**
+The `prod` environment is deployed automatically. **Any push or merge to the `main` branch will trigger the `Deploy Production Pipeline` workflow** (`.github/workflows/deploy.yml`).
 
-This workflow securely authenticates with AWS by assuming the `GitHub-OIDC-facilities-automation-deploy` role (which is managed by our `template-cicd.yaml` stack).
+The `stage` environment is deployed the same way: **any push or merge to the `stage` branch triggers the `Deploy Staging Pipeline` workflow** (`.github/workflows/deploy-staging.yml`).
+
+Both workflows authenticate with AWS by assuming the `GitHub-OIDC-facilities-automation-deploy` role (which is managed by our `template-cicd.yaml` stack).
 
 You should not need to deploy to `prod` manually.
 
 ### The Deployment Pipeline
 
-The automated workflow consists of two main jobs:
+Each workflow has one job, **Deploy to AWS**:
 
-1.  **Deploy to AWS:**
-    * This job builds the SAM application inside a Docker container that mimics the Lambda environment.
-    * It then deploys all the AWS resources defined in the templates to the `prod` environment.
+* It builds the SAM application inside a Docker container that mimics the Lambda environment.
+* It deploys all the AWS resources defined in the templates to its environment.
+* It reads the API's URL from the stack outputs.
 
-2.  **Update Slack Event URL:**
-    * This job runs only after the AWS deployment succeeds.
-    * It executes the `scripts/update_slack_manifest.py` Python script.
-    * This script fetches the newly deployed API Gateway URL from the CloudFormation stack outputs and programmatically updates the Slack App's "Event Subscription URL" via the Slack API. This keeps the Slack integration pointing to the correct live endpoint without any manual intervention.
+Slack, ClickUp and the other services call the permanent `https://facilities.asmbly.org` address, so nothing has to be updated after a prod deploy. (`scripts/update_slack_manifest.py` is no longer run by a workflow.)
 
 ## Manual Deployment (for Dev & Stage)
 
@@ -107,7 +107,7 @@ The `samconfig.toml` file is pre-configured for `dev`, `stage`, and `prod` envir
 
 ### Environment Strategy
 
-Each environment serves a specific purpose in our development lifecycle. Manual deployments should be targeted at `dev` and `stage`.
+Each environment serves a specific purpose in our development lifecycle. `stage` and `prod` are deployed by the workflows when their branches change, so manual deployments are for `dev`.
 
 * **`dev` (Development)**
     * **Purpose:** The `dev` environment is for active development and rapid iteration.
@@ -115,7 +115,7 @@ Each environment serves a specific purpose in our development lifecycle. Manual 
 
 * **`stage` (Staging)**
     * **Purpose:** `stage` is a pre-production environment that mirrors `prod` as closely as possible. It is used to verify that features are working correctly and to conduct final testing before a production release.
-    * **Expectations:** This environment should be stable. Deployments to `stage` should only happen when a feature is complete and has passed all local tests.
+    * **Expectations:** This environment should be stable. It is deployed from the `stage` branch, so a change reaches it when its pull request merges, which should only happen when the feature is complete and has passed all tests.
 
 * **`prod` (Production)**
     * **Purpose:** This is the live environment used by end-users.

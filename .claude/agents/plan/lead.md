@@ -65,8 +65,11 @@ Order:
 2. **The function.** Handler, tests and fixtures, its README, and its resources in the
    nested template (function, log group, IAM, environment variables, outputs).
 3. **Wiring.** In `template.yaml`: the API path, the invoke permission, new parameters
-   passed to the nested stack, router configuration. The new names in both deploy-role
-   policies in `template-cicd.yaml`.
+   passed to the nested stack, router configuration.
+
+Whichever phase adds a named resource (an SSM parameter in phase 1, a function and its log
+group in phase 2) also adds its names to both deploy-role policies in `template-cicd.yaml`,
+and lists the admin redeploy. A phase that leaves them for later fails its stage deploy.
 4. **Docs.** `docs/README.md`: what it does, how it is triggered, its URL, where the
    caller is configured.
 

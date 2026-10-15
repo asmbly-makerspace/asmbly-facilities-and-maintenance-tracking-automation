@@ -248,7 +248,8 @@ the docs now say matches the code. Record the decision either way ("docs: update
 gh pr checks <n> --watch
 ```
 
-- **Conflicts** (`mergeStateStatus` is `DIRTY`): no checks run. Merge `origin/stage` in,
+- **Conflicts or behind** (`gh pr view <n> --json mergeStateStatus` shows `DIRTY` or
+  `BEHIND`; `stage` only merges branches that are up to date): merge `origin/stage` in,
   re-run the checks, push.
 - **A failing check:** fix it in a `general-purpose` agent that invokes
   `Skill(skill: "address-pr-comments", args: "<n>")`. It pushes its own fixes. A check

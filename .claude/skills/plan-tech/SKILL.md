@@ -125,8 +125,11 @@ Read `.claude/agents/plan/lead.md` and adopt the Lead Architect. Apply its proce
    configuration (`configs/*.json`, SSM parameters) and common-layer helpers →
    the function, its tests, and its nested template resources →
    root wiring in `template.yaml` (API path, invoke permission, parameters, router
-   configuration) and the deploy-role names in `template-cicd.yaml` →
-   docs. Each phase must pass every check in `CLAUDE.md` on its own.
+   configuration) →
+   docs. Each phase must pass every check in `CLAUDE.md` on its own. **The deploy-role
+   names go in the phase that adds the resource**, in both policies in
+   `template-cicd.yaml`: `/prep` and the reviewers treat a named resource without them as
+   a failed deploy waiting to happen.
 4. Size each phase: S under 150 lines, M under 400, L under 800. Larger: split it.
    Don't make phases of 30 lines either; merge small related work.
 5. Draw `depends_on` and the **file-overlap matrix**. For each pair of phases without a

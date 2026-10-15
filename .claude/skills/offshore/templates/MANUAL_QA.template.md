@@ -43,6 +43,10 @@ the webhook steps below send the request by hand with `curl`.
      -d @functions/<area>/<name>/tests/fixtures/<payload>.json
    ```
 
+   If the route checks its caller, add what it checks: the shared-secret header, a Slack
+   signature computed from the signing secret, or a Cognito token. Say where the tester
+   gets the secret (the Secrets Manager name); never write the secret itself here.
+
    **Expect:** <the response code and body>, <the Slack message in #<channel> that says
    ...>, <the ClickUp field <name> set to ...>.
 2. <The failure a person can cause: a bad payload, a missing or wrong credential.>
