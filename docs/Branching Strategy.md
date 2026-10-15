@@ -3,17 +3,19 @@
 This document outlines the branching strategy for this repository. The goal is to maintain the stability of the `main` branch while allowing for organized development of new features and fixes.
 
 ## Table of Contents
-- [1. The `main` Branch](#1-the-main-branch)
+- [1. The `main` and `stage` Branches](#1-the-main-and-stage-branches)
 - [2. Development Branches](#2-development-branches)
   - [Branch Naming Convention](#branch-naming-convention)
 - [3. The Workflow](#3-the-workflow)
 
-## 1. The `main` Branch
+## 1. The `main` and `stage` Branches
 
-The `main` branch is the single source of truth and represents the production-ready code.
+The `main` branch represents production. Every merge to `main` deploys the `prod` stack.
 
-* **Purpose:** Contains stable, tested, and deployable code. Every commit on `main` should, in theory, be safe to deploy.
-* **Rule:** **Direct commits to the `main` branch are strictly prohibited.** All changes must be merged into `main` through a Pull Request (PR).
+The `stage` branch is where finished work lands first, and it is the repository's default branch. Every merge to `stage` deploys the `stage` stack, where changes are checked before they reach production.
+
+* **Rule:** **Direct commits to `main` and `stage` are strictly prohibited.** Changes reach `stage` through a Pull Request (PR), and `stage` reaches `main` through a PR from `stage` to `main`.
+* Both branches require the `test` check to pass before a PR can merge.
 
 ## 2. Development Branches
 
@@ -35,11 +37,11 @@ Use the following prefixes to keep branch names clear and organized:
 Here is the step-by-step process for making a change:
 
 1.  **Create a New Branch:**
-    Before starting work, pull the latest changes from the `main` branch. Then, create a new branch from `main` with a descriptive name.
+    Before starting work, pull the latest changes from the `stage` branch. Then, create a new branch from `stage` with a descriptive name.
     ```bash
     # Get the latest code
-    git checkout main
-    git pull origin main
+    git checkout stage
+    git pull origin stage
 
     # Create your new feature branch
     git checkout -b feature/my-new-feature
@@ -53,7 +55,7 @@ Here is the step-by-step process for making a change:
     ```
 
 3.  **Open a Pull Request (PR):**
-    When you are ready for your changes to be reviewed, push your branch to the remote repository and open a Pull Request to merge your branch into `main`.
+    When you are ready for your changes to be reviewed, push your branch to the remote repository and open a Pull Request to merge your branch into `stage`.
     ```bash
     git push origin feature/my-new-feature
     ```
@@ -63,4 +65,7 @@ Here is the step-by-step process for making a change:
     At least one other collaborator must review and approve your Pull Request before it can be merged. This ensures code quality and shared knowledge.
 
 5.  **Merge and Clean Up:**
-    Once the PR is approved, the changes can be merged into `main`. After merging, delete your development branch to keep the repository tidy.
+    Once the PR is approved, the changes can be merged into `stage`, which deploys them to the `stage` stack. After merging, delete your development branch to keep the repository tidy.
+
+6.  **Promote to Production:**
+    When the changes work on the `stage` stack, open a PR from `stage` to `main` and merge it with a merge commit (not a squash), so the two branches keep the same history. Merging it deploys to `prod`. The `/promote` skill does this step (see [Working with AI Agents](Working%20with%20AI%20Agents.md)).

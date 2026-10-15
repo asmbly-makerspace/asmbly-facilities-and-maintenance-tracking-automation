@@ -20,3 +20,7 @@ __pycache__/
 # KEEP IGNORING user-specific files!
 .idea/workspace.xml
 .idea/tasks.xml
+# AI agents: per-person settings, worktrees, and /offshore run state
+.claude/settings.local.json
+.claude/worktrees/
+.offshore/
