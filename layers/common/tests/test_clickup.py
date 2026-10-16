@@ -279,3 +279,43 @@ def test_update_task_list_response_raises_same_value_error(mock_make_request, ca
     )
     assert capsys.readouterr().out == ""
     assert len(_clickup_errors(caplog)) == 1
+
+
+@patch('common.clickup._make_clickup_request')
+def test_update_task_missing_id_logs_no_task_id(mock_make_request, caplog, capsys):
+    """A response without an ID logs that no task ID came back, not 'task ID None'."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    response_data = {"err": "Team not authorized", "ECODE": "OAUTH_027"}
+    mock_make_request.return_value = response_data
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.update_task("token", "t1", {"status": "done"})
+
+    assert str(excinfo.value) == (
+        "ClickUp task update for t1 returned 200 OK but the response body indicates a failure. "
+        f"Response: {json.dumps(response_data)} | ClickUp Error: Team not authorized"
+    )
+    assert capsys.readouterr().out == ""
+    errors = _clickup_errors(caplog)
+    assert len(errors) == 1
+    message = errors[0].getMessage()
+    assert "returned no task ID" in message
+    assert "None" not in message
+    assert "OAUTH_027" in message
+    assert "Team not authorized" not in caplog.text
+
+
+@patch('common.clickup._make_clickup_request')
+def test_update_task_mismatch_with_non_id_value_not_logged(mock_make_request, caplog, capsys):
+    """A returned 'id' that doesn't look like a task ID is not copied into the log."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    mock_make_request.return_value = {"id": "Jane Member jane@example.com"}
+
+    with pytest.raises(ValueError):
+        clickup.update_task("token", "t1", {"status": "done"})
+
+    assert capsys.readouterr().out == ""
+    errors = _clickup_errors(caplog)
+    assert len(errors) == 1
+    assert "<invalid>" in errors[0].getMessage()
+    assert "jane@example.com" not in caplog.text

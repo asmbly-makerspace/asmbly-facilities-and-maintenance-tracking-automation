@@ -23,6 +23,16 @@ def _ecode_for_log(body: Any) -> str | None:
     return "<invalid>"
 
 
+_TASK_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _task_id_for_log(task_id: Any) -> str:
+    """Return a task ID from a ClickUp response if it looks like one, '<invalid>' if not."""
+    if isinstance(task_id, str) and _TASK_ID_PATTERN.match(task_id):
+        return task_id
+    return "<invalid>"
+
+
 @dataclass
 class ClickUpTask:
     """A simple data class to hold processed task information."""
@@ -88,10 +98,16 @@ def update_task(api_token: str, task_id: str, payload: dict[str, Any]) -> Any:
     if 'id' not in response_data or response_data.get('id') != task_id:
         error_message = f"ClickUp task update for {task_id} returned 200 OK but the response body indicates a failure. Response: {json.dumps(response_data)}"
         returned_id = response_data.get('id') if isinstance(response_data, dict) else None
-        logger.error(
-            "ClickUp task update for %s returned task ID %s instead (ECODE=%s)",
-            task_id, returned_id, _ecode_for_log(response_data),
-        )
+        if returned_id is None:
+            logger.error(
+                "ClickUp task update for %s returned no task ID (ECODE=%s)",
+                task_id, _ecode_for_log(response_data),
+            )
+        else:
+            logger.error(
+                "ClickUp task update for %s returned task ID %s instead (ECODE=%s)",
+                task_id, _task_id_for_log(returned_id), _ecode_for_log(response_data),
+            )
         # We can also check for a specific error key if ClickUp uses one.
         if 'err' in response_data:
             error_message += f" | ClickUp Error: {response_data['err']}"
