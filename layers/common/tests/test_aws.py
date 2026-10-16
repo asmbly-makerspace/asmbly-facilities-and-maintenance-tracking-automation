@@ -202,3 +202,4 @@ def test_get_secret_json_client_error_without_code_reraises_same_exception(mock_
     errors = _aws_errors(caplog)
     assert len(errors) == 1
     assert 'some-secret' in errors[0].getMessage()
+    assert 'Unknown' in errors[0].getMessage()

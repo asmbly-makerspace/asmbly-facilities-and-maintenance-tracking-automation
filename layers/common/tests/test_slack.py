@@ -169,5 +169,6 @@ def test_send_slack_message_exception_logs_type_only(mock_requests_post, caplog,
     errors = _slack_errors(caplog)
     assert len(errors) == 1
     assert "ConnectionError" in errors[0].getMessage()
+    assert "general" in errors[0].getMessage()
     assert "pk_EXC_MARKER" not in caplog.text
     assert "xoxb-TOKEN-MARKER" not in caplog.text
