@@ -10,7 +10,7 @@ estimated_size: M
 
 # Phase 3: GitHub App client
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-16 on branch claude/inspiring-bell-o4i5t9
 
 ## Required reading
 
@@ -176,8 +176,41 @@ helper until phase 5.)
 
 ## Hand-off
 
-- `common.github_app`: `app_jwt`, `installation_token(app_id, installation_id,
-  private_key, repository, permissions)`, `GitHubRepo(token, owner, repo,
-  writable_branch_prefix)` with the methods above, `GitHubError`, `GitHubConflict`.
-- `requirements-dev.txt` has `PyJWT[crypto]` pinned; phase 5 pins the same version in
-  the function's `requirements.txt`.
+- `common.github_app` (`layers/common/python/common/github_app.py`):
+  - `app_jwt(app_id, private_key, now=None) -> str`.
+  - `installation_token(app_id, installation_id, private_key, repository, permissions,
+    timeout=10.0) -> str`. `repository` is the bare name (`"asmbly-classes"`, no owner);
+    an empty name, a name with `/`, or an empty `permissions` raises `ValueError` before
+    any request (an empty `permissions` would get every permission the App has).
+  - `GitHubRepo(token, owner, repo, writable_branch_prefix, timeout=10.0)` with
+    `get_branch_sha`, `get_commit_tree_sha`, `list_directory`, `create_blob`,
+    `create_tree`, `create_commit`, `create_branch`, `update_branch`,
+    `find_open_pull_request`, `create_pull_request`, `update_pull_request`, as specified
+    above. Pull request methods return `{"number", "html_url"}` only.
+  - `GitHubRepo(...)` raises `ValueError` when `writable_branch_prefix` doesn't end with
+    `/` (so an empty or mistyped prefix like `"m"` can't admit `main`). Phase 5's config
+    must set the prefix to `class-photo/`.
+  - `create_branch` / `update_branch` raise `ValueError` (no request) when the branch is
+    not strictly under the prefix (equal to it, or containing `..`, is refused too).
+  - Errors: `GitHubError(operation, status)` with `.operation` and `.status`;
+    `GitHubConflict` (subclass) for a 409 or 422 from `create_branch`, `update_branch`
+    or `create_pull_request` only. Every other operation's 409 or 422 (including
+    `installation_token`, `create_blob`, `create_tree`, `create_commit`,
+    `update_pull_request`) is a plain `GitHubError`. GitHub also answers 422 to these
+    three for reasons that aren't races (a deleted ref, "no commits between"), so phase 4
+    should treat a conflict as "look again", not always as a concurrent submission. A network error or timeout has
+    `status=None`; a 2xx answer that isn't JSON or lacks a field the method reads is a
+    `GitHubError` too (`status` is the HTTP status, or `None` for a missing field). Every
+    failure logs one line, `GitHub <operation> failed: status <status> (<reason>)`, where
+    reason is a fixed phrase or an exception class name. Errors are raised `from None`,
+    so no chained exception carries a key, URL or body into a traceback.
+  - `list_directory` on a path that is a file raises `GitHubError`; a missing path
+    returns `[]`. The contents API lists at most 1,000 entries per directory (the
+    images directory has far fewer).
+- The module imports `jwt` and `requests` at import time, so the phase 5 function needs
+  `PyJWT[crypto]==2.15.1` in its `requirements.txt` and the requests layer
+  (`RequestsLayerARN`), like the other functions that use the common layer.
+- `requirements-dev.txt` pins `PyJWT[crypto]==2.15.1` (newest 2.x at least two weeks old
+  on 2026-10-16); phase 5 pins the same version.
+- Tests: `layers/common/tests/test_github_app.py` (`requests_mock`, a module-scoped RSA
+  key from `cryptography`).

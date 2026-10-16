@@ -19,13 +19,16 @@
       "file": "phase-2-photo-checks.md",
       "status": "done",
       "pre_sha": "425febe",
-      "review_rounds": "2 inline + 1 independent (APPROVED, 3 WARNs fixed)"
+      "review_rounds": "2 inline + 1 independent (APPROVED, 3 WARNs fixed)",
+      "squashed_sha": "f1a7c81"
     },
     {
       "id": 3,
       "title": "GitHub App client",
       "file": "phase-3-github-app-client.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "f1a7c81",
+      "review_rounds": "1 inline + 1 independent (APPROVED; 2 hardenings applied)"
     },
     {
       "id": 4,
@@ -134,6 +137,26 @@
       "type": "deferred",
       "phase": 2,
       "detail": "Valid-but-rare JPEGs (bytes between segments, DNL height 0, malformed EXIF APP1) are refused as unreadable; note in manual QA."
+    },
+    {
+      "ts": "2026-10-17T01:22:00Z",
+      "type": "phase_start",
+      "phase": 3
+    },
+    {
+      "type": "phase_done",
+      "phase": 3,
+      "pytest": "1297 passed"
+    },
+    {
+      "type": "decision",
+      "phase": 3,
+      "detail": "PyJWT[crypto]==2.15.1 pinned (newest 2.x >= 2 weeks old); function requirements must pin the same. Installation tokens always scoped to one repo + explicit permissions. Branch prefix must end with '/'; GitHubConflict only from create_branch/update_branch/create_pull_request."
+    },
+    {
+      "type": "deferred",
+      "phase": 3,
+      "detail": "cryptography is unpinned transitively (same practice as slack-sdk)."
     }
   ],
   "stories": [

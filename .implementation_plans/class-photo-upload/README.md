@@ -44,7 +44,7 @@ which closes them all.
 | --- | --- | --- | --- | --- |
 | 1 | [Class list and file-name rule](phase-1-class-names.md) | layer, lambda | L | [x] Complete |
 | 2 | [Photo checks](phase-2-photo-checks.md) | lambda | M | [x] Complete |
-| 3 | [GitHub App client](phase-3-github-app-client.md) | layer | M | [ ] Pending |
+| 3 | [GitHub App client](phase-3-github-app-client.md) | layer | M | [x] Complete |
 | 4 | [Pull request flow and dry run](phase-4-pull-request-flow.md) | lambda | M | [ ] Pending |
 | 5 | [API function, routes and Cognito authorizer](phase-5-api-and-infra.md) | lambda, infra | L | [ ] Pending |
 | 6 | [The upload page and docs](phase-6-upload-page.md) | lambda, infra, docs | L | [ ] Pending |
