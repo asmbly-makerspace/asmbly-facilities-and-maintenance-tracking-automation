@@ -28,13 +28,16 @@
       "file": "phase-3-github-app-client.md",
       "status": "done",
       "pre_sha": "f1a7c81",
-      "review_rounds": "1 inline + 1 independent (APPROVED; 2 hardenings applied)"
+      "review_rounds": "1 inline + 1 independent (APPROVED; 2 hardenings applied)",
+      "squashed_sha": "e8daf15"
     },
     {
       "id": 4,
       "title": "Pull request flow and dry run",
       "file": "phase-4-pull-request-flow.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "e8daf15",
+      "review_rounds": "3 inline + 1 independent (APPROVED; 2 WARNs + 1 note fixed)"
     },
     {
       "id": 5,
@@ -157,6 +160,30 @@
       "type": "deferred",
       "phase": 3,
       "detail": "cryptography is unpinned transitively (same practice as slack-sdk)."
+    },
+    {
+      "type": "phase_start",
+      "phase": 4
+    },
+    {
+      "type": "phase_done",
+      "phase": 4,
+      "pytest": "1362 passed"
+    },
+    {
+      "type": "decision",
+      "phase": 4,
+      "detail": "Tree and PR description always computed from current main. Repeat upload with open PR: fast-forward commit, second parent = main only if main moved (Decision 27). Branch exists without open PR (merged/closed): force-reset class-photo/ branch onto main and open a new PR; old PR never reopened."
+    },
+    {
+      "type": "decision",
+      "phase": 4,
+      "detail": "User-derived text in PR body in CommonMark-safe code spans; '#'/'@' neutralized in PR title and commit message so a class name can't reference/close issues or mention users."
+    },
+    {
+      "type": "deferred",
+      "phase": 4,
+      "detail": "Known limit: two simultaneous submissions for the same class racing a force-reset can leave the other's description; the loser gets a conflict error."
     }
   ],
   "stories": [

@@ -351,6 +351,45 @@ def test_create_blob_tree_commit_shapes(requests_mock: requests_mock_module.Mock
     assert commits.last_request.json() == {"message": "Update photo", "tree": "tree1", "parents": ["parent0"]}
 
 
+def test_create_commit_with_extra_parent(requests_mock: requests_mock_module.Mocker, repo: GitHubRepo) -> None:
+    commits = requests_mock.post(f"{REPO_API}/git/commits", status_code=201, json={"sha": "merge1"})
+
+    assert repo.create_commit("Update photo", "tree1", "branch0", extra_parent="base0") == "merge1"
+
+    assert commits.last_request.json() == {
+        "message": "Update photo",
+        "tree": "tree1",
+        "parents": ["branch0", "base0"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [("ahead", True), ("identical", True), ("diverged", False), ("behind", False)],
+)
+def test_is_ancestor_reads_compare_status(
+    requests_mock: requests_mock_module.Mocker, repo: GitHubRepo, status: str, expected: bool
+) -> None:
+    compare = requests_mock.get(f"{REPO_API}/compare/base0...head0", json={"status": status, "commits": []})
+
+    assert repo.is_ancestor("base0", "head0") is expected
+
+    assert compare.last_request.qs == {"per_page": ["1"]}
+
+
+@pytest.mark.parametrize("payload", [{}, {"status": 3}])
+def test_is_ancestor_without_status_is_github_error(
+    requests_mock: requests_mock_module.Mocker, repo: GitHubRepo, payload: dict[str, Any]
+) -> None:
+    requests_mock.get(f"{REPO_API}/compare/base0...head0", json=payload)
+
+    with pytest.raises(GitHubError) as error:
+        repo.is_ancestor("base0", "head0")
+
+    assert error.value.operation == "compare_commits"
+    assert not isinstance(error.value, GitHubConflict)
+
+
 def test_create_and_update_branch_shapes(requests_mock: requests_mock_module.Mocker, repo: GitHubRepo) -> None:
     create = requests_mock.post(f"{REPO_API}/git/refs", status_code=201, json={"ref": f"refs/heads/{BRANCH}"})
     update = requests_mock.patch(f"{REPO_API}/git/refs/heads/{BRANCH}", json={"ref": f"refs/heads/{BRANCH}"})

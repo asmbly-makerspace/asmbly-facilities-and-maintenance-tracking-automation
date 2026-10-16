@@ -45,7 +45,7 @@ which closes them all.
 | 1 | [Class list and file-name rule](phase-1-class-names.md) | layer, lambda | L | [x] Complete |
 | 2 | [Photo checks](phase-2-photo-checks.md) | lambda | M | [x] Complete |
 | 3 | [GitHub App client](phase-3-github-app-client.md) | layer | M | [x] Complete |
-| 4 | [Pull request flow and dry run](phase-4-pull-request-flow.md) | lambda | M | [ ] Pending |
+| 4 | [Pull request flow and dry run](phase-4-pull-request-flow.md) | lambda | M | [x] Complete |
 | 5 | [API function, routes and Cognito authorizer](phase-5-api-and-infra.md) | lambda, infra | L | [ ] Pending |
 | 6 | [The upload page and docs](phase-6-upload-page.md) | lambda, infra, docs | L | [ ] Pending |
 
@@ -305,3 +305,15 @@ Made without asking, inside `/offshore` (16 October 2026):
     the bytes after the main headers for XMP GPS. It does not refuse a photo just for
     carrying embedded images, which most phone photos do. Phase 6's page removes the
     location from them or, where it can't, refuses with its own message.
+27. **A repeat submission's commit merges the current `main`** (phase 4 prep, 16 October
+    2026). With an open pull request, the new commit has two parents, the branch head and
+    the base head (only the branch head when the base hasn't moved), and its tree is the base tree plus the photo minus the superseded
+    images, so the branch moves without force and the pull request's diff and description
+    are both relative to the current `main` (images added to `main` since the branch was
+    made are removed too). This needs `GitHubRepo.create_commit(..., extra_parent=...)`.
+    A commit pushed by hand to a `class-photo/` branch is not carried into the next
+    submission. Alternative: build on the branch head and list images there. Rejected:
+    the second submission's description said "Removed: none" while the pull request
+    removed files, and images that reached `main` later were never removed. Every outside
+    value in the pull request description, including the other classes in a collision
+    warning, is in a code span fenced longer than any backtick run in it.

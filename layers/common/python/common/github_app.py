@@ -6,7 +6,7 @@ this module lists it in its own `requirements.txt`.
 Nothing here logs or raises with a token, the App's JWT, its private key, a header or a
 response body: errors carry an operation name and an HTTP status only. The client can
 create or move only branches under the prefix it is given, and has no method that merges
-or deletes anything. It does not retry; the caller decides.
+a pull request or deletes a branch. It does not retry; the caller decides.
 """
 import logging
 import time
@@ -245,13 +245,20 @@ class GitHubRepo:
         )
         return _field(data, "create_tree", "sha")
 
-    def create_commit(self, message: str, tree_sha: str, parent_sha: str) -> str:
-        """POST git/commits with one parent; the new commit's SHA."""
+    def create_commit(
+        self, message: str, tree_sha: str, parent_sha: str, extra_parent: str | None = None
+    ) -> str:
+        """POST git/commits; the new commit's SHA.
+
+        One parent, or two (`[parent_sha, extra_parent]`, a merge commit) when
+        extra_parent is given.
+        """
+        parents = [parent_sha] if extra_parent is None else [parent_sha, extra_parent]
         data = self._call(
             "create_commit",
             "POST",
             "git/commits",
-            body={"message": message, "tree": tree_sha, "parents": [parent_sha]},
+            body={"message": message, "tree": tree_sha, "parents": parents},
         )
         return _field(data, "create_commit", "sha")
 
@@ -272,6 +279,20 @@ class GitHubRepo:
             f"git/refs/heads/{quote(branch, safe='/')}",
             body={"sha": sha, "force": force},
         )
+
+    def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool:
+        """GET compare/{ancestor}...{descendant}; True when ancestor_sha is in descendant_sha's
+        history (status "ahead" or "identical"). Read-only."""
+        data = self._call(
+            "compare_commits",
+            "GET",
+            f"compare/{quote(ancestor_sha, safe='')}...{quote(descendant_sha, safe='')}",
+            params={"per_page": "1"},
+        )
+        status = _field(data, "compare_commits", "status")
+        if not isinstance(status, str):
+            raise _fail("compare_commits", None, "response is missing a field")
+        return status in ("ahead", "identical")
 
     def find_open_pull_request(self, branch: str, base: str) -> dict[str, Any] | None:
         """GET pulls?state=open&head={owner}:{branch}&base={base}; the first one's number and URL."""
