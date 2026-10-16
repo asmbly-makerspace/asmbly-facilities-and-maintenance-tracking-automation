@@ -29,32 +29,12 @@ RESPONSE_HEADERS = {
 }
 
 
-def generate_html_page(tasks: list[dict]) -> str:
-    """Generates the HTML page to display the recent tasks."""
-    
-    task_rows = ""
-    if not tasks:
-        task_rows = '<tr><td colspan="3" class="no-tasks">No submissions found in the last 24 hours. Please try refreshing.</td></tr>'
-    else:
-        for task in tasks:
-            # ClickUp API returns date created as a Unix timestamp in milliseconds
-            created_date = datetime.fromtimestamp(int(task['date_created']) / 1000, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-            
-            # Use the custom_id if it exists, otherwise fall back to the standard id
-            # (ClickUp sends "custom_id": null when a list has no custom IDs)
-            display_id = html.escape(str(task.get('custom_id') or task['id']))
-            task_name = html.escape(str(task['name']))
+def _render_page(main_content: str, reload_text: str) -> str:
+    """Wraps the main content in the page shell: styles, title box, Refresh button and footer.
 
-            task_rows += f"""
-                <tr>
-                    <td class="task-id">{display_id}</td>
-                    <td>{task_name}</td>
-                    <td>{created_date}</td>
-                </tr>
-            """
-
-    # Full HTML document with embedded CSS for styling
-    page = f"""
+    Both arguments are trusted HTML; anything from outside must be escaped before it is passed in.
+    """
+    return f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -143,7 +123,46 @@ def generate_html_page(tasks: list[dict]) -> str:
                 <img src="https://asmbly.org/wp-content/uploads/2025/02/ceramics-white.svg" alt="Ceramics Logo" class="header-logo">
                 <h1>Recent Kiln Drop-Offs</h1>
             </div>
-            <p class="subtitle">Showing drop offs received in the last 24 hours</p>
+            {main_content}
+
+            <div class="reload-section">
+                <p class="reload-text">{reload_text}</p>
+                <a class="reload-button" href="">Refresh</a>
+            </div>
+            
+            <img src="https://asmbly.org/wp-content/uploads/2023/12/purple-horizontal.svg" alt="Asmbly Logo" class="footer-logo">
+
+        </div>
+    </body>
+    </html>
+    """
+
+
+def generate_html_page(tasks: list[dict]) -> str:
+    """Generates the HTML page to display the recent tasks."""
+    
+    task_rows = ""
+    if not tasks:
+        task_rows = '<tr><td colspan="3" class="no-tasks">No submissions found in the last 24 hours. Please try refreshing.</td></tr>'
+    else:
+        for task in tasks:
+            # ClickUp API returns date created as a Unix timestamp in milliseconds
+            created_date = datetime.fromtimestamp(int(task['date_created']) / 1000, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Use the custom_id if it exists, otherwise fall back to the standard id
+            # (ClickUp sends "custom_id": null when a list has no custom IDs)
+            display_id = html.escape(str(task.get('custom_id') or task['id']))
+            task_name = html.escape(str(task['name']))
+
+            task_rows += f"""
+                <tr>
+                    <td class="task-id">{display_id}</td>
+                    <td>{task_name}</td>
+                    <td>{created_date}</td>
+                </tr>
+            """
+
+    main_content = f"""<p class="subtitle">Showing drop offs received in the last 24 hours</p>
             
             <div class="instructions">
                 Please write your Name and your ID from the list below to a slip for each of your pieces.
@@ -160,38 +179,17 @@ def generate_html_page(tasks: list[dict]) -> str:
                 <tbody>
                     {task_rows}
                 </tbody>
-            </table>
-            
-            <div class="reload-section">
-                <p class="reload-text">If your ID is not showing in the list, wait 1-2 minutes and refresh.</p>
-                <a class="reload-button" href="">Refresh</a>
-            </div>
-            
-            <img src="https://asmbly.org/wp-content/uploads/2023/12/purple-horizontal.svg" alt="Asmbly Logo" class="footer-logo">
+            </table>"""
+    return _render_page(main_content, "If your ID is not showing in the list, wait 1-2 minutes and refresh.")
 
-        </div>
-    </body>
-    </html>
-    """
-    return page
 
 def generate_error_page() -> str:
-    """Generates a user-friendly HTML error page."""
-    error_body = """
-    <div class="container">
-        <div class="error-box">
-            <h2>An Error Occurred</h2>
-            <p>Could not retrieve the list of submissions.</p>
-        </div>
-    </div>
-    """
-    # Generate the base page with no tasks and inject the error box
-    base_html = generate_html_page([])
-    # A simple way to replace the main content with the error message
-    return base_html.replace(
-        '<div class="instructions">', 
-        f'{error_body}<div class="instructions" style="display:none;">'
-    )
+    """Generates a user-friendly HTML error page with no list and no error details."""
+    error_box = """<div class="error-box">
+                <h2>An Error Occurred</h2>
+                <p>Could not retrieve the list of submissions.</p>
+            </div>"""
+    return _render_page(error_box, "Please wait 1-2 minutes and refresh.")
 
 
 def html_response(status_code: int, body: str) -> dict:
