@@ -6,6 +6,8 @@
 - [AWS Resources](#aws-resources)
 - [Configuration](#configuration)
 - [Deployment](#deployment)
+- [Usage](#usage)
+- [Testing](#testing)
 
 ## Purpose
 
@@ -34,8 +36,9 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 -   **User's Browser:** The end-user's web browser.
 -   **ClickUp Form:** The native form where the user submits their entry.
 -   **AWS API Gateway:** A managed service that provides a public URL (endpoint) for our application.
--   **AWS Lambda:** A serverless function that contains the Python/Node.js logic.
--   **AWS Secrets Manager:** A secure storage service for the ClickUp API Token and List ID.
+-   **AWS Lambda:** A serverless function that contains the Python logic.
+-   **AWS Secrets Manager:** Holds the ClickUp API token (secret `clickup/api/token`, key `CLICKUP_API_TOKEN`).
+-   **AWS Systems Manager Parameter Store:** Holds the drop-off list ID (parameter `/<stage>/config/clickup/ceramics/dropOffRequests`, key `list_id`).
 -   **ClickUp API:** The official API for accessing ClickUp data.
 
 ### Visual Flow
@@ -52,10 +55,10 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 |                     |                      |                       |
 |                     |             (3) Trigger Function ----------->|
 |                     |                      |                       |
-|                     |                      |                       | (4) Get Secrets
-|                     |                      |                       |---------------------->[AWS Secrets Manager]
+|                     |                      |                       | (4) Get list ID and token
+|                     |                      |                       |---------------------->[SSM Parameter Store, Secrets Manager]
 |                     |                      |                       |                      |
-|                     |                      |                       |<----------------------| (5) Return Secrets
+|                     |                      |                       |<----------------------| (5) Return list ID and token
 |                     |                      |                       |
 |                     |                      |                       | (6) Request Tasks
 |                     |                      |                       |---------------------->[ClickUp API]
@@ -86,15 +89,15 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
     * **Destination:** AWS Lambda
     * **Action:** The incoming request to the API Gateway endpoint automatically triggers your Lambda function to run.
 
-4.  **Fetch Secrets**
+4.  **Fetch the list ID and the API token**
     * **Source:** AWS Lambda
-    * **Destination:** AWS Secrets Manager
-    * **Action:** The function makes a secure, internal call within your AWS environment to retrieve the ClickUp API Token and List ID.
+    * **Destination:** SSM Parameter Store, then AWS Secrets Manager
+    * **Action:** The function reads the drop-off list ID from the SSM parameter `/<stage>/config/clickup/ceramics/dropOffRequests` (key `list_id`), then the ClickUp API token from Secrets Manager. Secrets Manager holds only the token.
 
-5.  **Return Secrets**
-    * **Source:** AWS Secrets Manager
+5.  **Return the list ID and the token**
+    * **Source:** SSM Parameter Store and AWS Secrets Manager
     * **Destination:** AWS Lambda
-    * **Action:** The secrets are securely passed back to the running function.
+    * **Action:** The values are passed back to the running function. If the token is empty, the function stops here and shows the error page.
 
 6.  **Request Tasks from ClickUp API**
     * **Source:** AWS Lambda
@@ -109,12 +112,22 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 8.  **Generate and Return HTML**
     * **Source:** AWS Lambda
     * **Destination:** AWS API Gateway
-    * **Action:** The function processes the JSON data, constructs a complete HTML document on the fly, and returns it as the response.
+    * **Action:** The function processes the JSON data, constructs a complete HTML document on the fly, and returns it as the response. Each drop-off's name and ID are HTML-escaped, so text typed into the form shows as text and never runs as code. A drop-off with no custom ID shows its ClickUp task ID.
 
 9.  **Display Page**
     * **Source:** AWS API Gateway
     * **Destination:** User's Browser
     * **Action:** The API Gateway forwards the HTML response to the user's browser, which then renders the final page showing the list of recent submissions.
+
+### Errors and security headers
+
+- If anything goes wrong (a missing environment variable, an empty token, an SSM, Secrets Manager or ClickUp error), the page says only "Could not retrieve the list of submissions." The details go to the log group `/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-<stage>`, never to the page.
+- Every response, the list and the error page alike, is sent with these headers:
+  - `Content-Type: text/html; charset=utf-8`
+  - `X-Content-Type-Options: nosniff`
+  - `Cache-Control: no-store`, so Refresh always fetches a fresh list
+  - `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; font-src https://asmbly.org; img-src https://asmbly.org; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`. The page runs no script, uses one inline style block, and loads its fonts and logos from https://asmbly.org. It can't be shown inside a frame. If you add an image, font or script from another site, add that site to the policy in `lambda_function.py`.
+- The Refresh button is a plain link back to the same page, so it works without script.
 
 ## AWS Resources
 
@@ -122,13 +135,18 @@ Tags in AWS will be:
 
 | Name        | Value                        |
 |-------------|------------------------------|
-| Application | facilities-automation-hub    |
 | Project     | ceramics:kiln-dropoff-viewer |
-| Workspace   | ceramics                     |
 
 ## Configuration
 
-All settings are managed via environment variables within the AWS Lambda function's configuration section. This allows for easy updates to things like the ClickUp List ID, bot name, or optional features without changing the code.
+The template `templates/ceramics.yaml` sets two environment variables:
+
+| Variable | Value | What it is |
+| --- | --- | --- |
+| `SECRET_NAME` | `clickup/api/token` | The Secrets Manager secret that holds the ClickUp API token under the key `CLICKUP_API_TOKEN` |
+| `CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME` | `/<stage>/config/clickup/ceramics/dropOffRequests` | The SSM parameter with the drop-off list ID under the key `list_id` |
+
+The list ID itself lives in `configs/clickup_ceramics_dropOffRequests.json`; the template turns that file into the SSM parameter. To point the page at another ClickUp list, change the JSON file and deploy.
 
 
 ## Deployment
@@ -137,4 +155,16 @@ The deployment process is managed and specified in the [Deployment Instructions]
 
 ## Usage
 
-The URL is in the CLickUp form in Ceramics -> Drop Off Requests -> Kiln Drop Off Form -> Settings -> Redirect URL.
+The URL is in the ClickUp form in Ceramics -> Drop Off Requests -> Kiln Drop Off Form -> Settings -> Redirect URL.
+
+## Testing
+
+From the repository root:
+
+```bash
+.venv/bin/python -m pytest functions/ceramics/kiln_dropoff_recent_entries_viewer
+```
+
+The tests mock SSM, Secrets Manager and ClickUp, so they need no AWS access. After a deploy to stage, open `<stage API URL>/KilnOpsDropoffRecentEntriesViewer` and check that the list loads, Refresh reloads it, and the browser console shows no Content-Security-Policy violations. Stage has no custom domain, so `<stage API URL>` is the `FacilitiesApiUrl` output of the stage stack, `AsmblyFacilitiesMaintTrackingStack-stage`, which looks like `https://<api-id>.execute-api.us-east-2.amazonaws.com/stage`. Find it in the AWS console under CloudFormation, that stack, the **Outputs** tab. (In prod the page is `https://facilities.asmbly.org/KilnOpsDropoffRecentEntriesViewer`.)
+
+The asmbly.org fonts already fail with a CORS error because asmbly.org sends no `Access-Control-Allow-Origin` header; that is not a CSP problem.

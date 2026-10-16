@@ -1,6 +1,8 @@
 import json
+import logging
 import importlib
 import pathlib
+import re
 from unittest.mock import patch
 
 import pytest
@@ -69,10 +71,10 @@ def test_generate_html_page_no_tasks():
 
 def test_generate_error_page():
     """Test the generation of a user-friendly error page."""
-    html = lambda_function.generate_error_page("Test error message")
+    html = lambda_function.generate_error_page()
     assert "<h2>An Error Occurred</h2>" in html
     assert "Could not retrieve the list of submissions." in html
-    assert "Test error message" in html
+    assert "Error details" not in html
 
 
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
@@ -98,7 +100,7 @@ def test_lambda_handler_success(mock_get_json_param, mock_get_all_clickup_tasks,
 
     # Assert
     assert result['statusCode'] == 200
-    assert result['headers']['Content-Type'] == 'text/html'
+    assert result['headers']['Content-Type'] == 'text/html; charset=utf-8'
     assert "<h1>Recent Kiln Drop-Offs</h1>" in result['body']
     assert "KO-FAKE-001" in result['body'] # Check for task data
     assert "Customer A" in result['body']
@@ -124,21 +126,41 @@ def test_lambda_handler_clickup_api_error(mock_get_json_param, mock_get_all_clic
     # Assert
     assert result['statusCode'] == 500
     assert "<h2>An Error Occurred</h2>" in result['body']
-    assert "401 Client Error: Unauthorized for url" in result['body']
+    assert "Could not retrieve the list of submissions." in result['body']
+    assert "401 Client Error: Unauthorized for url" not in result['body']
 
-def test_lambda_handler_missing_env_var(reload_lambda_function, monkeypatch):
+def test_lambda_handler_missing_env_var(reload_lambda_function, monkeypatch, caplog):
     """Test the handler's response when a required environment variable is missing."""
     # Arrange
     monkeypatch.delenv('CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME')
     importlib.reload(lambda_function) # Reload to pick up the deleted env var
 
     # Act
-    result = lambda_function.lambda_handler({}, None)
+    with caplog.at_level(logging.INFO):
+        result = lambda_function.lambda_handler({}, None)
 
     # Assert
     assert result['statusCode'] == 500
     assert "<h2>An Error Occurred</h2>" in result['body']
-    assert "Server configuration error: Missing ClickUp config parameter name." in result['body']
+    assert "Could not retrieve the list of submissions." in result['body']
+    assert "CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME" not in result['body']
+    assert "Server configuration error" not in result['body']
+    assert "CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME" in caplog.text
+
+
+def test_lambda_handler_missing_secret_name(reload_lambda_function, monkeypatch, caplog):
+    """A missing SECRET_NAME gives the generic error page and names the variable only in the log."""
+    monkeypatch.delenv('SECRET_NAME')
+    importlib.reload(lambda_function)
+
+    with caplog.at_level(logging.INFO):
+        result = lambda_function.lambda_handler({}, None)
+
+    assert result['statusCode'] == 500
+    assert "Could not retrieve the list of submissions." in result['body']
+    assert "SECRET_NAME" not in result['body']
+    assert "Server configuration error" not in result['body']
+    assert "SECRET_NAME" in caplog.text
 
 
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
@@ -156,4 +178,144 @@ def test_lambda_handler_secret_manager_error(mock_get_json_param, mock_get_secre
     # Assert
     assert result['statusCode'] == 500
     assert "<h2>An Error Occurred</h2>" in result['body']
-    assert "Could not connect to Secrets Manager" in result['body']
+    assert "Could not retrieve the list of submissions." in result['body']
+    assert "Could not connect to Secrets Manager" not in result['body']
+
+
+def test_generate_html_page_escapes_task_name_and_id():
+    """Form text and IDs are escaped before they go into the page (#74)."""
+    tasks = [{
+        'id': 'abc123',
+        'custom_id': 'KO-<b>1</b>',
+        'name': '<script>alert(1)</script>',
+        'date_created': '1704067200000',
+    }]
+
+    page = lambda_function.generate_html_page(tasks)
+
+    assert '<script>alert(1)</script>' not in page
+    assert 'KO-<b>1</b>' not in page
+    assert '&lt;script&gt;alert(1)&lt;/script&gt;' in page
+    assert 'KO-&lt;b&gt;1&lt;/b&gt;' in page
+
+
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+def test_lambda_handler_error_page_hides_exception_text(mock_get_json_param, mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function, caplog):
+    """The error page never shows the exception's text; it goes to the log instead (#74)."""
+    marker = "ClickUp API HTTP Error: 401 Unauthorized - Details: {\"err\": \"Token invalid\", \"url\": \"list/123456789/task\"}"
+    mock_get_secret.return_value = 'fake-token'
+    mock_get_json_param.return_value = '123456789'
+    mock_get_all_clickup_tasks.side_effect = ValueError(marker)
+
+    with caplog.at_level(logging.INFO):
+        result = lambda_function.lambda_handler({}, None)
+
+    assert result['statusCode'] == 500
+    body = result['body']
+    assert "Could not retrieve the list of submissions." in body
+    assert marker not in body
+    assert "Token invalid" not in body
+    assert "401" not in body
+    assert "123456789" not in body
+    assert "Error details" not in body
+    assert any(r.exc_info and marker in str(r.exc_info[1]) for r in caplog.records)
+
+
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+def test_lambda_handler_empty_token_returns_generic_500(mock_get_json_param, mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function, caplog):
+    """An empty API token stops before ClickUp is called and shows the generic error page."""
+    mock_get_json_param.return_value = '123456789'
+    mock_get_secret.return_value = ""
+
+    with caplog.at_level(logging.INFO):
+        result = lambda_function.lambda_handler({}, None)
+
+    mock_get_all_clickup_tasks.assert_not_called()
+    assert result['statusCode'] == 500
+    assert "Could not retrieve the list of submissions." in result['body']
+    assert "ClickUp API token missing from secret" in caplog.text
+
+
+def test_generate_html_page_null_custom_id_shows_task_id():
+    """ClickUp sends "custom_id": null on lists without custom IDs; the task ID is shown instead."""
+    tasks = [{'id': 'abc123', 'custom_id': None, 'name': 'Customer Z', 'date_created': '1704067200000'}]
+
+    page = lambda_function.generate_html_page(tasks)
+
+    assert '<td class="task-id">abc123</td>' in page
+    assert 'None' not in page
+
+
+def test_generate_html_page_escapes_quotes_and_ampersands():
+    """Ampersands and quotes in a name are escaped."""
+    tasks = [{'id': 'abc123', 'custom_id': 'KO-1', 'name': 'O\'Brien & "Sons"', 'date_created': '1704067200000'}]
+
+    page = lambda_function.generate_html_page(tasks)
+
+    assert 'O&#x27;Brien &amp; &quot;Sons&quot;' in page
+    assert 'O\'Brien & "Sons"' not in page
+
+
+EXPECTED_CSP = (
+    "default-src 'none'; style-src 'unsafe-inline'; font-src https://asmbly.org; "
+    "img-src https://asmbly.org; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
+EXPECTED_HEADERS = {
+    "Content-Type": "text/html; charset=utf-8",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": EXPECTED_CSP,
+}
+
+
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+def test_lambda_handler_sets_csp_header(mock_get_json_param, mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function, monkeypatch, mock_tasks_from_file):
+    """The page and every error page carry the same security headers and no script (#74)."""
+    mock_get_json_param.return_value = '123456789'
+    mock_data = mock_tasks_from_file()
+    for i, task in enumerate(mock_data['tasks']):
+        task['date_created'] = str(1704067200000 + i * 1000)
+
+    results = {}
+
+    mock_get_secret.return_value = 'fake-token'
+    mock_get_all_clickup_tasks.return_value = mock_data['tasks']
+    results['success'] = lambda_function.lambda_handler({}, None)
+
+    mock_get_all_clickup_tasks.side_effect = ValueError("boom")
+    results['clickup_error'] = lambda_function.lambda_handler({}, None)
+
+    mock_get_secret.return_value = ""
+    results['empty_token'] = lambda_function.lambda_handler({}, None)
+
+    monkeypatch.delenv('CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME')
+    importlib.reload(lambda_function)
+    results['missing_config'] = lambda_function.lambda_handler({}, None)
+
+    monkeypatch.delenv('SECRET_NAME')
+    importlib.reload(lambda_function)
+    results['missing_secret'] = lambda_function.lambda_handler({}, None)
+
+    assert results['success']['statusCode'] == 200
+    for name, result in results.items():
+        if name != 'success':
+            assert result['statusCode'] == 500, name
+        assert result['headers'] == EXPECTED_HEADERS, name
+        assert 'onclick' not in result['body'], name
+        assert '<script' not in result['body'], name
+        assert '<a class="reload-button" href="">Refresh</a>' in result['body'], name
+
+
+def test_page_external_urls_are_covered_by_csp():
+    """Every external URL the page loads is on https://asmbly.org, which the CSP allows."""
+    page = lambda_function.generate_html_page([])
+    urls = re.findall(r'(?:src=|url\()["\']?(https?://[^"\')\s>]+)', page)
+    assert urls
+    for url in urls:
+        assert url.startswith("https://asmbly.org/"), url
