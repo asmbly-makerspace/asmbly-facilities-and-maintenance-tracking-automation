@@ -100,7 +100,7 @@ def test_lambda_handler_success(mock_get_json_param, mock_get_all_clickup_tasks,
 
     # Assert
     assert result['statusCode'] == 200
-    assert result['headers']['Content-Type'] == 'text/html'
+    assert result['headers']['Content-Type'] == 'text/html; charset=utf-8'
     assert "<h1>Recent Kiln Drop-Offs</h1>" in result['body']
     assert "KO-FAKE-001" in result['body'] # Check for task data
     assert "Customer A" in result['body']

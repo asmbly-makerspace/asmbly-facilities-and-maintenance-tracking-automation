@@ -17,6 +17,17 @@ SECRET_NAME = os.environ.get("SECRET_NAME")
 # Name of the SSM Parameter containing the ClickUp config (e.g., list ID)
 CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME = os.environ.get("CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME")
 
+# The page has no script, one inline <style> block, and fonts and images from asmbly.org.
+RESPONSE_HEADERS = {
+    "Content-Type": "text/html; charset=utf-8",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": (
+        "default-src 'none'; style-src 'unsafe-inline'; font-src https://asmbly.org; "
+        "img-src https://asmbly.org; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    ),
+}
+
 
 def generate_html_page(tasks: list[dict]) -> str:
     """Generates the HTML page to display the recent tasks."""
@@ -118,6 +129,7 @@ def generate_html_page(tasks: list[dict]) -> str:
                 font-family: "PP Gosha Sans";
                 font-size: 1.2em;
                 font-weight: 500;
+                text-decoration: none;
                 -webkit-tap-highlight-color: transparent; /* Removes tap highlight on mobile */
             }}
             .reload-button:hover {{ background-color: #229954; }}
@@ -152,7 +164,7 @@ def generate_html_page(tasks: list[dict]) -> str:
             
             <div class="reload-section">
                 <p class="reload-text">If your ID is not showing in the list, wait 1-2 minutes and refresh.</p>
-                <button class="reload-button" onclick="window.location.reload()">Refresh</button>
+                <a class="reload-button" href="">Refresh</a>
             </div>
             
             <img src="https://asmbly.org/wp-content/uploads/2023/12/purple-horizontal.svg" alt="Asmbly Logo" class="footer-logo">
@@ -182,6 +194,15 @@ def generate_error_page() -> str:
     )
 
 
+def html_response(status_code: int, body: str) -> dict:
+    """Builds an API Gateway response for an HTML page with the security headers."""
+    return {
+        "statusCode": status_code,
+        "headers": dict(RESPONSE_HEADERS),
+        "body": body,
+    }
+
+
 def lambda_handler(event: dict, context: object) -> dict:
     """
     Main handler for the Lambda function. Triggered by API Gateway.
@@ -189,18 +210,10 @@ def lambda_handler(event: dict, context: object) -> dict:
     # 1. Check for required environment variables
     if not SECRET_NAME:
         logger.error("SECRET_NAME environment variable not set")
-        return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "text/html"},
-            "body": generate_error_page(),
-        }
+        return html_response(500, generate_error_page())
     if not CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME:
         logger.error("CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME environment variable not set")
-        return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "text/html"},
-            "body": generate_error_page(),
-        }
+        return html_response(500, generate_error_page())
 
     try:
         # 2. Get ClickUp List ID from SSM Parameter Store
@@ -212,11 +225,7 @@ def lambda_handler(event: dict, context: object) -> dict:
 
         if not api_token:
             logger.error("ClickUp API token missing from secret")
-            return {
-                "statusCode": 500,
-                "headers": {"Content-Type": "text/html"},
-                "body": generate_error_page(),
-            }
+            return html_response(500, generate_error_page())
 
         # 4. Fetch recent tasks from ClickUp API
         twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
@@ -232,16 +241,8 @@ def lambda_handler(event: dict, context: object) -> dict:
         # 5. Generate and return the HTML page
         html_body = generate_html_page(tasks)
 
-        return {
-            "statusCode": 200,
-            "headers": {"Content-Type": "text/html"},
-            "body": html_body,
-        }
+        return html_response(200, html_body)
 
     except Exception:
         logger.exception("Failed to load kiln drop-offs")
-        return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "text/html"},
-            "body": generate_error_page(),
-        }
+        return html_response(500, generate_error_page())
