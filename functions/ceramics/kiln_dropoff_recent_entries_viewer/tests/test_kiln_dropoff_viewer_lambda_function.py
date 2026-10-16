@@ -2,6 +2,7 @@ import json
 import logging
 import importlib
 import pathlib
+import re
 from unittest.mock import patch
 
 import pytest
@@ -257,3 +258,64 @@ def test_generate_html_page_escapes_quotes_and_ampersands():
 
     assert 'O&#x27;Brien &amp; &quot;Sons&quot;' in page
     assert 'O\'Brien & "Sons"' not in page
+
+
+EXPECTED_CSP = (
+    "default-src 'none'; style-src 'unsafe-inline'; font-src https://asmbly.org; "
+    "img-src https://asmbly.org; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
+EXPECTED_HEADERS = {
+    "Content-Type": "text/html; charset=utf-8",
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": EXPECTED_CSP,
+}
+
+
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+def test_lambda_handler_sets_csp_header(mock_get_json_param, mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function, monkeypatch, mock_tasks_from_file):
+    """The page and every error page carry the same security headers and no script (#74)."""
+    mock_get_json_param.return_value = '123456789'
+    mock_data = mock_tasks_from_file()
+    for i, task in enumerate(mock_data['tasks']):
+        task['date_created'] = str(1704067200000 + i * 1000)
+
+    results = {}
+
+    mock_get_secret.return_value = 'fake-token'
+    mock_get_all_clickup_tasks.return_value = mock_data['tasks']
+    results['success'] = lambda_function.lambda_handler({}, None)
+
+    mock_get_all_clickup_tasks.side_effect = ValueError("boom")
+    results['clickup_error'] = lambda_function.lambda_handler({}, None)
+
+    mock_get_secret.return_value = ""
+    results['empty_token'] = lambda_function.lambda_handler({}, None)
+
+    monkeypatch.delenv('CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME')
+    importlib.reload(lambda_function)
+    results['missing_config'] = lambda_function.lambda_handler({}, None)
+
+    monkeypatch.delenv('SECRET_NAME')
+    importlib.reload(lambda_function)
+    results['missing_secret'] = lambda_function.lambda_handler({}, None)
+
+    assert results['success']['statusCode'] == 200
+    for name, result in results.items():
+        if name != 'success':
+            assert result['statusCode'] == 500, name
+        assert result['headers'] == EXPECTED_HEADERS, name
+        assert 'onclick' not in result['body'], name
+        assert '<script' not in result['body'], name
+        assert '<a class="reload-button" href="">Refresh</a>' in result['body'], name
+
+
+def test_page_external_urls_are_covered_by_csp():
+    """Every external URL the page loads is on https://asmbly.org, which the CSP allows."""
+    page = lambda_function.generate_html_page([])
+    urls = re.findall(r'(?:src=|url\()"(https?://[^"]+)"', page)
+    assert urls
+    for url in urls:
+        assert url.startswith("https://asmbly.org/"), url
