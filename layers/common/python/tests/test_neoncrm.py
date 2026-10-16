@@ -218,6 +218,25 @@ def test_search_events_stops_at_page_guard(neon: NeonCRM, requests_mock: request
     assert "stopped at" in caplog.text
 
 
+def test_search_events_stops_at_the_callers_page_cap(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker, caplog: pytest.LogCaptureFixture) -> None:
+    requests_mock.post(SEARCH_URL, json=_page([{"Event ID": "x"}], 0, 10_000))
+
+    with caplog.at_level(logging.WARNING):
+        results = neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS, max_pages=3)
+
+    assert requests_mock.call_count == 3
+    assert len(results) == 3
+    assert "stopped at 3 of 10000 pages" in caplog.text
+
+
+def test_search_events_passes_the_timeout_to_each_request(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker) -> None:
+    requests_mock.post(SEARCH_URL, [{"json": _page([{"Event ID": "1"}], 0, 2)}, {"json": _page([{"Event ID": "2"}], 1, 2)}])
+
+    neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS, timeout=4.0)
+
+    assert [r.timeout for r in requests_mock.request_history] == [4.0, 4.0]
+
+
 def test_search_events_without_pagination_reads_one_page(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker) -> None:
     requests_mock.post(SEARCH_URL, json={"searchResults": [{"Event ID": "1"}]})
 

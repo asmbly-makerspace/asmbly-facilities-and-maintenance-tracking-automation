@@ -10,7 +10,62 @@ estimated_size: L
 
 # Phase 5: API function, routes and Cognito authorizer
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-16 on branch claude/inspiring-bell-o4i5t9
+
+## Prep amendments (16 October 2026)
+
+`/prep` checked this phase against the code (inside `/offshore`). These amendments win
+over the text below where they differ.
+
+1. **Time budget (settles phase 1's hand-off).** API Gateway gives up after 29 s; the
+   function's `Timeout: 25` is the hard cap, so API Gateway always gets the function's
+   answer or Lambda's own timeout (a 502 with no details), never its own 504.
+   - `NeonCRM.search_events` gets `max_pages: int = MAX_SEARCH_PAGES` (default keeps
+     today's behavior; a test for the smaller cap).
+   - `class_names.fetch_classes(neon, today, *, timeout=NEON_PAGE_TIMEOUT_SECONDS,
+     max_pages=NEON_MAX_PAGES)` with `NEON_PAGE_TIMEOUT_SECONDS = 4.0` and
+     `NEON_MAX_PAGES = 8` (1,600 events, several times the 4-month window), passed
+     through to `search_events`. Update `test_fetch_classes_reads_neon_once_and_returns_names`
+     (it asserts the exact `search_events` call).
+   - The handler passes `timeout=GITHUB_TIMEOUT_SECONDS = 5.0` to
+     `github_app.installation_token` and `GitHubRepo`.
+   - Before `apply_submission` (prod only), if `context.get_remaining_time_in_millis()`
+     is under `WRITE_MIN_REMAINING_MS = 8000`, log `"Not enough time left to write: %d ms"`
+     and answer 502 `GITHUB_ERROR` without writing, so a slow Neon or GitHub read never
+     leaves a half-made commit. A context without that method counts as enough time.
+     Test it.
+2. **Imports (settles phases 1 and 4's hand-offs).** The handler imports
+   `class_names`, `photo_checks` and `submission` the way `submission.py` does:
+   `try: from . import ...` / `except ImportError: import ...` (top level under Lambda).
+   Add `test_handler_imports_as_top_level_module`, like
+   `test_module_imports_as_top_level_module` in `test_submission.py`.
+3. **Deploy role and the Cognito authorizer.** Whether creating a `cognito_user_pools`
+   authorizer needs a `cognito-idp:` permission on the deployer couldn't be confirmed
+   read-only (no AWS credentials, the AWS docs host unreachable). Add the one read-only
+   action defensively: in the shared `GitHubDeployPolicy`, statement
+   `AllowStaffUserPoolLookup`, `cognito-idp:DescribeUserPool` on
+   `arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${StaffUserPoolId}`,
+   with `StaffUserPoolId` an SSM-typed parameter of `template-cicd.yaml` (default
+   `/config/cognito/staff/user-pool-id`, which admin action 1 creates before the
+   deploy-role redeploy). Nothing else in Cognito, never `*`.
+4. **Request size.** A 4 MiB photo is 5,592,408 base64 characters; with the JSON
+   wrapper, headers (the ID token twice, in `headers` and `multiValueHeaders`) and
+   `requestContext` the event stays under Lambda's 6,291,456-byte synchronous limit
+   (about 680 KB to spare). A larger body never reaches the function: API Gateway answers
+   it with an error and no details, so the page (phase 6) checks the size before sending.
+   The handler's own length check covers bodies that do arrive. The README says so.
+5. **Missing claims.** `requestContext.authorizer.claims` absent or not a dict → 403,
+   reason `claims` (a route wired without the authorizer must not run).
+6. **Logging the failed check.** `check_photo` returns only the message; the handler maps
+   it to a kind (`size`, `not_jpeg`, `unreadable`, `not_landscape`, `ratio`, `location`)
+   by comparing with `photo_checks`' message constants (the fixed prefix of the
+   formatted ones) and logs the kind, never the message's numbers beyond that.
+7. **Docs.** This phase writes the function's `README.md`; `docs/README.md`'s "Classes"
+   group stays with phase 6, which adds the page (one service entry for both).
+8. **Found, not fixed:** CloudFormation's `MethodSetting.ResourcePath` encodes `/` as
+   `~1`, so the existing `ResourcePath: "/nic/update"` throttle in `template.yaml` most
+   likely never applies. Left as it is (CLAUDE.md: don't change an existing route's
+   checks as a side effect); listed for a follow-up issue.
 
 ## Required reading
 
@@ -513,8 +568,30 @@ On stage, after the admin actions 1–3 and the deploy:
 ## Hand-off
 
 - Routes: `GET /class-photo-upload/classes`, `POST /class-photo-upload/submit`, with the
-  request and response shapes above; `Authorization: <Cognito ID token>`.
-- `templates/classes.yaml` exists with `IsProd`, the parameters above and the output
-  `ClassPhotoUploadApiFunctionArn`; `template.yaml` passes
-  `ClassPhotoAppClientId` into it.
-- The error strings in `lambda_function.py`, for the page to show as given.
+  request and response shapes in `functions/classes/class_photo_upload_api/README.md`
+  ("Responses"); `Authorization: <Cognito ID token>` as it is. In the class list,
+  `file_name` is `null` when `problem` is set.
+- The error strings are module constants in `lambda_function.py` (`GENERIC_ERROR`,
+  `NEON_ERROR`, `GITHUB_ERROR`, `CONFLICT_ERROR`, `FORBIDDEN_ERROR`, `NOT_IN_LIST_ERROR`,
+  `BAD_REQUEST_ERROR`, `NOT_FOUND_ERROR`), for the page to show as given; photo refusals
+  carry `photo_checks`' messages. Every response is JSON with `Cache-Control: no-store`.
+- `templates/classes.yaml` has the parameters `Stage`, `CommonLayerARN`,
+  `RequestsLayerARN`, `NeonSecretName`, `ClassPhotoGitHubAppSecretName`,
+  `ClassPhotoAppClientId`, the condition `IsProd`, and the output
+  `ClassPhotoUploadApiFunctionArn`; `template.yaml` passes all six into `ClassesStack`.
+- `template.yaml` has the parameters `StaffUserPoolId` and `ClassPhotoAppClientId`
+  (SSM-typed), the security scheme `StaffCognitoAuthorizer` under
+  `DefinitionBody.components.securitySchemes`, and `ClassPhotoUploadApiInvokePermission`
+  scoped to `${FacilitiesApi}/*/*/class-photo-upload/*` (phase 6's page route
+  `GET /class-photo-upload` is not under it and needs its own permission).
+- `template-cicd.yaml`: `StaffUserPoolId` (SSM-typed parameter), `AllowSSMParameterRead`
+  lists the two Cognito parameters (phase 6 adds `/config/cognito/staff/auth-domain`),
+  and `AllowStaffUserPoolLookup` grants `cognito-idp:DescribeUserPool` on that pool only.
+- `NeonCRM.search_events(..., max_pages=)`; `class_names.fetch_classes(neon, today, *,
+  timeout=4.0, max_pages=8)` (`NEON_PAGE_TIMEOUT_SECONDS`, `NEON_MAX_PAGES`).
+- Deviation from the text above: the function sets no `STAGE` variable (nothing reads
+  it); the stage/prod switch is `CLASS_PHOTO_DRY_RUN` alone.
+- For phase 6 (manual QA notes): a class whose name starts with `.` gives a dotfile name
+  (`.Foo.jpg`) the site's glob never loads (phase 1's hand-off); not refused here.
+- Not fixed (prep amendment 8): `ResourcePath: "/nic/update"` in `template.yaml` should
+  most likely be `/~1nic~1update`; needs a follow-up issue.

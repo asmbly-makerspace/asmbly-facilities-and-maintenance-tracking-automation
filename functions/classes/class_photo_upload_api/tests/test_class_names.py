@@ -121,6 +121,8 @@ def test_fetch_classes_reads_neon_once_and_returns_names() -> None:
     neon.search_events.assert_called_once_with(
         [{"field": "Event End Date", "operator": "GREATER_AND_EQUAL", "value": "2026-06-16"}],
         ["Event ID", "Event Name"],
+        timeout=4.0,
+        max_pages=8,
     )
 
 

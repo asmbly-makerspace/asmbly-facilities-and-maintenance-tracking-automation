@@ -261,3 +261,20 @@ def test_secret_arns_end_with_hyphen_star(template: pathlib.Path) -> None:
             elif not resource.endswith("-*"):
                 problems.append(f"{template.name}: {name} grants {resource}")
     assert problems == []
+
+
+CLASS_PHOTO_DATA_ROUTES = [("/class-photo-upload/classes", "get"), ("/class-photo-upload/submit", "post")]
+
+
+def test_class_photo_data_routes_require_the_staff_authorizer() -> None:
+    # API Gateway answers 401 before the function runs when the staff pool's ID token is
+    # missing or invalid; the function then checks the token's app client itself.
+    body = _load(ROOT / "template.yaml")["Resources"]["FacilitiesApi"]["Properties"]["DefinitionBody"]
+    scheme = body["components"]["securitySchemes"]["StaffCognitoAuthorizer"]
+    assert scheme["x-amazon-apigateway-authtype"] == "cognito_user_pools"
+    assert scheme["x-amazon-apigateway-authorizer"]["type"] == "cognito_user_pools"
+    assert scheme["x-amazon-apigateway-authorizer"]["providerARNs"] == [
+        {"Fn::Sub": "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${StaffUserPoolId}"}
+    ]
+    for path, method in CLASS_PHOTO_DATA_ROUTES:
+        assert body["paths"][path][method]["security"] == [{"StaffCognitoAuthorizer": []}], path

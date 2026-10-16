@@ -98,9 +98,12 @@ class NeonCRM:
         output_fields: list[str],
         page_size: int = 200,
         timeout: float = 10.0,
+        max_pages: int = MAX_SEARCH_PAGES,
     ) -> list[dict[str, Any]]:
         """
-        Searches events (read only) and returns the results of every page.
+        Searches events (read only) and returns the results of every page, up to
+        ``max_pages`` pages. ``timeout`` is the requests timeout of each page (to connect,
+        and between bytes of the answer).
 
         Raises:
             NeonCRMError: a call failed, timed out, or returned something other
@@ -122,10 +125,8 @@ class NeonCRM:
             if not isinstance(total_pages, int) or page + 1 >= total_pages:
                 return results
             page += 1
-            if page >= MAX_SEARCH_PAGES:
-                logger.warning(
-                    "Neon event search stopped at %d of %d pages", MAX_SEARCH_PAGES, total_pages
-                )
+            if page >= max_pages:
+                logger.warning("Neon event search stopped at %d of %d pages", max_pages, total_pages)
                 return results
 
     def _post_search(self, url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:

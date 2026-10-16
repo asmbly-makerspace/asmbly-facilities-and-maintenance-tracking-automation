@@ -43,6 +43,18 @@ Parameters:
     Type: String
     Description: The name of the AWS Secrets Manager secret containing the DDNS router credential.
     Default: "ddns/router-credential"
+  StaffUserPoolId:
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: /config/cognito/staff/user-pool-id
+    Description: ID of Asmbly's staff sign-in user pool (managed by AsmblyMCPs). Fetched from SSM.
+  ClassPhotoAppClientId:
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: /config/cognito/staff/class-photo-app-client-id
+    Description: The staff pool's app client for the class photo upload page. Fetched from SSM.
+  ClassPhotoGitHubAppSecretName:
+    Type: String
+    Default: "github/class-photo-upload-app"
+    Description: Secrets Manager secret with the class photo GitHub App's app_id, installation_id and private_key.
 
 Conditions:
   IsProd: !Equals [!Ref Stage, 'prod']
@@ -103,11 +115,29 @@ Resources:
           HttpMethod: GET
           ThrottlingRateLimit: 1
           ThrottlingBurstLimit: 10
+        # MethodSetting paths encode "/" as "~1".
+        - ResourcePath: "/~1class-photo-upload~1submit"
+          HttpMethod: POST
+          ThrottlingRateLimit: 1
+          ThrottlingBurstLimit: 5
       DefinitionBody:
         openapi: '3.0.1'
         info:
           title: !Sub 'Asmbly Facilities API - ${Stage}'
           version: '1.0'
+        components:
+          securitySchemes:
+            # Accepts an ID token from any app client of the staff pool; the class photo
+            # function also checks the token's aud and token_use.
+            StaffCognitoAuthorizer:
+              type: apiKey
+              name: Authorization
+              in: header
+              x-amazon-apigateway-authtype: cognito_user_pools
+              x-amazon-apigateway-authorizer:
+                type: cognito_user_pools
+                providerARNs:
+                  - Fn::Sub: "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${StaffUserPoolId}"
         paths:
           /SlackSlashReorder:
             post:
@@ -183,6 +213,26 @@ Resources:
                 type: aws_proxy
                 uri:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NetworkingStack.Outputs.DynamicDnsUpdateFunctionArn}/invocations"
+              responses: {}
+          /class-photo-upload/classes:
+            get:
+              security:
+                - StaffCognitoAuthorizer: []
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ClassesStack.Outputs.ClassPhotoUploadApiFunctionArn}/invocations"
+              responses: {}
+          /class-photo-upload/submit:
+            post:
+              security:
+                - StaffCognitoAuthorizer: []
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ClassesStack.Outputs.ClassPhotoUploadApiFunctionArn}/invocations"
               responses: {}
   RequestsLambdaLayer:
     Type: AWS::Serverless::LayerVersion
@@ -375,6 +425,22 @@ Resources:
         Workspace: networking
         Stage: !Ref Stage
 
+  ClassesStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./templates/classes.yaml
+      Parameters:
+        Stage: !Ref Stage
+        CommonLayerARN: !Ref CommonLayer
+        RequestsLayerARN: !Ref RequestsLambdaLayer
+        NeonSecretName: !Ref NeonSecretName
+        ClassPhotoGitHubAppSecretName: !Ref ClassPhotoGitHubAppSecretName
+        ClassPhotoAppClientId: !Ref ClassPhotoAppClientId
+      Tags:
+        Application: facilities-automation-hub
+        Workspace: classes
+        Stage: !Ref Stage
+
 
   PurchaseRequestInvokePermission:
     Type: AWS::Lambda::Permission
@@ -447,6 +513,15 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*"
+
+  # Scoped to this feature's paths: <api>/<stage>/<method>/class-photo-upload/...
+  ClassPhotoUploadApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ClassesStack.Outputs.ClassPhotoUploadApiFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*/class-photo-upload/*"
 
   # --- Custom Domain Infrastructure (PROD-ONLY) ---
   # These resources are only created when the Stage parameter is 'prod'

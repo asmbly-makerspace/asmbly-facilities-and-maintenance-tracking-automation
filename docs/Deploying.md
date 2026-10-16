@@ -39,7 +39,7 @@ The account is shared with other Asmbly projects, so the role is locked down to 
 
     Workflows on other branches, and jobs without one of these `environment:` values, cannot get credentials. The subject names the environment, not the branch, so the `stage` and `prod` GitHub environments must be limited to their branch (**Settings → Environments → Deployment branches and tags**).
 * **What it can touch:** only the `AsmblyFacilitiesMaintTrackingStack-stage` and `-prod` stacks (and their nested stacks) and the resources they create, listed **by name** in the policy. Dev is deployed by hand and is not covered. There are three managed policies:
-    * `GitHubDeployPolicy`: resources shared by both stages (generated IAM role names, the FacilitiesApi REST APIs, the `facilities.asmbly.org` domain, certificate and DNS records).
+    * `GitHubDeployPolicy`: resources shared by both stages (generated IAM role names, the FacilitiesApi REST APIs, the `facilities.asmbly.org` domain, certificate and DNS records, reads of the shared `/config/...` SSM parameters the templates resolve, and a read-only `cognito-idp:DescribeUserPool` on the staff sign-in pool behind the API's Cognito authorizer).
     * `GitHubDeployPolicystage` / `GitHubDeployPolicyprod`: one per stage, identical apart from the stage name (Lambda functions and layers, log groups, SSM parameters, DynamoDB table, EventBridge rule, SAM artifacts).
 
 ### How to Manage the Deployer Role
@@ -57,7 +57,8 @@ For example, if you add a function `FooFunction-${Stage}` with a log group `/asm
       --logical-resource-id FacilitiesApi --query StackResourceDetail.PhysicalResourceId --output text
     ```
     The same ID is the host prefix of the stack's `FacilitiesApiUrl` output (`https://<id>.execute-api.us-east-2.amazonaws.com/<stage>`).
-3.  **Deploy the CICD stack** from your local machine:
+3.  **Check the shared SSM parameters exist.** The template reads `/config/route53/asmbly/hosted-zone-id` and `/config/cognito/staff/user-pool-id` (the staff sign-in pool's ID, owned by AsmblyMCPs) when it deploys; a missing one fails the deploy.
+4.  **Deploy the CICD stack** from your local machine:
     ```bash
     sam deploy --template-file template-cicd.yaml --stack-name AsmblyFacilitiesMaintTrackingStack-cicd \
       --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND --region us-east-2 \
@@ -65,7 +66,7 @@ For example, if you add a function `FooFunction-${Stage}` with a log group `/asm
     ```
     Add `--no-execute-changeset` first to preview the changes, and check that nothing shows `Replacement: True` (for example, changing a managed policy's `Description` replaces it, which fails because the policy has a fixed name).
     `CAPABILITY_AUTO_EXPAND` is required because the template uses the `AWS::LanguageExtensions` and SAM transforms.
-4.  **Re-run** the failed GitHub Actions job.
+5.  **Re-run** the failed GitHub Actions job.
 
 If the FacilitiesApi REST API is ever replaced (new ID), or a stack is created from scratch, redeploy this stack with the new ID first; the role cannot create new REST APIs.
 

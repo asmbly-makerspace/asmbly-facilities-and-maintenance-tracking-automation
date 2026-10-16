@@ -37,13 +37,16 @@
       "file": "phase-4-pull-request-flow.md",
       "status": "done",
       "pre_sha": "e8daf15",
-      "review_rounds": "3 inline + 1 independent (APPROVED; 2 WARNs + 1 note fixed)"
+      "review_rounds": "3 inline + 1 independent (APPROVED; 2 WARNs + 1 note fixed)",
+      "squashed_sha": "7247336"
     },
     {
       "id": 5,
       "title": "API function, routes and Cognito authorizer",
       "file": "phase-5-api-and-infra.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "7247336",
+      "review_rounds": "3 inline + 1 independent (APPROVED, no findings)"
     },
     {
       "id": 6,
@@ -184,6 +187,35 @@
       "type": "deferred",
       "phase": 4,
       "detail": "Known limit: two simultaneous submissions for the same class racing a force-reset can leave the other's description; the loser gets a conflict error."
+    },
+    {
+      "type": "phase_start",
+      "phase": 5
+    },
+    {
+      "type": "phase_done",
+      "phase": 5,
+      "checks": {
+        "pytest": "1457 passed",
+        "cfn_lint": "4 W3005 pre-existing on base, nothing new",
+        "sam_validate": "pass",
+        "sam_build": "pass (non-container)"
+      }
+    },
+    {
+      "type": "decision",
+      "phase": 5,
+      "detail": "Time budget: Neon 4 s x max 8 pages, GitHub 5 s per call, Lambda timeout 25 s; no prod write starts with <8 s left. CLASS_PHOTO_DRY_RUN = !If [IsProd,'false','true'] (fails safe). Handler checks aud (compare_digest) + token_use=id before any secret/Neon read. Oversize base64 refused before decode."
+    },
+    {
+      "type": "decision",
+      "phase": 5,
+      "detail": "Added cognito-idp:DescribeUserPool on the exact staff pool ARN to the deploy role as a precaution (couldn't verify offline whether API Gateway needs it). Consider dropping after the first successful stage deploy."
+    },
+    {
+      "type": "deferred",
+      "phase": 5,
+      "detail": "Pre-existing: template.yaml MethodSettings ResourcePath '/nic/update' probably needs '/~1nic~1update'. Not fixed (out of scope)."
     }
   ],
   "stories": [

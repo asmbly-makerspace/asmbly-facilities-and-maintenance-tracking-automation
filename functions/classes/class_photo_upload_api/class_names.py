@@ -25,6 +25,11 @@ CLASS_LOOKBACK_MONTHS = 4  # #73: the list looks back 4 months
 NAME_SPLIT = " w/ "
 FORBIDDEN_CHARACTERS_PATTERN = re.compile(r"[/\\\x00-\x1f\x7f]")
 NEON_SEARCH_OUTPUT_FIELDS = ["Event ID", "Event Name"]
+# The class list must load well inside API Gateway's 29 s: at most 8 pages of 200
+# events (several times the 4-month window), giving up on a request that doesn't
+# connect or answer for 4 s.
+NEON_PAGE_TIMEOUT_SECONDS = 4.0
+NEON_MAX_PAGES = 8
 
 _FUZZY_STRIP_PATTERN = re.compile(r"(\s|:|-|_)+")
 _EXACT_REPLACE_PATTERN = re.compile(r"(\s+|:)")
@@ -78,9 +83,17 @@ def class_names_from_events(events: list[dict[str, Any]]) -> list[str]:
     return sorted(names, key=lambda n: (n.casefold(), n))
 
 
-def fetch_classes(neon: NeonCRM, today: datetime.date) -> list[str]:
+def fetch_classes(
+    neon: NeonCRM,
+    today: datetime.date,
+    *,
+    timeout: float = NEON_PAGE_TIMEOUT_SECONDS,
+    max_pages: int = NEON_MAX_PAGES,
+) -> list[str]:
     """Reads the class list from Neon. ``NeonCRMError`` propagates to the caller."""
-    events = neon.search_events(neon_search_fields(today), NEON_SEARCH_OUTPUT_FIELDS)
+    events = neon.search_events(
+        neon_search_fields(today), NEON_SEARCH_OUTPUT_FIELDS, timeout=timeout, max_pages=max_pages
+    )
     classes = class_names_from_events(events)
     logger.info("Read %d events, %d classes", len(events), len(classes))
     return classes
