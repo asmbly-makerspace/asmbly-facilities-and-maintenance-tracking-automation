@@ -364,12 +364,11 @@ def test_lambda_handler_error_pages_show_no_list(mock_get_json_param, mock_get_a
     mock_get_secret.return_value = ""
     results['empty_token'] = lambda_function.lambda_handler({}, None)
 
-    monkeypatch.delenv('CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME')
-    importlib.reload(lambda_function)
+    # setattr, not delenv and reload, so pytest restores the module-level values after the test
+    monkeypatch.setattr(lambda_function, 'CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME', None)
     results['missing_config'] = lambda_function.lambda_handler({}, None)
 
-    monkeypatch.delenv('SECRET_NAME')
-    importlib.reload(lambda_function)
+    monkeypatch.setattr(lambda_function, 'SECRET_NAME', None)
     results['missing_secret'] = lambda_function.lambda_handler({}, None)
 
     for name, result in results.items():
