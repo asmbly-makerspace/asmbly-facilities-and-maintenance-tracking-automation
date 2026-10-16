@@ -480,8 +480,6 @@ Resources:
         Application: facilities-automation-hub
         Project: api:custom-domain
         Workspace: facilities
-    DependsOn:
-      - FacilitiesCertificate
 
   FacilitiesApiMapping:
     Type: AWS::ApiGatewayV2::ApiMapping
@@ -490,8 +488,6 @@ Resources:
       DomainName: !Ref FacilitiesApiCustomDomain
       ApiId: !Ref FacilitiesApi
       Stage: !Ref Stage # This will be 'prod' when IsProd is true
-    DependsOn:
-      - FacilitiesApiCustomDomain
 
   FacilitiesDnsRecord:
     Type: AWS::Route53::RecordSet
@@ -503,8 +499,6 @@ Resources:
       AliasTarget:
         HostedZoneId: !GetAtt FacilitiesApiCustomDomain.RegionalHostedZoneId
         DNSName: !GetAtt FacilitiesApiCustomDomain.RegionalDomainName
-    DependsOn:
-      - FacilitiesApiCustomDomain
 
 Outputs:
   FacilitiesApiUrl:
