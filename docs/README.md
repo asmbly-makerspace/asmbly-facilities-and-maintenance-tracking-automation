@@ -112,6 +112,8 @@ This project uses the **AWS Serverless Application Model (SAM)**. This means:
 
 - **CONTRIBUTING.md** - How to contribute to the hub and add new functions.
 - **Deploying.md** - How to deploy to the hub.
+- **Branching Strategy.md** - How changes reach `stage` and then `main`.
+- **Working with AI Agents.md** - The AI agent team, its skills, and what a person still does. The rules every agent follows are in `CLAUDE.md` at the repository root.
 
 ## Repository Structure Overview
 
