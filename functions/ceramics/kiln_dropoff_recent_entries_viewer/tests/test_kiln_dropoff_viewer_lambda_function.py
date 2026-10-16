@@ -313,9 +313,66 @@ def test_lambda_handler_sets_csp_header(mock_get_json_param, mock_get_all_clicku
 
 
 def test_page_external_urls_are_covered_by_csp():
-    """Every external URL the page loads is on https://asmbly.org, which the CSP allows."""
-    page = lambda_function.generate_html_page([])
-    urls = re.findall(r'(?:src=|url\()["\']?(https?://[^"\')\s>]+)', page)
-    assert urls
-    for url in urls:
-        assert url.startswith("https://asmbly.org/"), url
+    """Every external URL the page and the error page load is on https://asmbly.org, which the CSP allows."""
+    for page in (lambda_function.generate_html_page([]), lambda_function.generate_error_page()):
+        urls = re.findall(r'(?:src=|url\()["\']?(https?://[^"\')\s>]+)', page)
+        assert urls
+        for url in urls:
+            assert url.startswith("https://asmbly.org/"), url
+
+
+def test_pages_have_no_unformatted_braces():
+    """The f-string braces in the shared page shell are all formatted, in every page."""
+    tasks = [{'id': 'abc123', 'custom_id': 'KO-1', 'name': 'Customer Z', 'date_created': '1704067200000'}]
+    pages = {
+        'empty': lambda_function.generate_html_page([]),
+        'tasks': lambda_function.generate_html_page(tasks),
+        'error': lambda_function.generate_error_page(),
+    }
+    for name, page in pages.items():
+        assert '{{' not in page, name
+        assert '}}' not in page, name
+        assert '@font-face {' in page, name
+
+
+def test_generate_error_page_shows_no_list_or_empty_message():
+    """The error page shows only the error, not the empty list's "No submissions found" row."""
+    page = lambda_function.generate_error_page()
+
+    assert "<h2>An Error Occurred</h2>" in page
+    assert "Could not retrieve the list of submissions." in page
+    assert "No submissions found" not in page
+    assert "<table" not in page
+    assert "Showing drop offs received in the last 24 hours" not in page
+    assert "If your ID is not showing in the list" not in page
+    assert "display:none" not in page
+    assert page.count('class="container"') == 1
+
+
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+def test_lambda_handler_error_pages_show_no_list(mock_get_json_param, mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function, monkeypatch):
+    """Every error path returns the error page without the list or "No submissions found"."""
+    mock_get_json_param.return_value = '123456789'
+    results = {}
+
+    mock_get_secret.return_value = 'fake-token'
+    mock_get_all_clickup_tasks.side_effect = ValueError("boom")
+    results['clickup_error'] = lambda_function.lambda_handler({}, None)
+
+    mock_get_secret.return_value = ""
+    results['empty_token'] = lambda_function.lambda_handler({}, None)
+
+    # setattr, not delenv and reload, so pytest restores the module-level values after the test
+    monkeypatch.setattr(lambda_function, 'CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME', None)
+    results['missing_config'] = lambda_function.lambda_handler({}, None)
+
+    monkeypatch.setattr(lambda_function, 'SECRET_NAME', None)
+    results['missing_secret'] = lambda_function.lambda_handler({}, None)
+
+    for name, result in results.items():
+        assert result['statusCode'] == 500, name
+        assert "Could not retrieve the list of submissions." in result['body'], name
+        assert "No submissions found" not in result['body'], name
+        assert "<table" not in result['body'], name
