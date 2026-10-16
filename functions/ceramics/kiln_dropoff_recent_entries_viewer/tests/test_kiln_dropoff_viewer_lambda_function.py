@@ -313,12 +313,26 @@ def test_lambda_handler_sets_csp_header(mock_get_json_param, mock_get_all_clicku
 
 
 def test_page_external_urls_are_covered_by_csp():
-    """Every external URL the page loads is on https://asmbly.org, which the CSP allows."""
-    page = lambda_function.generate_html_page([])
-    urls = re.findall(r'(?:src=|url\()["\']?(https?://[^"\')\s>]+)', page)
-    assert urls
-    for url in urls:
-        assert url.startswith("https://asmbly.org/"), url
+    """Every external URL the page and the error page load is on https://asmbly.org, which the CSP allows."""
+    for page in (lambda_function.generate_html_page([]), lambda_function.generate_error_page()):
+        urls = re.findall(r'(?:src=|url\()["\']?(https?://[^"\')\s>]+)', page)
+        assert urls
+        for url in urls:
+            assert url.startswith("https://asmbly.org/"), url
+
+
+def test_pages_have_no_unformatted_braces():
+    """The f-string braces in the shared page shell are all formatted, in every page."""
+    tasks = [{'id': 'abc123', 'custom_id': 'KO-1', 'name': 'Customer Z', 'date_created': '1704067200000'}]
+    pages = {
+        'empty': lambda_function.generate_html_page([]),
+        'tasks': lambda_function.generate_html_page(tasks),
+        'error': lambda_function.generate_error_page(),
+    }
+    for name, page in pages.items():
+        assert '{{' not in page, name
+        assert '}}' not in page, name
+        assert '@font-face {' in page, name
 
 
 def test_generate_error_page_shows_no_list_or_empty_message():
