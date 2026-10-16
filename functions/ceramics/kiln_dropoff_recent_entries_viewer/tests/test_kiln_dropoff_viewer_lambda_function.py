@@ -315,7 +315,7 @@ def test_lambda_handler_sets_csp_header(mock_get_json_param, mock_get_all_clicku
 def test_page_external_urls_are_covered_by_csp():
     """Every external URL the page loads is on https://asmbly.org, which the CSP allows."""
     page = lambda_function.generate_html_page([])
-    urls = re.findall(r'(?:src=|url\()"(https?://[^"]+)"', page)
+    urls = re.findall(r'(?:src=|url\()["\']?(https?://[^"\')\s>]+)', page)
     assert urls
     for url in urls:
         assert url.startswith("https://asmbly.org/"), url

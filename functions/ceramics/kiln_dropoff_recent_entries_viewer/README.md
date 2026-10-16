@@ -36,7 +36,7 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 -   **User's Browser:** The end-user's web browser.
 -   **ClickUp Form:** The native form where the user submits their entry.
 -   **AWS API Gateway:** A managed service that provides a public URL (endpoint) for our application.
--   **AWS Lambda:** A serverless function that contains the Python/Node.js logic.
+-   **AWS Lambda:** A serverless function that contains the Python logic.
 -   **AWS Secrets Manager:** Holds the ClickUp API token (secret `clickup/api/token`, key `CLICKUP_API_TOKEN`).
 -   **AWS Systems Manager Parameter Store:** Holds the drop-off list ID (parameter `/<stage>/config/clickup/ceramics/dropOffRequests`, key `list_id`).
 -   **ClickUp API:** The official API for accessing ClickUp data.
@@ -135,9 +135,7 @@ Tags in AWS will be:
 
 | Name        | Value                        |
 |-------------|------------------------------|
-| Application | facilities-automation-hub    |
 | Project     | ceramics:kiln-dropoff-viewer |
-| Workspace   | ceramics                     |
 
 ## Configuration
 
@@ -157,7 +155,7 @@ The deployment process is managed and specified in the [Deployment Instructions]
 
 ## Usage
 
-The URL is in the CLickUp form in Ceramics -> Drop Off Requests -> Kiln Drop Off Form -> Settings -> Redirect URL.
+The URL is in the ClickUp form in Ceramics -> Drop Off Requests -> Kiln Drop Off Form -> Settings -> Redirect URL.
 
 ## Testing
 
@@ -167,4 +165,6 @@ From the repository root:
 .venv/bin/python -m pytest functions/ceramics/kiln_dropoff_recent_entries_viewer
 ```
 
-The tests mock SSM, Secrets Manager and ClickUp, so they need no AWS access. After a deploy to stage, open `<stage API URL>/KilnOpsDropoffRecentEntriesViewer` and check that the list loads, Refresh reloads it, and the browser console shows no Content-Security-Policy violations. (The asmbly.org fonts already fail with a CORS error because asmbly.org sends no `Access-Control-Allow-Origin` header; that is not a CSP problem.)
+The tests mock SSM, Secrets Manager and ClickUp, so they need no AWS access. After a deploy to stage, open `<stage API URL>/KilnOpsDropoffRecentEntriesViewer` and check that the list loads, Refresh reloads it, and the browser console shows no Content-Security-Policy violations. Stage has no custom domain, so `<stage API URL>` is the `FacilitiesApiUrl` output of the stage stack, `AsmblyFacilitiesMaintTrackingStack-stage`, which looks like `https://<api-id>.execute-api.us-east-2.amazonaws.com/stage`. Find it in the AWS console under CloudFormation, that stack, the **Outputs** tab. (In prod the page is `https://facilities.asmbly.org/KilnOpsDropoffRecentEntriesViewer`.)
+
+The asmbly.org fonts already fail with a CORS error because asmbly.org sends no `Access-Control-Allow-Origin` header; that is not a CSP problem.
