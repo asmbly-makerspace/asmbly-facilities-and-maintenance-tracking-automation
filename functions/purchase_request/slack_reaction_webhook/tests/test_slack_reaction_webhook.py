@@ -79,6 +79,71 @@ class TestSlackReactionWebhook(TestCase):
             'fake-clickup-token', 'abcde123', {"status": "purchased"}
         )
 
+    @patch.dict(os.environ, {
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "slack-maintenancebot-token",
+        "CLICKUP_SECRET_NAME": "clickup/api/token",
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
+    })
+    @patch(f"{LAMBDA_FUNCTION_PATH}.clickup")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_result_log_omits_message_text(self, mock_boto3_client, mock_reaction_processing, mock_aws, mock_clickup):
+        """The result log line carries the task ID, not the requester's name from the message."""
+        mock_ssm_instance = MagicMock()
+        mock_boto3_client.return_value = mock_ssm_instance
+        mock_ssm_instance.get_parameter.return_value = {
+            'Parameter': {'Value': json.dumps({"truck": "purchased"})}
+        }
+        mock_aws.get_secret.return_value = 'fake-clickup-token'
+        mock_reaction_processing.process_base_reaction.return_value = {
+            "status": "success",
+            "task_id": "abcde123",
+            "reaction": "truck",
+            "message_text": "Requested By: Jane Doe\nhttps://app.clickup.com/t/abcde123",
+        }
+        event_body = {"event": {"type": "reaction_added", "reaction": "truck",
+                                "item": {"channel": "C123", "ts": "12345.678"}}}
+
+        with self.assertLogs(level="INFO") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertNotIn("Jane Doe", "\n".join(logs.output))
+        results = [r.getMessage() for r in logs.records if "Processing result" in r.getMessage()]
+        self.assertEqual(len(results), 1, results)
+        self.assertIn("abcde123", results[0])
+        self.assertIn("truck", results[0])
+
+    @patch.dict(os.environ, {
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "slack-maintenancebot-token",
+        "CLICKUP_SECRET_NAME": "clickup/api/token",
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
+    })
+    @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_ignored_result_log_has_status_and_reason(self, mock_boto3_client, mock_reaction_processing):
+        """An ignored reaction logs its status and reason."""
+        mock_ssm_instance = MagicMock()
+        mock_boto3_client.return_value = mock_ssm_instance
+        mock_ssm_instance.get_parameter.return_value = {
+            'Parameter': {'Value': json.dumps({"truck": "purchased"})}
+        }
+        mock_reaction_processing.process_base_reaction.return_value = {
+            "status": "ignored", "reason": "No ClickUp task URL found in the message."
+        }
+        event_body = {"event": {"type": "reaction_added", "reaction": "truck",
+                                "item": {"channel": "C123", "ts": "12345.678"}}}
+
+        with self.assertLogs(level="INFO") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
+
+        self.assertEqual(response["statusCode"], 200)
+        results = [r.getMessage() for r in logs.records if "Processing result" in r.getMessage()]
+        self.assertEqual(len(results), 1, results)
+        self.assertIn("ignored", results[0])
+        self.assertIn("No ClickUp task URL found in the message.", results[0])
+
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     def test_lambda_handler_challenge(self, mock_boto3_client):
         # The router passes the body directly

@@ -176,6 +176,83 @@ class TestProblemReportReactionWebhook(TestCase):
         # Ensure no further processing happened
         # (The mocks for clickup, aws, discourse are not patched, so a call would raise an error)
 
+    @patch.dict(os.environ, {
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param",
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake-slack-secret",
+        "CLICKUP_SECRET_NAME": "fake-clickup-secret",
+        "DISCOURSE_SECRET_NAME": "fake-discourse-secret"
+    })
+    @patch(f"{LAMBDA_FUNCTION_PATH}.discourse")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.clickup")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_result_log_omits_message_text(self, mock_boto3_client, mock_reaction_processing, mock_aws, mock_clickup, mock_discourse):
+        """The result log line carries the task ID, not the Slack message's contact details."""
+        mock_ssm = MagicMock()
+        mock_boto3_client.return_value = mock_ssm
+        mock_ssm.get_parameter.return_value = {
+            'Parameter': {'Value': json.dumps(self.fake_reaction_map)}
+        }
+        mock_aws.get_secret.side_effect = [
+            'fake-clickup-token', 'fake-discourse-key', 'fake-discourse-user'
+        ]
+        mock_reaction_processing.process_base_reaction.return_value = {
+            "status": "success",
+            "task_id": "abcde123",
+            "reaction": "white_check_mark",
+            "message_text": (
+                "A problem occurred!\nContact Details: Jane Doe 512-555-0142\n"
+                "ClickUp: https://app.clickup.com/t/abcde123\n"
+                "Discourse: https://yo.asmbly.org/t/slug/123/1"
+            ),
+        }
+        mock_discourse.parse_discourse_url.return_value = {
+            "base_url": "https://yo.asmbly.org", "topic_id": "123", "post_number": "1"
+        }
+        mock_discourse.post_reply.return_value = {"id": 987}
+
+        event_body = json.loads(self.base_event['body'])
+        with self.assertLogs(level="INFO") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
+
+        self.assertEqual(response["statusCode"], 200)
+        output = "\n".join(logs.output)
+        self.assertNotIn("Jane Doe", output)
+        self.assertNotIn("512-555-0142", output)
+        results = [r.getMessage() for r in logs.records if "processing result" in r.getMessage()]
+        self.assertEqual(len(results), 1, results)
+        self.assertIn("abcde123", results[0])
+        self.assertIn("white_check_mark", results[0])
+
+    @patch.dict(os.environ, {
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param",
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake-slack-secret",
+        "CLICKUP_SECRET_NAME": "fake-clickup-secret",
+        "DISCOURSE_SECRET_NAME": "fake-discourse-secret"
+    })
+    @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_ignored_result_log_has_status_and_reason(self, mock_boto3_client, mock_reaction_processing):
+        """An ignored reaction logs its status and reason."""
+        mock_ssm = MagicMock()
+        mock_boto3_client.return_value = mock_ssm
+        mock_ssm.get_parameter.return_value = {
+            'Parameter': {'Value': json.dumps(self.fake_reaction_map)}
+        }
+        mock_reaction_processing.process_base_reaction.return_value = {
+            "status": "ignored", "reason": "No ClickUp task URL found in the message."
+        }
+
+        with self.assertLogs(level="INFO") as logs:
+            response = lambda_function.lambda_handler(json.loads(self.base_event['body']), None)
+
+        self.assertEqual(response["statusCode"], 200)
+        results = [r.getMessage() for r in logs.records if "processing result" in r.getMessage()]
+        self.assertEqual(len(results), 1, results)
+        self.assertIn("ignored", results[0])
+        self.assertIn("No ClickUp task URL found in the message.", results[0])
+
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     def test_handler_slack_challenge(self, mock_boto3_client):
         # The router passes the body directly
