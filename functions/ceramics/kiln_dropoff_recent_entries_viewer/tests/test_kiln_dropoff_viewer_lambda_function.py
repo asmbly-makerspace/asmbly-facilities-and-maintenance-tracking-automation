@@ -1,4 +1,5 @@
 import json
+import logging
 import importlib
 import pathlib
 from unittest.mock import patch
@@ -157,3 +158,44 @@ def test_lambda_handler_secret_manager_error(mock_get_json_param, mock_get_secre
     assert result['statusCode'] == 500
     assert "<h2>An Error Occurred</h2>" in result['body']
     assert "Could not connect to Secrets Manager" in result['body']
+
+
+def test_generate_html_page_escapes_task_name_and_id():
+    """Form text and IDs are escaped before they go into the page (#74)."""
+    tasks = [{
+        'id': 'abc123',
+        'custom_id': 'KO-<b>1</b>',
+        'name': '<script>alert(1)</script>',
+        'date_created': '1704067200000',
+    }]
+
+    page = lambda_function.generate_html_page(tasks)
+
+    assert '<script>alert(1)</script>' not in page
+    assert 'KO-<b>1</b>' not in page
+    assert '&lt;script&gt;alert(1)&lt;/script&gt;' in page
+    assert 'KO-&lt;b&gt;1&lt;/b&gt;' in page
+
+
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+def test_lambda_handler_error_page_hides_exception_text(mock_get_json_param, mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function, caplog):
+    """The error page never shows the exception's text; it goes to the log instead (#74)."""
+    marker = "ClickUp API HTTP Error: 401 Unauthorized - Details: {\"err\": \"Token invalid\", \"url\": \"list/123456789/task\"}"
+    mock_get_secret.return_value = 'fake-token'
+    mock_get_json_param.return_value = '123456789'
+    mock_get_all_clickup_tasks.side_effect = ValueError(marker)
+
+    with caplog.at_level(logging.INFO):
+        result = lambda_function.lambda_handler({}, None)
+
+    assert result['statusCode'] == 500
+    body = result['body']
+    assert "Could not retrieve the list of submissions." in body
+    assert marker not in body
+    assert "Token invalid" not in body
+    assert "401" not in body
+    assert "123456789" not in body
+    assert "Error details" not in body
+    assert any(r.exc_info and marker in str(r.exc_info[1]) for r in caplog.records)
