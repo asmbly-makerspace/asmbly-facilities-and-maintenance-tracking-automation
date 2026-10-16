@@ -52,7 +52,8 @@ def parse_smartwaiver_payload(body: dict) -> tuple[str | None, str | None, str |
         waiver_date = central_time.strftime("%m/%d/%Y")
         return email, waiver_date, waiver_id
     except (ValueError, TypeError) as e:
-        logger.error(f"Could not parse date string '{signed_date_str}': {e}")
+        # Not the raw string: it comes from an unauthenticated payload.
+        logger.error("Could not parse signed_date for waiver %s: %s", waiver_id, type(e).__name__)
         return None, None, waiver_id
 
 
@@ -79,8 +80,9 @@ def update_neon_with_waiver_info(email: str, waiver_date: str, waiver_id: str | 
 
     if not neoncrm_org_id or not neoncrm_api_key:
         logger.error(
-            f"Failed to retrieve NeonCRM credentials from Secrets Manager secret '{secret_name}'. "
-            "Please ensure the secret exists and contains the keys 'NEON_ORG_ID' and 'NEON_API_KEY'."
+            "Failed to retrieve NeonCRM credentials from Secrets Manager secret '%s'. "
+            "Please ensure the secret exists and contains the keys 'NEON_ORG_ID' and 'NEON_API_KEY'.",
+            secret_name,
         )
         return {"statusCode": 500, "body": json.dumps("Internal Server Error: Missing NeonCRM credentials.")}
 
@@ -125,7 +127,7 @@ def lambda_handler(event: dict, context: object) -> dict:
         logger.info("Parsed waiver %s", waiver_id)
         # --- Agnostic Business Logic ---
         response = update_neon_with_waiver_info(email, waiver_date, waiver_id)
-        logger.info(f"Webhook processing completed with status code: {response.get('statusCode')}")
+        logger.info("Webhook processing completed with status code: %s", response.get("statusCode"))
         return response
 
     except Exception as e:

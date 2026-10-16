@@ -74,6 +74,17 @@ class TestNewWaiverCompleted(TestCase):
         self.assertIsNone(waiver_date)
         self.assertEqual(waiver_id, "W-123")
 
+    def test_parse_smartwaiver_payload_invalid_date_logs_waiver_id_not_raw_value(self):
+        """An unparseable date logs the waiver ID and error type, not the raw string."""
+        raw_date = "jane.doe@example.com"
+        payload = {"waiver_id": "W-123", "email": "test@example.com", "signed_date": raw_date}
+        with self.assertLogs(level="DEBUG") as logs:
+            lambda_function.parse_smartwaiver_payload(payload)
+        output = "\n".join(logs.output)
+        self.assertNotIn(raw_date, output)
+        errors = [r.getMessage() for r in logs.records if r.levelname == "ERROR"]
+        self.assertIn("Could not parse signed_date for waiver W-123: ValueError", errors)
+
     # --- Test `update_neon_with_waiver_info` ---
 
     @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.NeonCRM")
