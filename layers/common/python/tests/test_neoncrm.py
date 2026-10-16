@@ -58,6 +58,38 @@ class TestNeonCRM(unittest.TestCase):
         self.assertIsNone(account_id)
 
     @patch('common.neoncrm.requests.post')
+    def test_get_account_by_email_found_logs_account_id_not_email(self, mock_post):
+        """A found account is logged by its ID; the searched email never reaches the log."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"searchResults": [{"Account ID": "12345"}]}
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        with self.assertLogs(level="DEBUG") as logs:
+            account_id = self.client.get_account_by_email("test@example.com")
+
+        self.assertEqual(account_id, "12345")
+        output = "\n".join(logs.output)
+        self.assertIn("12345", output)
+        self.assertNotIn("test@example.com", output)
+
+    @patch('common.neoncrm.requests.post')
+    def test_get_account_by_email_not_found_does_not_log_email(self, mock_post):
+        """When no account matches, the log line does not contain the searched email."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"searchResults": []}
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        with self.assertLogs(level="DEBUG") as logs:
+            account_id = self.client.get_account_by_email("notfound@example.com")
+
+        self.assertIsNone(account_id)
+        output = "\n".join(logs.output)
+        self.assertNotIn("notfound@example.com", output)
+        self.assertNotIn("notfound", output)
+
+    @patch('common.neoncrm.requests.post')
     def test_get_account_by_email_api_error(self, mock_post):
         """Test handling of API errors when searching for an account."""
         mock_post.side_effect = requests.exceptions.RequestException("API Error")
