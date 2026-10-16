@@ -63,6 +63,19 @@ The router is a serverless AWS Lambda function triggered by an API Gateway endpo
 
 The core infrastructure is defined in `templates/routers.yaml` and consists of the Lambda function and its associated IAM Role for permissions.
 
+### Memory and timeout
+
+| Setting | Value | Why |
+|---------|-------|-----|
+| `MemorySize` | 512 MB | Lambda gives a function CPU in proportion to its memory. At the 128 MB default, a cold start couldn't load its SSM and Lambda clients, fetch the config and invoke the target within Slack's 3-second deadline, so API Gateway answered Slack with a 502. 512 MB gives it enough CPU. |
+| `Timeout` | 3 seconds | Slack gives up on an event after 3 seconds, so a longer timeout only adds cost. A call that gets stuck ends in a 502, and Slack retries the event. |
+
+The function builds its SSM and Lambda clients on first use and keeps them for the life of the container, so warm requests reuse them. It still reads the SSM parameter on every request, so a config change applies at once.
+
+### Logging
+
+Each request writes one line to the log group `/asmbly/lambda/facilities-slack-event-router-<stage>`: the Slack event type, the channel ID, and the `X-Slack-Retry-Num` header (`retry_num=None` on a first delivery, `1`, `2`, ... on Slack's retries). Count the lines with a retry number to see how often Slack had to retry. The function never logs the request headers or body, which carry Slack's signature and verification token.
+
 ### Tags
 
 | Name        | Value                       |
