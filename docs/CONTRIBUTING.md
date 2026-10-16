@@ -10,6 +10,7 @@ Following these guidelines helps maintain the quality of the project and respect
 - [Development Setup](#development-setup)
 - [Adding a New Lambda Function](#adding-a-new-lambda-function)
 - [Running Tests](#running-tests)
+- [Working with AI Agents](#working-with-ai-agents)
 
 ---
 
@@ -23,7 +24,7 @@ Our collaboration model is built on a clear development workflow. Before you beg
     Start by forking the main repository to your own GitHub account.
 
 2.  **Create a New Branch:**
-    On your fork, create a new branch from the `main` branch. Please follow the branch naming conventions outlined in our strategy document.
+    On your fork, create a new branch from the `stage` branch. Please follow the branch naming conventions outlined in our strategy document.
 
     * For a new feature: `feature/your-feature-name`
     * For a bug fix: `fix/the-bug-you-are-fixing`
@@ -31,8 +32,8 @@ Our collaboration model is built on a clear development workflow. Before you beg
 
     ```bash
     # From your local clone of your fork
-    git checkout main
-    git pull origin main
+    git checkout stage
+    git pull origin stage
     git checkout -b feature/my-cool-new-automation
     ```
 
@@ -48,7 +49,7 @@ Our collaboration model is built on a clear development workflow. Before you beg
     ```
 
 5.  **Open a Pull Request (PR):**
-    When your changes are ready, push your branch to your fork and open a Pull Request to the `main` branch of the main repository.
+    When your changes are ready, push your branch to your fork and open a Pull Request to the `stage` branch of the main repository. Fill in every section of the PR template, including **Risk**.
 
     A great Pull Request includes:
     * A clear, descriptive title.
@@ -148,3 +149,9 @@ This project uses `pytest` for running unit and integration tests. Before you ca
     ```bash
     pytest
     ```
+
+---
+
+## Working with AI Agents
+
+If you use an AI coding agent, it must follow [`CLAUDE.md`](../CLAUDE.md) at the repository root: the rules, the checks that define "done", and what an agent must never do. Claude Code users also get a team of agents and skills (`/bug-fix`, `/plan-product`, `/build`, `/review`, `/offshore` and others), described in [Working with AI Agents](Working%20with%20AI%20Agents.md).
