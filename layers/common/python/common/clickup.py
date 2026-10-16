@@ -1,9 +1,26 @@
 import json
+import logging
+import re
 import requests # type: ignore
 from dataclasses import dataclass
+from typing import Any
 
 
 BASE_URL = "https://api.clickup.com/api/v2"
+
+logger = logging.getLogger(__name__)
+
+_ECODE_PATTERN = re.compile(r"^[A-Z0-9_]{1,40}$")
+
+
+def _ecode_for_log(body: Any) -> str | None:
+    """Return ClickUp's ECODE from an error body if it looks like one, '<invalid>' if not."""
+    if not isinstance(body, dict) or "ECODE" not in body:
+        return None
+    ecode = body["ECODE"]
+    if isinstance(ecode, str) and _ECODE_PATTERN.match(ecode):
+        return ecode
+    return "<invalid>"
 
 
 @dataclass
@@ -19,7 +36,7 @@ class ClickUpTask:
     task_description: str | None
 
 
-def _make_clickup_request(api_token, method, endpoint, **kwargs):
+def _make_clickup_request(api_token: str, method: str, endpoint: str, **kwargs: Any) -> Any:
     """Makes a request to the ClickUp API and handles errors."""
     headers = {"Authorization": api_token, "Content-Type": "application/json"}
     url = f"{BASE_URL}/{endpoint}"
@@ -30,16 +47,20 @@ def _make_clickup_request(api_token, method, endpoint, **kwargs):
         return response.json()
     except requests.exceptions.HTTPError as e:
         error_message = f"ClickUp API HTTP Error: {e.response.status_code} {e.response.reason}"
+        error_details = None
         try:
             error_details = e.response.json()
             error_message += f" - Details: {json.dumps(error_details)}"
         except ValueError:
             error_message += f" - Response body: {e.response.text}"
-        print(error_message)
+        logger.error(
+            "ClickUp %s %s failed with HTTP %s %s (ECODE=%s)",
+            method, endpoint, e.response.status_code, e.response.reason, _ecode_for_log(error_details),
+        )
         raise ValueError(error_message)
     except requests.exceptions.RequestException as e:
         error_message = f"Network error during ClickUp API request: {str(e)}"
-        print(error_message)
+        logger.error("ClickUp %s %s request failed: %s", method, endpoint, type(e).__name__)
         raise ValueError(error_message)
 
 
@@ -57,7 +78,7 @@ def get_list_custom_fields(api_token, list_id):
     response_data = _make_clickup_request(api_token, "GET", f"list/{list_id}/field")
     return response_data.get('fields', [])
 
-def update_task(api_token, task_id, payload):
+def update_task(api_token: str, task_id: str, payload: dict[str, Any]) -> Any:
     """Updates a ClickUp task."""
     response_data = _make_clickup_request(api_token, "PUT", f"task/{task_id}", json=payload)
 
@@ -66,7 +87,11 @@ def update_task(api_token, task_id, payload):
     # a different structure or an error message.
     if 'id' not in response_data or response_data.get('id') != task_id:
         error_message = f"ClickUp task update for {task_id} returned 200 OK but the response body indicates a failure. Response: {json.dumps(response_data)}"
-        print(error_message)
+        returned_id = response_data.get('id') if isinstance(response_data, dict) else None
+        logger.error(
+            "ClickUp task update for %s returned task ID %s instead (ECODE=%s)",
+            task_id, returned_id, _ecode_for_log(response_data),
+        )
         # We can also check for a specific error key if ClickUp uses one.
         if 'err' in response_data:
             error_message += f" | ClickUp Error: {response_data['err']}"
@@ -167,7 +192,15 @@ def fetch_clickup_tasks_page(list_id, api_token, page_num, due_date_lt_ms=None, 
     is_last_page = data.get('last_page', True) if not tasks_on_page else data.get('last_page', False)
     return tasks_on_page, is_last_page
 
-def get_all_clickup_tasks(list_id, api_token, due_date_lt_ms=None, due_date_gt_ms=None, date_created_gt_ms=None, date_created_lt_ms=None, max_pages=20):
+def get_all_clickup_tasks(
+    list_id: str,
+    api_token: str,
+    due_date_lt_ms: int | None = None,
+    due_date_gt_ms: int | None = None,
+    date_created_gt_ms: int | None = None,
+    date_created_lt_ms: int | None = None,
+    max_pages: int = 20,
+) -> list[dict[str, Any]]:
     """
     Fetches all tasks from a ClickUp list, paginating as necessary.
     """
@@ -178,7 +211,7 @@ def get_all_clickup_tasks(list_id, api_token, due_date_lt_ms=None, due_date_gt_m
 
     while True:
         if current_page >= max_pages:
-            print(f"Reached maximum page limit ({max_pages}). Stopping task fetch.")
+            logger.warning("Reached maximum page limit (%s) for list %s. Stopping task fetch.", max_pages, list_id)
             break
 
         tasks_on_page, is_last_page = fetch_clickup_tasks_page(
