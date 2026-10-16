@@ -58,6 +58,10 @@ The automation follows a clear, sequential process triggered by a Smartwaiver we
 7.  **Update NeonCRM Account**: If an account is found, the function formats the signature date to `MM/DD/YYYY` and makes a `PATCH` request to the NeonCRM API to update the `WaverDate` custom field for that account.
 8.  **Return Response**: The function returns a `200 OK` status to the webhook source to acknowledge receipt and successful processing. If the account is not found, it returns a `404` to indicate this.
 
+### Logging
+
+The function's CloudWatch logs record the Smartwaiver waiver ID (`waiver_id` in the payload) and the NeonCRM account ID, never the signer's email or name. A waiver ID that isn't a plain ID (letters, digits, `-` and `_`, up to 64 characters) is logged as `invalid`, and a missing one as `None`; neither stops the waiver from being processed. When something unexpected fails, the log names the error's type and the waiver ID, not the error's text.
+
 ## AWS Infrastructure
 
 The core infrastructure is defined in `templates/administrative.yaml` and consists of the Lambda function and its associated IAM Role for permissions.

@@ -13,6 +13,7 @@ class TestNewWaiverCompleted(TestCase):
     def setUp(self):
         """Set up common test data."""
         self.valid_payload = {
+            "waiver_id": "W-123",
             "email": "test@example.com",
             "signed_date": "2023-10-27T10:00:00.000Z"
         }
@@ -24,31 +25,65 @@ class TestNewWaiverCompleted(TestCase):
 
     def test_parse_smartwaiver_payload_success(self):
         """Tests successful parsing of a valid Smartwaiver payload."""
-        email, waiver_date = lambda_function.parse_smartwaiver_payload(self.valid_payload)
+        email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(self.valid_payload)
         self.assertEqual(email, "test@example.com")
         self.assertEqual(waiver_date, "10/27/2023") # 10:00 UTC is 05:00 CDT on the same day
+        self.assertEqual(waiver_id, "W-123")
+
+    def test_parse_smartwaiver_payload_missing_waiver_id(self):
+        """A payload without a waiver ID still parses; the ID is None."""
+        payload = {"email": "test@example.com", "signed_date": "2023-10-27T10:00:00.000Z"}
+        email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(payload)
+        self.assertEqual(email, "test@example.com")
+        self.assertEqual(waiver_date, "10/27/2023")
+        self.assertIsNone(waiver_id)
+
+    def test_parse_smartwaiver_payload_invalid_waiver_id(self):
+        """A waiver ID that doesn't look like an ID is replaced, and parsing still succeeds."""
+        for raw in ("jane.doe@example.com", "a" * 65, "W 123", 12345):
+            with self.subTest(raw=raw):
+                payload = {"waiver_id": raw, "email": "test@example.com",
+                           "signed_date": "2023-10-27T10:00:00.000Z"}
+                email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(payload)
+                self.assertEqual(email, "test@example.com")
+                self.assertEqual(waiver_date, "10/27/2023")
+                self.assertEqual(waiver_id, "invalid")
 
     def test_parse_smartwaiver_payload_timezone_conversion(self):
         """Tests that a UTC timestamp is correctly converted to Central Time."""
         # This timestamp is 00:52 UTC on Nov 9, which is 19:52 CT on Nov 8 (during CDT)
         payload = {"email": "test@example.com", "signed_date": "2025-11-09T00:52:12.007Z"}
-        email, waiver_date = lambda_function.parse_smartwaiver_payload(payload)
+        email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(payload)
         self.assertEqual(email, "test@example.com")
         self.assertEqual(waiver_date, "11/08/2025")
+        self.assertIsNone(waiver_id)
 
     def test_parse_smartwaiver_payload_missing_email(self):
         """Tests payload parsing when 'email' is missing."""
-        payload = {"signed_date": "2023-10-27T10:00:00.000Z"}
-        email, waiver_date = lambda_function.parse_smartwaiver_payload(payload)
+        payload = {"waiver_id": "W-123", "signed_date": "2023-10-27T10:00:00.000Z"}
+        email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(payload)
         self.assertIsNone(email)
         self.assertIsNone(waiver_date)
+        self.assertEqual(waiver_id, "W-123")
 
     def test_parse_smartwaiver_payload_invalid_date(self):
         """Tests payload parsing with an invalid date format."""
-        payload = {"email": "test@example.com", "signed_date": "not-a-date"}
-        email, waiver_date = lambda_function.parse_smartwaiver_payload(payload)
+        payload = {"waiver_id": "W-123", "email": "test@example.com", "signed_date": "not-a-date"}
+        email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(payload)
         self.assertIsNone(email)
         self.assertIsNone(waiver_date)
+        self.assertEqual(waiver_id, "W-123")
+
+    def test_parse_smartwaiver_payload_invalid_date_logs_waiver_id_not_raw_value(self):
+        """An unparseable date logs the waiver ID and error type, not the raw string."""
+        raw_date = "jane.doe@example.com"
+        payload = {"waiver_id": "W-123", "email": "test@example.com", "signed_date": raw_date}
+        with self.assertLogs(level="DEBUG") as logs:
+            lambda_function.parse_smartwaiver_payload(payload)
+        output = "\n".join(logs.output)
+        self.assertNotIn(raw_date, output)
+        errors = [r.getMessage() for r in logs.records if r.levelname == "ERROR"]
+        self.assertIn("Could not parse signed_date for waiver W-123: ValueError", errors)
 
     # --- Test `update_neon_with_waiver_info` ---
 
@@ -63,7 +98,7 @@ class TestNewWaiverCompleted(TestCase):
         mock_neoncrm_class.return_value = mock_neon_client
 
         with patch.dict(os.environ, self.env_vars):
-            response = lambda_function.update_neon_with_waiver_info("test@example.com", "10/26/2023")
+            response = lambda_function.update_neon_with_waiver_info("test@example.com", "10/26/2023", "W-123")
 
         # Assertions
         self.assertEqual(response["statusCode"], 200)
@@ -86,7 +121,7 @@ class TestNewWaiverCompleted(TestCase):
         mock_neoncrm_class.return_value = mock_neon_client
 
         with patch.dict(os.environ, self.env_vars):
-            response = lambda_function.update_neon_with_waiver_info("notfound@example.com", "10/26/2023")
+            response = lambda_function.update_neon_with_waiver_info("notfound@example.com", "10/26/2023", "W-123")
 
         # Assertions
         self.assertEqual(response["statusCode"], 404)
@@ -101,7 +136,7 @@ class TestNewWaiverCompleted(TestCase):
     def test_lambda_handler_success(self, mock_parse, mock_update):
         """Tests the main handler's success path."""
         # Mocks
-        mock_parse.return_value = ("test@example.com", "10/26/2023")
+        mock_parse.return_value = ("test@example.com", "10/26/2023", "W-123")
         mock_update.return_value = {"statusCode": 200, "body": "Success"}
 
         event = {"body": json.dumps(self.valid_payload)}
@@ -111,14 +146,14 @@ class TestNewWaiverCompleted(TestCase):
         self.assertEqual(response["statusCode"], 200)
         self.assertEqual(response["body"], "Success")
         mock_parse.assert_called_once_with(self.valid_payload)
-        mock_update.assert_called_once_with("test@example.com", "10/26/2023")
+        mock_update.assert_called_once_with("test@example.com", "10/26/2023", "W-123")
 
     @patch(f"{LAMBDA_FUNCTION_PATH}.update_neon_with_waiver_info")
     @patch(f"{LAMBDA_FUNCTION_PATH}.parse_smartwaiver_payload")
     def test_lambda_handler_parsing_fails(self, mock_parse, mock_update):
         """Tests the main handler when payload parsing fails."""
         # Mocks
-        mock_parse.return_value = (None, None)  # Simulate parsing failure
+        mock_parse.return_value = (None, None, "W-123")  # Simulate parsing failure
 
         event = {"body": json.dumps({"invalid": "payload"})}
         response = lambda_function.lambda_handler(event, None)
@@ -148,3 +183,76 @@ class TestNewWaiverCompleted(TestCase):
         # Assertions
         self.assertEqual(response["statusCode"], 500)
         self.assertIn("Internal Server Error", response["body"])
+
+
+class TestNewWaiverCompletedLogging(TestCase):
+    """The logs carry the waiver ID and the Neon account ID, never the signer's details."""
+
+    PERSONAL_DATA = ("jane.doe@example.com", "jane.doe", "Jane Doe", "1990-01-02", "512-555-0142")
+
+    def setUp(self):
+        self.event = {"body": json.dumps({
+            "waiver_id": "W-123",
+            "email": "jane.doe@example.com",
+            "name": "Jane Doe",
+            "dateOfBirth": "1990-01-02",
+            "phone": "512-555-0142",
+            "signed_date": "2025-11-09T00:52:12.007Z",
+        })}
+        self.env_vars = {"NEON_SECRET_NAME": "prod/neon_token"}
+
+    def _assert_no_personal_data(self, output: str) -> None:
+        for leaked in self.PERSONAL_DATA:
+            self.assertNotIn(leaked, output)
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.requests.patch")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.requests.post")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    def test_logs_ids_not_personal_data_when_account_found(self, mock_aws, mock_post, mock_patch):
+        """A matched waiver logs the waiver ID and account ID, and no personal data."""
+        mock_aws.get_secret.side_effect = ["test_org_id", "test_api_key"]
+        mock_post.return_value = MagicMock(**{"json.return_value": {"searchResults": [{"Account ID": "12345"}]}})
+        mock_patch.return_value = MagicMock()
+
+        with patch.dict(os.environ, self.env_vars), self.assertLogs(level="DEBUG") as logs:
+            response = lambda_function.lambda_handler(self.event, None)
+
+        self.assertEqual(response["statusCode"], 200)
+        self._assert_no_personal_data("\n".join(logs.output))
+        messages = [record.getMessage() for record in logs.records]
+        self.assertIn("Parsed waiver W-123", messages)
+        self.assertIn("Waiver W-123 matches NeonCRM account 12345", messages)
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.requests.patch")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.requests.post")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    def test_logs_ids_not_personal_data_when_account_not_found(self, mock_aws, mock_post, mock_patch):
+        """An unmatched waiver logs the waiver ID, and no personal data."""
+        mock_aws.get_secret.side_effect = ["test_org_id", "test_api_key"]
+        mock_post.return_value = MagicMock(**{"json.return_value": {"searchResults": []}})
+
+        with patch.dict(os.environ, self.env_vars), self.assertLogs(level="DEBUG") as logs:
+            response = lambda_function.lambda_handler(self.event, None)
+
+        self.assertEqual(response["statusCode"], 404)
+        mock_patch.assert_not_called()
+        self._assert_no_personal_data("\n".join(logs.output))
+        messages = [record.getMessage() for record in logs.records]
+        self.assertIn("Parsed waiver W-123", messages)
+        self.assertTrue(any("W-123" in m and "No NeonCRM account" in m for m in messages), messages)
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    def test_unexpected_error_logs_type_and_waiver_id_not_message(self, mock_aws):
+        """The catch-all logs the exception's class and the waiver ID, not its text."""
+        mock_aws.get_secret.side_effect = RuntimeError("lookup failed for jane.doe@example.com")
+
+        with patch.dict(os.environ, self.env_vars), self.assertLogs(level="DEBUG") as logs:
+            response = lambda_function.lambda_handler(self.event, None)
+
+        self.assertEqual(response["statusCode"], 500)
+        self.assertEqual(response["body"], json.dumps("Internal Server Error"))
+        output = "\n".join(logs.output)
+        self._assert_no_personal_data(output)
+        self.assertNotIn("lookup failed", output)
+        errors = [record.getMessage() for record in logs.records if record.levelname == "ERROR"]
+        self.assertTrue(any("RuntimeError" in m and "W-123" in m for m in errors), errors)

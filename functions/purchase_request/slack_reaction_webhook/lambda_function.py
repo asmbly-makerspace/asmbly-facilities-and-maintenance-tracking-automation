@@ -53,7 +53,11 @@ def lambda_handler(event, context):
             clickup_api_token = aws.get_secret(clickup_secret_name, "CLICKUP_API_TOKEN")
             clickup.update_task(clickup_api_token, task_id, {"status": new_status})
 
-        logger.info(f"Processing result: {result}")
+        # Not the whole result: its message_text holds the requester's name.
+        logger.info(
+            "Processing result: status=%s task_id=%s reaction=%s reason=%s",
+            result.get("status"), result.get("task_id"), result.get("reaction"), result.get("reason"),
+        )
         return {"statusCode": 200, "body": json.dumps("Request processed successfully.")}
 
     except Exception as e:
