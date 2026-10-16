@@ -56,14 +56,9 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: 'arn:aws:logs:*:*:*'
-              - Effect: Allow
-                Action:
-                  - iam:CreateRole
-                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/*'
+                Resource: !GetAtt PMReminderBotLogGroup.Arn
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue

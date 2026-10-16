@@ -46,7 +46,7 @@ Resources:
           Statement:
             - Effect: Allow
               Action: secretsmanager:GetSecretValue
-              Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${NeonSecretName}*'
+              Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${NeonSecretName}-*'
       Tags:
         Project: administrative:new-waiver-completed
 
