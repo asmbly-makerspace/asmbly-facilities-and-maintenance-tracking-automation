@@ -1,9 +1,19 @@
 import requests
 import base64
 import logging
+from typing import Any
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+# Stop paginating after this many pages of an events search, so a bad
+# `totalPages` can't keep a function calling Neon until it times out.
+MAX_SEARCH_PAGES = 50
+
+
+class NeonCRMError(Exception):
+    """A Neon call failed. The message carries the operation and HTTP status only."""
+
 
 class NeonCRM:
     """A client for interacting with the NeonCRM API v2."""
@@ -81,3 +91,55 @@ class NeonCRM:
         except requests.exceptions.RequestException as e:
             body = e.response.text if e.response is not None else ""
             logger.error(f"Error updating NeonCRM account {account_id}: {e} {body}")
+
+    def search_events(
+        self,
+        search_fields: list[dict[str, str]],
+        output_fields: list[str],
+        page_size: int = 200,
+        timeout: float = 10.0,
+    ) -> list[dict[str, Any]]:
+        """
+        Searches events (read only) and returns the results of every page.
+
+        Raises:
+            NeonCRMError: a call failed, timed out, or returned something other
+                than a search result. The message has the HTTP status only.
+        """
+        url = f"{self.base_url}/events/search"
+        results: list[dict[str, Any]] = []
+        page = 0
+        while True:
+            payload = {
+                "searchFields": search_fields,
+                "outputFields": output_fields,
+                "pagination": {"currentPage": page, "pageSize": page_size},
+            }
+            body = self._post_search(url, payload, timeout)
+            results.extend(body["searchResults"])
+            pagination = body.get("pagination")
+            total_pages = pagination.get("totalPages") if isinstance(pagination, dict) else None
+            if not isinstance(total_pages, int) or page + 1 >= total_pages:
+                return results
+            page += 1
+            if page >= MAX_SEARCH_PAGES:
+                logger.warning(
+                    "Neon event search stopped at %d of %d pages", MAX_SEARCH_PAGES, total_pages
+                )
+                return results
+
+    def _post_search(self, url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
+        """POSTs one page of an events search and returns its JSON body."""
+        status = "no response"
+        try:
+            response = requests.post(url, headers=self.headers, json=payload, timeout=timeout)
+            status = f"status {response.status_code}"
+            response.raise_for_status()
+            body = response.json()
+        except (requests.exceptions.RequestException, ValueError) as e:
+            logger.error("Neon event search failed: %s (%s)", type(e).__name__, status)
+            raise NeonCRMError(f"events/search failed ({status})") from None
+        if not isinstance(body, dict) or not isinstance(body.get("searchResults"), list):
+            logger.error("Neon event search failed: no searchResults (%s)", status)
+            raise NeonCRMError(f"events/search failed ({status})")
+        return body

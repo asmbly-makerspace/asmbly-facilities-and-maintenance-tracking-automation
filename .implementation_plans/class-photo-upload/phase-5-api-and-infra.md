@@ -396,8 +396,12 @@ Flow:
 
 Type hints on every function; lazy logging; only the imports used; helper modules
 imported as modules (`from common import aws, github_app` and `from . import ...` or
-absolute `functions.classes.class_photo_upload_api...` imports, matching how other
-functions import sibling modules; prep checks which works both in Lambda and in pytest).
+absolute `functions.classes.class_photo_upload_api...` imports. No existing function
+imports a sibling module: under Lambda the handler is the top-level `lambda_function`,
+so `from . import class_names` fails there, and under pytest a bare `import class_names`
+fails. Settle it (a relative import with an absolute fallback, or a `conftest.py`
+`sys.path` entry) and test it; see phase 1's Hand-off). Call `search_events` with a
+`timeout` and page limit that keep the Neon search well inside API Gateway's 29 s.
 
 ## Tests
 

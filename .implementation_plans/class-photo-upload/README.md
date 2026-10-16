@@ -42,7 +42,7 @@ which closes them all.
 
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [Class list and file-name rule](phase-1-class-names.md) | layer, lambda | L | [ ] Pending |
+| 1 | [Class list and file-name rule](phase-1-class-names.md) | layer, lambda | L | [x] Complete |
 | 2 | [Photo checks](phase-2-photo-checks.md) | lambda | M | [ ] Pending |
 | 3 | [GitHub App client](phase-3-github-app-client.md) | layer | M | [ ] Pending |
 | 4 | [Pull request flow and dry run](phase-4-pull-request-flow.md) | lambda | M | [ ] Pending |

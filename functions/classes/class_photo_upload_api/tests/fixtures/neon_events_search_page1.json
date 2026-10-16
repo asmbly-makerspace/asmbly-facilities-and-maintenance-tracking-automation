@@ -1,0 +1,22 @@
+{
+  "searchResults": [
+    {
+      "Event ID": "90005",
+      "Event Name": "Tormach Part 2: CNC Milling w/ Instructor D"
+    },
+    {
+      "Event ID": "90006",
+      "Event Name": "Intro to Forging w/ Instructor A"
+    },
+    {
+      "Event ID": "90007",
+      "Event Name": " w/ Instructor E"
+    }
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "pageSize": 4,
+    "totalPages": 2,
+    "totalResults": 7
+  }
+}

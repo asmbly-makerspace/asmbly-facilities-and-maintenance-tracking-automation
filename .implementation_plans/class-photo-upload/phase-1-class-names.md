@@ -10,7 +10,7 @@ estimated_size: L
 
 # Phase 1: Class list and file-name rule
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-16 on branch claude/inspiring-bell-o4i5t9
 
 ## Required reading
 
@@ -94,10 +94,13 @@ def search_events(
   "pagination": {"currentPage": n, "pageSize": page_size}}`, starting at page 0 and
   continuing while `n + 1 < pagination.totalPages`; stop at 50 pages as a guard (log a
   warning). Concatenate `searchResults`.
-- Each call has `timeout=timeout`. On `requests.exceptions.RequestException`, or a body
-  that isn't JSON, log `logger.error("Neon event search failed: %s", <class name and
+- Each call has `timeout=timeout`. On `requests.exceptions.RequestException`, a body
+  that isn't JSON, or a JSON body without a list `searchResults` (a 200 carrying an error
+  object), log `logger.error("Neon event search failed: %s", <class name and
   status>)` and raise `NeonCRMError("events/search failed (status <n>)")`. Never log or
-  include the response body, the URL's credentials or the headers.
+  include the response body, the URL's credentials or the headers. When there is no
+  response (a timeout or connection error), the message says `(no response)` instead of
+  a status. A missing `pagination.totalPages` means one page.
 - Read only. No other Neon endpoint is added.
 
 ### lambda: `class_names.py`
@@ -114,6 +117,7 @@ NEON_SEARCH_OUTPUT_FIELDS = ["Event ID", "Event Name"]
 Functions (all typed, all pure except `fetch_classes`):
 
 - `class_name_from_event_name(event_name: str) -> str`: `event_name.split(" w/ ")[0].strip()`.
+  `class_names_from_events` treats a missing or non-string `Event Name` as empty.
 - `lookback_start(today: datetime.date, months: int = CLASS_LOOKBACK_MONTHS) -> datetime.date`:
   calendar months back, day clamped to the month's length (2026-06-30 minus 4 months is
   2026-02-28).
@@ -143,7 +147,8 @@ Functions (all typed, all pure except `fetch_classes`):
   will show this photo there.'` (names joined with ", " when several); `None` when none.
 - `superseded_images(class_name: str, image_names: list[str], extensions: list[str]) -> list[str]`:
   every name in `image_names` (bare file names in the images directory) whose extension
-  (after the last `.`, lowercased) is in `extensions`, whose `fuzzy_key` equals the
+  (after the last `.`, compared case-sensitively, as the site's `import.meta.glob` does:
+  Vite's glob is case-sensitive, so `Foo.JPG` is never loaded) is in `extensions`, whose `fuzzy_key` equals the
   class's, and which is not `exact_file_name(class_name)`. Sorted.
 - `branch_name(class_name: str, prefix: str) -> str`: `prefix + slug + "-" + hash8`,
   `slug` = `re.sub(r"[^a-z0-9]+", "-", exact_file_name(class_name)[:-4].lower()).strip("-")[:50]`,
@@ -166,7 +171,8 @@ Logging: `class_names.py` logs nothing except `fetch_classes`
   absent from the message and from `caplog`).
 - `test_search_events_raises_on_timeout`: `requests.exceptions.ConnectTimeout` raises
   `NeonCRMError`.
-- `test_search_events_raises_on_non_json`.
+- `test_search_events_raises_on_non_json`, and a 200 JSON body without `searchResults`
+  raises `NeonCRMError` too.
 
 `functions/classes/class_photo_upload_api/tests/test_class_names.py`:
 
@@ -227,7 +233,8 @@ Logging: `class_names.py` logs nothing except `fetch_classes`
   and `Woodworking__Make_a_Side_Table.jpg` are. Also assert every PR #49 name that
   contains a space is never an exact file name (the exact rule turns spaces into `_`).
 - `test_superseded_images_respects_extensions`: `Foo_Bar.png` is superseded for
-  "Foo: Bar" when `png` is in `extensions`; `Foo_Bar.txt` is not; `Foo_Bar.JPG` is.
+  "Foo: Bar" when `png` is in `extensions`; `Foo_Bar.txt` is not; `Foo_Bar.JPG` is not
+  (the site's glob is case-sensitive and never loads it).
 - `test_fuzzy_collisions_and_warning`: `["A-B Basics", "A B Basics", "Other"]` →
   collisions of `"A B Basics"` are `["A-B Basics"]`; the warning names it; no collisions
   gives `None`.
@@ -275,6 +282,36 @@ None.
   extensions)`, `branch_name(class_name, prefix)`.
 - The packages `functions/classes/` and `functions/classes/class_photo_upload_api/`
   (with `tests/`) exist.
+- `common.neoncrm.MAX_SEARCH_PAGES = 50` (the page guard). `NeonCRMError`'s message is
+  `events/search failed (status <n>)` or `events/search failed (no response)`; it is
+  raised `from None`, so it carries no vendor text. A JSON body without a list
+  `searchResults` raises it too.
+- `class_names_from_events` sorts by `str.casefold()` (ties by the exact name) and drops
+  events whose `Event Name` is missing, not a string, or empty after the split.
+- `collision_warning` with several classes says `Other classes, "A", "B", match the same
+  photo on the class list. All of these classes will show this photo there.`; with one,
+  the sentence above.
+- `superseded_images` compares extensions case-sensitively (the site's glob does), so
+  pass the extensions lowercase, as the site lists them.
+- `branch_name` trims a trailing `-` after cutting the slug to 50 characters.
+- `fetch_classes(neon, today)` expects `today` as the UTC date (phase 5 passes it).
+- The function's `README.md` is phase 5's (no handler exists yet). Nothing deferred.
+
+For phase 5 (raised by phase 1's independent review):
+
+- **Importing `class_names` from the handler.** No existing function imports a sibling
+  module. Under Lambda the handler loads as the top-level module `lambda_function`, so
+  `from . import class_names` fails there; under pytest (repository root on the path) a
+  bare `import class_names` fails. Phase 5 settles this, for example a relative import
+  with an absolute fallback, or a `conftest.py` `sys.path` entry, and tests that the
+  import works the way Lambda loads it.
+- **Neon time budget.** `search_events` defaults to 10 s per page and stops at 50 pages,
+  which can outlast API Gateway's 29 s. Phase 5 passes a shorter `timeout` and keeps the
+  page count small enough that the whole search ends well inside 29 s (add a `max_pages`
+  argument to `search_events` if needed).
+- **Class names starting with `.`.** `exact_file_name` keeps a leading `.`, which gives a
+  dotfile (`.Foo.jpg`) that Vite's glob never loads. Add it to the manual QA notes
+  (or refuse it in `file_name_problem`, with a test).
 
 ## Fixture: current images
 

@@ -1,0 +1,115 @@
+{
+  "plan_name": "class-photo-upload",
+  "feature_branch": "claude/inspiring-bell-o4i5t9",
+  "epic": 73,
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1,
+      "title": "Class list and file-name rule",
+      "file": "phase-1-class-names.md",
+      "status": "done",
+      "pre_sha": "060129e",
+      "review_rounds": "2 inline + 1 independent (APPROVED, 1 WARN fixed)"
+    },
+    {
+      "id": 2,
+      "title": "Photo checks",
+      "file": "phase-2-photo-checks.md",
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "title": "GitHub App client",
+      "file": "phase-3-github-app-client.md",
+      "status": "pending"
+    },
+    {
+      "id": 4,
+      "title": "Pull request flow and dry run",
+      "file": "phase-4-pull-request-flow.md",
+      "status": "pending"
+    },
+    {
+      "id": 5,
+      "title": "API function, routes and Cognito authorizer",
+      "file": "phase-5-api-and-infra.md",
+      "status": "pending"
+    },
+    {
+      "id": 6,
+      "title": "The upload page and docs",
+      "file": "phase-6-upload-page.md",
+      "status": "pending"
+    }
+  ],
+  "integration": null,
+  "final_pr_number": null,
+  "admin_actions": [
+    "Create SSM String params (us-east-2) /config/cognito/staff/user-pool-id, /config/cognito/staff/auth-domain, /config/cognito/staff/class-photo-app-client-id before the PR reaches stage.",
+    "Redeploy deploy role stack AsmblyFacilitiesMaintTrackingStack-cicd before the PR reaches stage.",
+    "Create Cognito app client class-photo-upload in the AsmblyMCPs staff pool (public, PKCE code grant, openid; callback/sign-out URLs for prod and stage).",
+    "GitHub org owner: create GitHub App 'Asmbly Class Photos' (Contents RW, Pull requests RW, Metadata R; webhook off; this account only), install on asmbly-classes only, generate private key.",
+    "Store Secrets Manager secret github/class-photo-upload-app (us-east-2) as JSON {app_id, installation_id, private_key}.",
+    "Optional: create epic/story labels and apply to #73 and #104-#109."
+  ],
+  "events": [
+    {
+      "ts": "2026-10-16T23:00:00Z",
+      "type": "env_branch",
+      "detail": "Session requires developing and pushing on claude/inspiring-bell-o4i5t9; used it instead of feature/class-photo-upload. Owner may rename."
+    },
+    {
+      "ts": "2026-10-16T23:00:00Z",
+      "type": "env_tool",
+      "detail": "gh CLI not available in this environment; GitHub operations go through the GitHub MCP tools."
+    },
+    {
+      "ts": "2026-10-16T23:05:00Z",
+      "type": "env_note",
+      "tool": "sam",
+      "detail": "sam CLI was not preinstalled; installed aws-sam-cli 1.169.0 into a scratch venv (not committed). sam validate passes on stage baseline."
+    },
+    {
+      "ts": "2026-10-16T23:40:00Z",
+      "type": "planned",
+      "detail": "Plan commit 060129e; stories #104-#109 as sub-issues of #73; 24 decisions. Decision 7: GET /class-photo-upload page shell has no authorizer (browser navigation can't carry a token); data routes use Cognito authorizer."
+    },
+    {
+      "ts": "2026-10-16T23:41:00Z",
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "ts": "2026-10-17T00:30:00Z",
+      "type": "phase_done",
+      "phase": 1,
+      "pytest": "646 passed"
+    },
+    {
+      "ts": "2026-10-17T00:30:00Z",
+      "type": "env_note",
+      "detail": "Phase subagents have no Agent tool, so /prep, /build and /review ran their sub-reviews inline. The orchestrator adds an independent review-lead pass per phase."
+    },
+    {
+      "ts": "2026-10-17T00:30:00Z",
+      "type": "decision",
+      "phase": 1,
+      "detail": "superseded_images compares extensions case-sensitively (Vite glob ignores .JPG); collision warning plural form; NeonCRMError raised from None."
+    },
+    {
+      "ts": "2026-10-17T00:30:00Z",
+      "type": "decision",
+      "phase": 1,
+      "detail": "Stories #104-#109 lack the story label (label doesn't exist; MCP can't create labels); prep's label rule not treated as a blocker."
+    }
+  ],
+  "stories": [
+    104,
+    105,
+    106,
+    107,
+    108,
+    109
+  ]
+}
