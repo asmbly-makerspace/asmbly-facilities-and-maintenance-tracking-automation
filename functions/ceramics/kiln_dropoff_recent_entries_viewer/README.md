@@ -6,6 +6,8 @@
 - [AWS Resources](#aws-resources)
 - [Configuration](#configuration)
 - [Deployment](#deployment)
+- [Usage](#usage)
+- [Testing](#testing)
 
 ## Purpose
 
@@ -156,3 +158,13 @@ The deployment process is managed and specified in the [Deployment Instructions]
 ## Usage
 
 The URL is in the CLickUp form in Ceramics -> Drop Off Requests -> Kiln Drop Off Form -> Settings -> Redirect URL.
+
+## Testing
+
+From the repository root:
+
+```bash
+.venv/bin/python -m pytest functions/ceramics/kiln_dropoff_recent_entries_viewer
+```
+
+The tests mock SSM, Secrets Manager and ClickUp, so they need no AWS access. After a deploy to stage, open `<stage API URL>/KilnOpsDropoffRecentEntriesViewer` and check that the list loads, Refresh reloads it, and the browser console shows no Content-Security-Policy violations. (The asmbly.org fonts already fail with a CORS error because asmbly.org sends no `Access-Control-Allow-Origin` header; that is not a CSP problem.)
