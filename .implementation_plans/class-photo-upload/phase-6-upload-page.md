@@ -215,8 +215,22 @@ Plain HTML, CSS and JavaScript, no libraries or outside fonts. Everything from o
      out-of-line value its entries point to, by type size: 1,2,7 → 1; 3 → 2; 4,9 → 4;
      5,10 → 8), then delete the entry from IFD0 by moving the later entries up 12 bytes,
      decrementing the count, moving the next-IFD offset after the new last entry and
-     zeroing the freed 12 bytes; drop each XMP APP1 segment (standard or extended) that
-     matches the GPS pattern. Bytes from SOS on are copied unchanged;
+     zeroing the freed 12 bytes; do the same for a `0x8825` entry in IFD1 or the Exif
+     sub-IFD (`0x8769`), which the server also checks; drop each XMP APP1 segment
+     (standard or extended) that matches the GPS pattern (for extended XMP, every chunk
+     when only their joined data matches);
+   - embedded images and trailers (phase 2 hand-off, README Decision 26): find the main
+     image's EOI by walking from its SOS (in entropy-coded data `FF 00` and `FF D0`–`D7`
+     are data; any other `FF xx` is a marker segment, skipped by its length, until
+     `FF D9`). When the bytes after it carry location (an embedded JPEG whose headers
+     have EXIF or XMP GPS, or the XMP GPS pattern anywhere), drop everything after the
+     main EOI (MPF images, gain maps, motion-photo video; a left-over MPF index is
+     harmless to browsers and the site); otherwise keep them byte for byte, so a photo
+     with no location stays unchanged (#106 AC3). When a JPEG embedded inside the main
+     headers (an EXIF thumbnail) carries location, the page can't remove it without
+     re-encoding: refuse with "This photo has location data the page can't remove.
+     Export it again as a JPEG without location and try again." (a page-only message).
+     The bytes from the main SOS to the main EOI are copied unchanged;
    - then check the result exactly as `photo_checks.check_photo` does (size after
      removal, SOF size, orientation 5–8 swap, 1% tolerance, location) with the same
      messages, word for word;
@@ -346,7 +360,12 @@ On stage, after all admin actions (MANUAL_QA.md holds the full list, by story):
 - Submit → "Dry run: nothing was opened" with the file name, removals and the pull
   request it would open; nothing on `asmbly-classes`.
 - `exiftool -gps:all <downloaded cleaned file>` (or the page's own check) shows no GPS;
-  `cmp` of the bytes after the SOS marker with the original shows no difference.
+  `cmp` of the bytes from the SOS marker to the main EOI with the original shows no
+  difference.
+- A recent phone photo with an embedded image (an iPhone HDR photo with a gain map, or
+  a Pixel/Samsung motion photo) taken with location on → "Location data was removed
+  from this photo.", and the server accepts it; the same kind of photo without location
+  uploads byte-for-byte unchanged.
 
 On prod, after promotion: the same flow opens a pull request on `asmbly-classes`; a
 second photo for the same class updates it.

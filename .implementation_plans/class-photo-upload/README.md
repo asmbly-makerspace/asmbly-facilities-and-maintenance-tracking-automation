@@ -43,7 +43,7 @@ which closes them all.
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
 | 1 | [Class list and file-name rule](phase-1-class-names.md) | layer, lambda | L | [x] Complete |
-| 2 | [Photo checks](phase-2-photo-checks.md) | lambda | M | [ ] Pending |
+| 2 | [Photo checks](phase-2-photo-checks.md) | lambda | M | [x] Complete |
 | 3 | [GitHub App client](phase-3-github-app-client.md) | layer | M | [ ] Pending |
 | 4 | [Pull request flow and dry run](phase-4-pull-request-flow.md) | lambda | M | [ ] Pending |
 | 5 | [API function, routes and Cognito authorizer](phase-5-api-and-infra.md) | lambda, infra | L | [ ] Pending |
@@ -291,3 +291,17 @@ Made without asking, inside `/offshore` (16 October 2026):
 24. **Phase 3 implements no story directly** (`implements: []`): it is a helper with no
     caller until phase 5. Phases 5 and 6 list every story their wiring and page complete;
     stories close with phase 6.
+25. **Location data means GPS coordinates; reverse-geocoded place names are not
+    checked.** The server and the page look for EXIF GPS (the `0x8825` pointer in IFD0,
+    IFD1 or the Exif sub-IFD) and XMP GPS properties, in the main image, in every JPEG
+    embedded in the file (thumbnails, MPF images, gain maps) and in any trailer. Place
+    names that photo apps add (IPTC-IIM City/Sub-location/State in APP13, XMP
+    `photoshop:City`, `Iptc4xmpCore:Location`, `Iptc4xmpExt:LocationCreated`) are not
+    looked for or removed. Decided in phase 2's review (16 October 2026) to keep this
+    pull request's scope; the owner can widen it later. Alternative: refuse or strip
+    those fields too.
+26. **Embedded images and trailers** (phase 2 review): the server walks every further
+    JPEG start in the file (at most 16; more refuse the file as unreadable) and searches
+    the bytes after the main headers for XMP GPS. It does not refuse a photo just for
+    carrying embedded images, which most phone photos do. Phase 6's page removes the
+    location from them or, where it can't, refuses with its own message.

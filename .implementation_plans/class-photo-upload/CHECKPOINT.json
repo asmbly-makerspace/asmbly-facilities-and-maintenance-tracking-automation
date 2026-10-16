@@ -10,13 +10,16 @@
       "file": "phase-1-class-names.md",
       "status": "done",
       "pre_sha": "060129e",
-      "review_rounds": "2 inline + 1 independent (APPROVED, 1 WARN fixed)"
+      "review_rounds": "2 inline + 1 independent (APPROVED, 1 WARN fixed)",
+      "squashed_sha": "425febe"
     },
     {
       "id": 2,
       "title": "Photo checks",
       "file": "phase-2-photo-checks.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "425febe",
+      "review_rounds": "2 inline + 1 independent (APPROVED, 3 WARNs fixed)"
     },
     {
       "id": 3,
@@ -102,6 +105,35 @@
       "type": "decision",
       "phase": 1,
       "detail": "Stories #104-#109 lack the story label (label doesn't exist; MCP can't create labels); prep's label rule not treated as a blocker."
+    },
+    {
+      "ts": "2026-10-17T00:32:00Z",
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "ts": "2026-10-17T01:20:00Z",
+      "type": "phase_done",
+      "phase": 2,
+      "pytest": "1250 passed"
+    },
+    {
+      "ts": "2026-10-17T01:20:00Z",
+      "type": "decision",
+      "phase": 2,
+      "detail": "Location data = GPS coordinates (EXIF GPS IFD in IFD0/IFD1/Exif sub-IFD, XMP GPS, in the primary image and up to 16 embedded images/trailers). Reverse-geocoded place names (IPTC City, XMP photoshop:City, LocationCreated) are not checked: owner may want to widen. README Decisions 25-26."
+    },
+    {
+      "ts": "2026-10-17T01:20:00Z",
+      "type": "decision",
+      "phase": 2,
+      "detail": "4 MB = 4 x 1024 x 1024 bytes; 3:2 rule integer 100*|2w-3h| <= 3h (1% tolerance)."
+    },
+    {
+      "ts": "2026-10-17T01:20:00Z",
+      "type": "deferred",
+      "phase": 2,
+      "detail": "Valid-but-rare JPEGs (bytes between segments, DNL height 0, malformed EXIF APP1) are refused as unreadable; note in manual QA."
     }
   ],
   "stories": [
