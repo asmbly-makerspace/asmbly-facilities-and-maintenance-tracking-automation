@@ -1,10 +1,23 @@
 import logging
 import os
+import re
 from typing import Any
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+_SLACK_ERROR_PATTERN = re.compile(r"[a-z0-9_]{1,64}")
+
+
+def _slack_error_for_log(response_data: Any) -> str | None:
+    """Return Slack's error code from a response if it looks like one, '<invalid>' if not."""
+    if not isinstance(response_data, dict) or "error" not in response_data:
+        return None
+    error = response_data["error"]
+    if isinstance(error, str) and _SLACK_ERROR_PATTERN.fullmatch(error):
+        return error
+    return "<invalid>"
 
 TEST_CHANNEL_OVERRIDE = os.environ.get('TEST_CHANNEL_OVERRIDE')
 
@@ -70,7 +83,7 @@ def send_slack_message(
         response_data = response.json()
         if not response_data.get("ok"):
             logger.error(
-                "Slack chat.postMessage to %s failed: %s", final_target_channel, response_data.get("error")
+                "Slack chat.postMessage to %s failed: %s", final_target_channel, _slack_error_for_log(response_data)
             )
         return response_data
     except Exception as e:

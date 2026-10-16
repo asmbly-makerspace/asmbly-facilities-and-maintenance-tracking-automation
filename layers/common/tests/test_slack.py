@@ -172,3 +172,29 @@ def test_send_slack_message_exception_logs_type_only(mock_requests_post, caplog,
     assert "general" in errors[0].getMessage()
     assert "pk_EXC_MARKER" not in caplog.text
     assert "xoxb-TOKEN-MARKER" not in caplog.text
+
+
+@patch('common.slack.requests.post')
+def test_send_slack_message_api_error_invalid_code_not_logged(mock_requests_post, caplog, capsys):
+    """A Slack 'error' that doesn't look like an error code is replaced in the log."""
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"ok": False, "error": "pk_ERR_MARKER Jane jane@example.com"}
+    mock_requests_post.return_value = mock_response
+
+    response = slack.send_slack_message('xoxb-TOKEN-MARKER', '#general', 'Hello', 'Bot', ':emoji:')
+
+    assert response == {"ok": False, "error": "pk_ERR_MARKER Jane jane@example.com"}
+    assert capsys.readouterr().out == ""
+    errors = _slack_errors(caplog)
+    assert len(errors) == 1
+    assert "<invalid>" in errors[0].getMessage()
+    assert "pk_ERR_MARKER" not in caplog.text
+    assert "jane@example.com" not in caplog.text
+
+
+def test_slack_error_for_log_rejects_trailing_newline():
+    """A Slack error code with a trailing newline is not a valid code and is replaced."""
+    assert slack._slack_error_for_log({"error": "channel_not_found\n"}) == "<invalid>"
+    assert slack._slack_error_for_log({"error": "channel_not_found"}) == "channel_not_found"
+    assert slack._slack_error_for_log({"ok": False}) is None

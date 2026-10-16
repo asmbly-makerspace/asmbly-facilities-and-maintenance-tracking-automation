@@ -319,3 +319,15 @@ def test_update_task_mismatch_with_non_id_value_not_logged(mock_make_request, ca
     assert len(errors) == 1
     assert "<invalid>" in errors[0].getMessage()
     assert "jane@example.com" not in caplog.text
+
+
+def test_ecode_for_log_rejects_trailing_newline():
+    """An ECODE with a trailing newline is not a valid code and is replaced."""
+    assert clickup._ecode_for_log({"ECODE": "OAUTH_025\n"}) == "<invalid>"
+    assert clickup._ecode_for_log({"ECODE": "OAUTH_025"}) == "OAUTH_025"
+
+
+def test_task_id_for_log_rejects_trailing_newline():
+    """A task ID with a trailing newline is not a valid ID and is replaced."""
+    assert clickup._task_id_for_log("abc123\n") == "<invalid>"
+    assert clickup._task_id_for_log("abc123") == "abc123"

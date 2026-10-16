@@ -10,7 +10,7 @@ BASE_URL = "https://api.clickup.com/api/v2"
 
 logger = logging.getLogger(__name__)
 
-_ECODE_PATTERN = re.compile(r"^[A-Z0-9_]{1,40}$")
+_ECODE_PATTERN = re.compile(r"[A-Z0-9_]{1,40}")
 
 
 def _ecode_for_log(body: Any) -> str | None:
@@ -18,17 +18,17 @@ def _ecode_for_log(body: Any) -> str | None:
     if not isinstance(body, dict) or "ECODE" not in body:
         return None
     ecode = body["ECODE"]
-    if isinstance(ecode, str) and _ECODE_PATTERN.match(ecode):
+    if isinstance(ecode, str) and _ECODE_PATTERN.fullmatch(ecode):
         return ecode
     return "<invalid>"
 
 
-_TASK_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_TASK_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 def _task_id_for_log(task_id: Any) -> str:
     """Return a task ID from a ClickUp response if it looks like one, '<invalid>' if not."""
-    if isinstance(task_id, str) and _TASK_ID_PATTERN.match(task_id):
+    if isinstance(task_id, str) and _TASK_ID_PATTERN.fullmatch(task_id):
         return task_id
     return "<invalid>"
 
