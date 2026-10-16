@@ -137,6 +137,25 @@ Tags in AWS will be:
 |-------------|------------------------------|
 | Project     | ceramics:kiln-dropoff-viewer |
 
+### Permissions
+
+The function's role (`KilnDropoffViewerLambdaRole` in `templates/ceramics.yaml`) can do
+three things and nothing else:
+
+- Write log streams and log events to its own log group,
+  `/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-<stage>`.
+- Read the `clickup/api/token` secret from Secrets Manager.
+- Read the `/<stage>/config/clickup/ceramics/dropOffRequests` parameter from SSM.
+
+The role can't create log groups. CloudFormation creates this one. If someone deletes it
+by hand, the function keeps working but its logs are lost until the log group exists
+again under the same name. A normal deploy won't bring it back, because CloudFormation
+doesn't notice a resource deleted outside it. An admin has to recreate the log group
+with that name and a 30-day retention.
+
+`tests/test_templates.py` fails if this role, or any other application role, is given
+an IAM action or a logs grant on a wildcard resource.
+
 ## Configuration
 
 The template `templates/ceramics.yaml` sets two environment variables:
