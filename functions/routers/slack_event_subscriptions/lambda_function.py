@@ -32,21 +32,38 @@ def _get_lambda_client() -> BaseClient:
     return _lambda_client
 
 
+def _get_header(event: dict[str, Any], name: str) -> Optional[str]:
+    """Returns a request header's value, matching its name case-insensitively."""
+    wanted = name.lower()
+    for key, value in (event.get("headers") or {}).items():
+        if key.lower() == wanted:
+            return value
+    return None
+
+
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Routes Slack reaction events to the appropriate Lambda function
     based on the content of the message that was reacted to.
     """
-    logger.info(f"Received event: {json.dumps(event)}")
-
     try:
         body = json.loads(event.get("body", "{}"))
+        event_data = body.get("event", {})
+        channel_id = event_data.get("item", {}).get("channel")
+
+        # IDs only: the headers and the body carry Slack's signature and verification
+        # token. The retry number shows which deliveries are Slack's retries.
+        logger.info(
+            "Received Slack event: type=%s channel=%s retry_num=%s",
+            event_data.get("type") or body.get("type"),
+            channel_id,
+            _get_header(event, "X-Slack-Retry-Num"),
+        )
 
         # Handle Slack's URL verification challenge
         if "challenge" in body:
             return {"statusCode": 200, "body": json.dumps({"challenge": body["challenge"]})}
 
-        event_data = body.get("event", {})
         if event_data.get("type") != "reaction_added":
             logger.info("Ignoring event that is not 'reaction_added'.")
             return {"statusCode": 200, "body": json.dumps("Event ignored.")}
@@ -67,9 +84,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         problem_report_channel_id = router_config.get("problem_report_channel_id")
 
         # --- Determine Target Function ---
-        item = event_data.get("item", {})
-        channel_id = item.get("channel")
-
         if not channel_id:
             logger.warning("Event is missing channel ID.")
             return {"statusCode": 200, "body": json.dumps("Event ignored.")}
@@ -97,7 +111,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         return {"statusCode": 200, "body": json.dumps("Request forwarded successfully.")}
 
-    except Exception as e:
-        logger.error("An unexpected error occurred: %s", e, exc_info=True)
+    except Exception:
+        logger.exception("An unexpected error occurred.")
         # Return 200 to Slack to prevent retries for failed processing
         return {"statusCode": 200, "body": json.dumps("Internal server error occurred.")}

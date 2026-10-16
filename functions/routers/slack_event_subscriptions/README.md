@@ -72,6 +72,10 @@ The core infrastructure is defined in `templates/routers.yaml` and consists of t
 
 The function builds its SSM and Lambda clients on first use and keeps them for the life of the container, so warm requests reuse them. It still reads the SSM parameter on every request, so a config change applies at once.
 
+### Logging
+
+Each request writes one line to the log group `/asmbly/lambda/facilities-slack-event-router-<stage>`: the Slack event type, the channel ID, and the `X-Slack-Retry-Num` header (`retry_num=None` on a first delivery, `1`, `2`, ... on Slack's retries). Count the lines with a retry number to see how often Slack had to retry. The function never logs the request headers or body, which carry Slack's signature and verification token.
+
 ### Tags
 
 | Name        | Value                       |
