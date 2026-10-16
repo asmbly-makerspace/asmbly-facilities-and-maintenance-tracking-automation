@@ -27,7 +27,7 @@ class NeonCRM:
             "Authorization": f"Basic {auth_header}",
         }
 
-    def get_account_by_email(self, email):
+    def get_account_by_email(self, email: str) -> str | None:
         """
         Retrieves an account ID by email address.
 
@@ -51,9 +51,9 @@ class NeonCRM:
             results = response.json().get("searchResults", [])
             if results:
                 account_id = results[0].get("Account ID")
-                logger.info(f"Found NeonCRM account ID: {account_id} for email: {email}")
+                logger.info("Found NeonCRM account ID: %s", account_id)
                 return account_id
-            logger.warning(f"No NeonCRM account found for email: {email}")
+            logger.warning("No NeonCRM account matches the searched email")
             return None
         except requests.exceptions.RequestException as e:
             logger.error(f"Error searching for NeonCRM account by email: {e}")
