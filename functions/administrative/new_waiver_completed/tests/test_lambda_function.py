@@ -13,6 +13,7 @@ class TestNewWaiverCompleted(TestCase):
     def setUp(self):
         """Set up common test data."""
         self.valid_payload = {
+            "waiver_id": "W-123",
             "email": "test@example.com",
             "signed_date": "2023-10-27T10:00:00.000Z"
         }
@@ -24,31 +25,54 @@ class TestNewWaiverCompleted(TestCase):
 
     def test_parse_smartwaiver_payload_success(self):
         """Tests successful parsing of a valid Smartwaiver payload."""
-        email, waiver_date = lambda_function.parse_smartwaiver_payload(self.valid_payload)
+        email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(self.valid_payload)
         self.assertEqual(email, "test@example.com")
         self.assertEqual(waiver_date, "10/27/2023") # 10:00 UTC is 05:00 CDT on the same day
+        self.assertEqual(waiver_id, "W-123")
+
+    def test_parse_smartwaiver_payload_missing_waiver_id(self):
+        """A payload without a waiver ID still parses; the ID is None."""
+        payload = {"email": "test@example.com", "signed_date": "2023-10-27T10:00:00.000Z"}
+        email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(payload)
+        self.assertEqual(email, "test@example.com")
+        self.assertEqual(waiver_date, "10/27/2023")
+        self.assertIsNone(waiver_id)
+
+    def test_parse_smartwaiver_payload_invalid_waiver_id(self):
+        """A waiver ID that doesn't look like an ID is replaced, and parsing still succeeds."""
+        for raw in ("jane.doe@example.com", "a" * 65, "W 123", 12345):
+            with self.subTest(raw=raw):
+                payload = {"waiver_id": raw, "email": "test@example.com",
+                           "signed_date": "2023-10-27T10:00:00.000Z"}
+                email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(payload)
+                self.assertEqual(email, "test@example.com")
+                self.assertEqual(waiver_date, "10/27/2023")
+                self.assertEqual(waiver_id, "invalid")
 
     def test_parse_smartwaiver_payload_timezone_conversion(self):
         """Tests that a UTC timestamp is correctly converted to Central Time."""
         # This timestamp is 00:52 UTC on Nov 9, which is 19:52 CT on Nov 8 (during CDT)
         payload = {"email": "test@example.com", "signed_date": "2025-11-09T00:52:12.007Z"}
-        email, waiver_date = lambda_function.parse_smartwaiver_payload(payload)
+        email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(payload)
         self.assertEqual(email, "test@example.com")
         self.assertEqual(waiver_date, "11/08/2025")
+        self.assertIsNone(waiver_id)
 
     def test_parse_smartwaiver_payload_missing_email(self):
         """Tests payload parsing when 'email' is missing."""
-        payload = {"signed_date": "2023-10-27T10:00:00.000Z"}
-        email, waiver_date = lambda_function.parse_smartwaiver_payload(payload)
+        payload = {"waiver_id": "W-123", "signed_date": "2023-10-27T10:00:00.000Z"}
+        email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(payload)
         self.assertIsNone(email)
         self.assertIsNone(waiver_date)
+        self.assertEqual(waiver_id, "W-123")
 
     def test_parse_smartwaiver_payload_invalid_date(self):
         """Tests payload parsing with an invalid date format."""
-        payload = {"email": "test@example.com", "signed_date": "not-a-date"}
-        email, waiver_date = lambda_function.parse_smartwaiver_payload(payload)
+        payload = {"waiver_id": "W-123", "email": "test@example.com", "signed_date": "not-a-date"}
+        email, waiver_date, waiver_id = lambda_function.parse_smartwaiver_payload(payload)
         self.assertIsNone(email)
         self.assertIsNone(waiver_date)
+        self.assertEqual(waiver_id, "W-123")
 
     # --- Test `update_neon_with_waiver_info` ---
 
@@ -63,7 +87,7 @@ class TestNewWaiverCompleted(TestCase):
         mock_neoncrm_class.return_value = mock_neon_client
 
         with patch.dict(os.environ, self.env_vars):
-            response = lambda_function.update_neon_with_waiver_info("test@example.com", "10/26/2023")
+            response = lambda_function.update_neon_with_waiver_info("test@example.com", "10/26/2023", "W-123")
 
         # Assertions
         self.assertEqual(response["statusCode"], 200)
@@ -86,7 +110,7 @@ class TestNewWaiverCompleted(TestCase):
         mock_neoncrm_class.return_value = mock_neon_client
 
         with patch.dict(os.environ, self.env_vars):
-            response = lambda_function.update_neon_with_waiver_info("notfound@example.com", "10/26/2023")
+            response = lambda_function.update_neon_with_waiver_info("notfound@example.com", "10/26/2023", "W-123")
 
         # Assertions
         self.assertEqual(response["statusCode"], 404)
@@ -101,7 +125,7 @@ class TestNewWaiverCompleted(TestCase):
     def test_lambda_handler_success(self, mock_parse, mock_update):
         """Tests the main handler's success path."""
         # Mocks
-        mock_parse.return_value = ("test@example.com", "10/26/2023")
+        mock_parse.return_value = ("test@example.com", "10/26/2023", "W-123")
         mock_update.return_value = {"statusCode": 200, "body": "Success"}
 
         event = {"body": json.dumps(self.valid_payload)}
@@ -111,14 +135,14 @@ class TestNewWaiverCompleted(TestCase):
         self.assertEqual(response["statusCode"], 200)
         self.assertEqual(response["body"], "Success")
         mock_parse.assert_called_once_with(self.valid_payload)
-        mock_update.assert_called_once_with("test@example.com", "10/26/2023")
+        mock_update.assert_called_once_with("test@example.com", "10/26/2023", "W-123")
 
     @patch(f"{LAMBDA_FUNCTION_PATH}.update_neon_with_waiver_info")
     @patch(f"{LAMBDA_FUNCTION_PATH}.parse_smartwaiver_payload")
     def test_lambda_handler_parsing_fails(self, mock_parse, mock_update):
         """Tests the main handler when payload parsing fails."""
         # Mocks
-        mock_parse.return_value = (None, None)  # Simulate parsing failure
+        mock_parse.return_value = (None, None, "W-123")  # Simulate parsing failure
 
         event = {"body": json.dumps({"invalid": "payload"})}
         response = lambda_function.lambda_handler(event, None)
