@@ -153,8 +153,8 @@ again under the same name. A normal deploy won't bring it back, because CloudFor
 doesn't notice a resource deleted outside it. An admin has to recreate the log group
 with that name and a 30-day retention.
 
-`tests/test_templates.py` fails if this role, or any other application role, is given
-an IAM action or a logs grant on a wildcard resource.
+`tests/test_templates.py` fails if this role, or any other hand-written Lambda role, is
+given an IAM action or a logs grant on anything but its own function's log group.
 
 ## Configuration
 

@@ -178,12 +178,17 @@ def test_no_application_role_can_change_iam(template: pathlib.Path) -> None:
 
 @pytest.mark.parametrize("template", APP_TEMPLATES, ids=lambda path: path.name)
 def test_no_application_role_writes_logs_by_wildcard(template: pathlib.Path) -> None:
+    # The only logs resource allowed is "!GetAtt <LogGroup>.Arn" for a log group in the
+    # same template. Any string or Sub, such as "arn:aws:logs:*:*:*" or
+    # "...:log-group:*", can name more than one log group, so it fails.
+    resources = _load(template).get("Resources", {})
+    log_groups = {name for name, resource in resources.items() if resource.get("Type") == "AWS::Logs::LogGroup"}
     problems = [
         f"{template.name}: {name} grants logs on {resource}"
         for name, statement in _policy_statements(template)
         if any(action.startswith("logs:") for action in _actions(statement))
         for resource in _as_list(statement.get("Resource"))
-        if resource == "*" or "arn:aws:logs:*" in str(resource)
+        if not ((target := _get_att(resource)) and len(target) == 2 and target[0] in log_groups and target[1] == "Arn")
     ]
     assert problems == []
 
