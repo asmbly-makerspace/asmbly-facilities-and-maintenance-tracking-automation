@@ -35,7 +35,7 @@ and one of those documents ever disagree, the linked document is right; fix this
 ## From Issue to Production
 
 ```
-issue → branch from stage → commits → tests → pull request to stage → review → merge
+issue → branch from stage → commits → tests → pull request to stage → approval → merge
       → stage stack deploys → check it on stage → pull request stage → main → prod deploys
 ```
 
@@ -55,7 +55,8 @@ issue → branch from stage → commits → tests → pull request to stage → 
    finished, or `n/a: <reason>` for a chore with no issue.
 5. **Get the `test` check green.** It is required on `stage` and `main`, and the branch must
    be up to date with `stage` before it can merge.
-6. **Get a review.** At least one other collaborator reviews the pull request
+6. **Get an approval.** Every pull request needs an approving review from another
+   collaborator before it merges
    ([The Workflow](Branching%20Strategy.md#3-the-workflow)). Answer every comment: either
    fixed, with the commit, or not fixed, with the reason
    ([Review discipline](../CLAUDE.md#review-discipline)). If you add commits after opening
