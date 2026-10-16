@@ -1,8 +1,11 @@
+import json
+import logging
 import os
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 # Add the python directory to the path to allow common module imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'python')))
@@ -82,14 +85,20 @@ def test_get_all_clickup_tasks_pagination(mock_fetch_page):
 
 
 @patch('common.clickup.fetch_clickup_tasks_page')
-def test_get_all_clickup_tasks_max_pages(mock_fetch_page):
-    """Test that pagination stops at the max_pages limit."""
+def test_get_all_clickup_tasks_max_pages(mock_fetch_page, caplog, capsys):
+    """Test that pagination stops at the max_pages limit and logs a warning."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
     mock_fetch_page.return_value = ([{'id': 'task_on_page'}], False)
 
     tasks = clickup.get_all_clickup_tasks('list-id', 'api-token', max_pages=3)
 
     assert len(tasks) == 3
     assert mock_fetch_page.call_count == 3
+    assert capsys.readouterr().out == ""
+    warnings = [r for r in caplog.records if r.name == "common.clickup" and r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "3" in warnings[0].getMessage()
+    assert "list-id" in warnings[0].getMessage()
 
 
 @patch('common.clickup._make_clickup_request')
@@ -111,3 +120,162 @@ def test_get_list_custom_fields(mock_make_request):
     assert len(fields) == 2
     assert fields[0]['id'] == 'field_abc'
     assert fields[1]['name'] == 'Test Field 2'
+
+
+def _http_error_response(status_code, reason, json_body=None, text=""):
+    """Build a mock error response; .json() raises ValueError when json_body is None."""
+    error_response = MagicMock()
+    error_response.status_code = status_code
+    error_response.reason = reason
+    error_response.text = text
+    if json_body is None:
+        error_response.json.side_effect = ValueError("not json")
+    else:
+        error_response.json.return_value = json_body
+    return error_response
+
+
+def _clickup_errors(caplog):
+    return [r for r in caplog.records if r.name == "common.clickup" and r.levelno == logging.ERROR]
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_http_error_logs_status_not_body(mock_requests_request, caplog, capsys):
+    """A ClickUp HTTP error logs the method, endpoint, status and ECODE, never the body or token."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    body = {"err": "echo pk_BODY_MARKER", "ECODE": "OAUTH_025"}
+    error_response = _http_error_response(401, "Unauthorized", json_body=body)
+    mock_requests_request.return_value.raise_for_status.side_effect = requests.exceptions.HTTPError(
+        "401 Unauthorized", response=error_response
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.get_task("pk_TOKEN_MARKER", "t1")
+
+    assert str(excinfo.value) == (
+        'ClickUp API HTTP Error: 401 Unauthorized - Details: {"err": "echo pk_BODY_MARKER", "ECODE": "OAUTH_025"}'
+    )
+    assert capsys.readouterr().out == ""
+    errors = _clickup_errors(caplog)
+    assert len(errors) == 1
+    message = errors[0].getMessage()
+    for expected in ("GET", "task/t1", "401", "OAUTH_025"):
+        assert expected in message
+    for forbidden in ("pk_BODY_MARKER", "pk_TOKEN_MARKER", "Authorization"):
+        assert forbidden not in caplog.text
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_http_error_invalid_ecode_not_logged(mock_requests_request, caplog, capsys):
+    """An ECODE that doesn't look like a ClickUp code is replaced in the log."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    body = {"err": "x", "ECODE": "pk_ECODE_MARKER lowercase"}
+    error_response = _http_error_response(400, "Bad Request", json_body=body)
+    mock_requests_request.return_value.raise_for_status.side_effect = requests.exceptions.HTTPError(
+        "400 Bad Request", response=error_response
+    )
+
+    with pytest.raises(ValueError):
+        clickup.get_task("token", "t1")
+
+    assert capsys.readouterr().out == ""
+    errors = _clickup_errors(caplog)
+    assert len(errors) == 1
+    assert "<invalid>" in errors[0].getMessage()
+    assert "pk_ECODE_MARKER" not in caplog.text
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_http_error_non_json_body_not_logged(mock_requests_request, caplog, capsys):
+    """A non-JSON error body stays in the exception text but never reaches the log."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    error_response = _http_error_response(401, "Unauthorized", text="<html>pk_BODY_MARKER</html>")
+    mock_requests_request.return_value.raise_for_status.side_effect = requests.exceptions.HTTPError(
+        "401 Unauthorized", response=error_response
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.get_task("pk_TOKEN_MARKER", "t1")
+
+    assert str(excinfo.value) == "ClickUp API HTTP Error: 401 Unauthorized - Response body: <html>pk_BODY_MARKER</html>"
+    assert capsys.readouterr().out == ""
+    assert len(_clickup_errors(caplog)) == 1
+    assert "pk_BODY_MARKER" not in caplog.text
+    assert "pk_TOKEN_MARKER" not in caplog.text
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_network_error_logs_type_only(mock_requests_request, caplog, capsys):
+    """A request failure logs the exception type and endpoint, not its text (which holds the URL)."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    err = requests.exceptions.ConnectionError(
+        "HTTPSConnectionPool(host='api.clickup.com'): Max retries exceeded with url: /api/v2/task/t1?x=pk_URL_MARKER"
+    )
+    mock_requests_request.side_effect = err
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.get_task("pk_TOKEN_MARKER", "t1")
+
+    assert str(excinfo.value) == "Network error during ClickUp API request: " + str(err)
+    assert capsys.readouterr().out == ""
+    errors = _clickup_errors(caplog)
+    assert len(errors) == 1
+    assert "ConnectionError" in errors[0].getMessage()
+    assert "task/t1" in errors[0].getMessage()
+    assert "pk_URL_MARKER" not in caplog.text
+    assert "pk_TOKEN_MARKER" not in caplog.text
+
+
+@patch('common.clickup.requests.request')
+def test_create_task_error_does_not_log_payload(mock_requests_request, caplog, capsys):
+    """A failed create never logs the request payload."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    error_response = _http_error_response(400, "Bad Request", json_body={"err": "bad", "ECODE": "ITEM_015"})
+    mock_requests_request.return_value.raise_for_status.side_effect = requests.exceptions.HTTPError(
+        "400 Bad Request", response=error_response
+    )
+
+    with pytest.raises(ValueError):
+        clickup.create_task("token", "list-1", {"name": "pk_PAYLOAD_MARKER"})
+
+    assert capsys.readouterr().out == ""
+    assert len(_clickup_errors(caplog)) == 1
+    assert "pk_PAYLOAD_MARKER" not in caplog.text
+
+
+@patch('common.clickup._make_clickup_request')
+def test_update_task_mismatch_logs_ids_not_task_body(mock_make_request, caplog, capsys):
+    """An update whose response is for another task logs the IDs, not the task object."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    response_data = {"id": "other", "name": "Jane Member", "err": "bad"}
+    mock_make_request.return_value = response_data
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.update_task("token", "t1", {"status": "done"})
+
+    assert str(excinfo.value) == (
+        "ClickUp task update for t1 returned 200 OK but the response body indicates a failure. "
+        f"Response: {json.dumps(response_data)} | ClickUp Error: bad"
+    )
+    assert capsys.readouterr().out == ""
+    errors = _clickup_errors(caplog)
+    assert len(errors) == 1
+    assert "t1" in errors[0].getMessage()
+    assert "other" in errors[0].getMessage()
+    assert "Jane Member" not in caplog.text
+
+
+@patch('common.clickup._make_clickup_request')
+def test_update_task_list_response_raises_same_value_error(mock_make_request, caplog, capsys):
+    """A non-dict response still raises the same ValueError, not an AttributeError."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    mock_make_request.return_value = []
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.update_task("token", "t1", {"status": "done"})
+
+    assert str(excinfo.value) == (
+        "ClickUp task update for t1 returned 200 OK but the response body indicates a failure. Response: []"
+    )
+    assert capsys.readouterr().out == ""
+    assert len(_clickup_errors(caplog)) == 1
