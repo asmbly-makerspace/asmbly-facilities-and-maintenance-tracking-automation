@@ -56,7 +56,7 @@ For example, if you add a function `FooFunction-${Stage}` with a log group `/asm
     aws cloudformation describe-stack-resource --stack-name AsmblyFacilitiesMaintTrackingStack-stage --region us-east-2 \
       --logical-resource-id FacilitiesApi --query StackResourceDetail.PhysicalResourceId --output text
     ```
-    Don't use the stacks' `FacilitiesApiUrl` output for this: today it reads `https://{FacilitiesApi}.execute-api...` because the template's `!Sub` is missing a `$`.
+    The same ID is the host prefix of the stack's `FacilitiesApiUrl` output (`https://<id>.execute-api.us-east-2.amazonaws.com/<stage>`).
 3.  **Deploy the CICD stack** from your local machine:
     ```bash
     sam deploy --template-file template-cicd.yaml --stack-name AsmblyFacilitiesMaintTrackingStack-cicd \
