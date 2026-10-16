@@ -122,6 +122,7 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 ### Errors and security headers
 
 - If anything goes wrong (a missing environment variable, an empty token, an SSM, Secrets Manager or ClickUp error), the page says only "Could not retrieve the list of submissions." The details go to the log group `/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-<stage>`, never to the page.
+- The error page shows the error message and a Refresh button, nothing else: no list and no "No submissions found" line. That line appears only when the list loads and nothing was dropped off in the last 24 hours ("No submissions found in the last 24 hours.").
 - Every response, the list and the error page alike, is sent with these headers:
   - `Content-Type: text/html; charset=utf-8`
   - `X-Content-Type-Options: nosniff`
