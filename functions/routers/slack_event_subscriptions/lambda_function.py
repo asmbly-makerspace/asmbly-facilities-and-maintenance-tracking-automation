@@ -1,13 +1,38 @@
 import json
 import logging
 import os
+from typing import Any, Optional
+
 import boto3
+from botocore.client import BaseClient
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Built on first use and kept for the life of the container, so a warm invocation
+# reuses the client and its connection instead of paying for both again. Not built at
+# import, so a URL-verification challenge creates no client.
+_ssm_client: Optional[BaseClient] = None
+_lambda_client: Optional[BaseClient] = None
 
-def lambda_handler(event, context):
+
+def _get_ssm_client() -> BaseClient:
+    """Returns the SSM client, creating it on first use."""
+    global _ssm_client
+    if _ssm_client is None:
+        _ssm_client = boto3.client('ssm')
+    return _ssm_client
+
+
+def _get_lambda_client() -> BaseClient:
+    """Returns the Lambda client, creating it on first use."""
+    global _lambda_client
+    if _lambda_client is None:
+        _lambda_client = boto3.client('lambda')
+    return _lambda_client
+
+
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Routes Slack reaction events to the appropriate Lambda function
     based on the content of the message that was reacted to.
@@ -27,14 +52,15 @@ def lambda_handler(event, context):
             return {"statusCode": 200, "body": json.dumps("Event ignored.")}
 
         # --- Load Configuration from SSM ---
-        ssm_client = boto3.client('ssm')
         config_param_name = os.environ.get("ROUTER_CONFIG_PARAMETER_NAME")
         if not config_param_name:
             # Log an error but return 200 to Slack to prevent retries.
             logger.error("ROUTER_CONFIG_PARAMETER_NAME environment variable not set.")
             return {"statusCode": 200, "body": json.dumps("Internal configuration error.")}
 
-        parameter = ssm_client.get_parameter(Name=config_param_name)
+        # A direct client, not common.aws.get_json_parameter: that helper builds a new
+        # boto3 session on every call, which would undo the client reuse above.
+        parameter = _get_ssm_client().get_parameter(Name=config_param_name)
         router_config = json.loads(parameter['Parameter']['Value'])
 
         purchase_request_channel_id = router_config.get("purchase_request_channel_id")
@@ -56,14 +82,14 @@ def lambda_handler(event, context):
 
         if not target_lambda_arn:
             logger.info(
-                f"No target function determined for reaction in channel {channel_id}. This may be expected."
+                "No target function determined for reaction in channel %s. This may be expected.",
+                channel_id,
             )
             return {"statusCode": 200, "body": json.dumps("No action taken for this reaction.")}
 
         # --- Invoke Target Lambda ---
-        logger.info(f"Invoking target Lambda: {target_lambda_arn}")
-        lambda_client = boto3.client('lambda')
-        lambda_client.invoke(
+        logger.info("Invoking target Lambda: %s", target_lambda_arn)
+        _get_lambda_client().invoke(
             FunctionName=target_lambda_arn,
             InvocationType='Event',  # Asynchronous invocation
             Payload=event["body"]
@@ -72,6 +98,6 @@ def lambda_handler(event, context):
         return {"statusCode": 200, "body": json.dumps("Request forwarded successfully.")}
 
     except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
+        logger.error("An unexpected error occurred: %s", e, exc_info=True)
         # Return 200 to Slack to prevent retries for failed processing
-        return {"statusCode": 200, "body": json.dumps(f"Internal server error occurred.")}
+        return {"statusCode": 200, "body": json.dumps("Internal server error occurred.")}

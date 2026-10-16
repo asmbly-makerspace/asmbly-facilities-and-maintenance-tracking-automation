@@ -28,6 +28,9 @@ class TestSlackEventRouter(TestCase):
         self.mock_ssm.get_parameter.return_value = {
             'Parameter': {'Value': json.dumps(self.fake_router_config)}
         }
+        # The handler caches its boto3 clients per container; start each test without them.
+        lambda_function._ssm_client = None
+        lambda_function._lambda_client = None
 
     def _create_slack_event(self, channel_id, event_type="reaction_added"):
         """Helper to create a mock Slack event."""
