@@ -1,9 +1,29 @@
 import boto3
 import json
+import logging
 import os
+from typing import Any
+
+from botocore.exceptions import ClientError
+
+logger = logging.getLogger(__name__)
 
 
-def get_secret_json(secret_name):
+def _error_summary(e: BaseException) -> str:
+    """Describe an error by its class and, for an AWS ClientError, its error code.
+
+    Never includes the exception's text, which can carry secret or parameter values.
+    """
+    summary = type(e).__name__
+    if isinstance(e, ClientError):
+        response = e.response if isinstance(e.response, dict) else {}
+        error = response.get("Error", {})
+        code = error.get("Code", "Unknown") if isinstance(error, dict) else "Unknown"
+        summary = f"{summary} ({code})"
+    return summary
+
+
+def get_secret_json(secret_name: str) -> Any:
     """Retrieve and parse a JSON secret with a single Secrets Manager call."""
     region_name = os.environ.get("AWS_REGION", "us-east-2")
     session = boto3.session.Session()
@@ -15,11 +35,11 @@ def get_secret_json(secret_name):
         response = client.get_secret_value(SecretId=secret_name)
         return json.loads(response["SecretString"])
     except Exception as e:
-        print(f"ERROR: Unable to retrieve or parse secret '{secret_name}': {e}")
+        logger.error("Unable to retrieve or parse secret %s: %s", secret_name, _error_summary(e))
         raise
 
 
-def get_secret(secret_name, secret_key):
+def get_secret(secret_name: str, secret_key: str) -> Any:
     """
     Retrieves a specific key from a secret stored in AWS Secrets Manager.
     If the retrieved value is a string, it will be stripped of leading/trailing whitespace.
@@ -45,10 +65,12 @@ def get_secret(secret_name, secret_key):
             raise KeyError(f"Key '{secret_key}' not found in secret '{secret_name}'")
 
     except Exception as e:
-        print(f"ERROR: Unable to retrieve secret '{secret_name}' with key '{secret_key}': {e}")
+        logger.error(
+            "Unable to retrieve secret %s with key %s: %s", secret_name, secret_key, _error_summary(e)
+        )
         raise e
 
-def get_json_parameter(parameter_name, expected_key=None):
+def get_json_parameter(parameter_name: str, expected_key: str | None = None) -> Any:
     """
     Retrieves a parameter from AWS Systems Manager (SSM) Parameter Store
     and parses it as JSON. If expected_key is provided, it extracts and
@@ -73,5 +95,5 @@ def get_json_parameter(parameter_name, expected_key=None):
         return config_data
 
     except Exception as e:
-        print(f"ERROR: Unable to retrieve or parse SSM parameter '{parameter_name}': {e}")
+        logger.error("Unable to retrieve or parse SSM parameter %s: %s", parameter_name, _error_summary(e))
         raise e

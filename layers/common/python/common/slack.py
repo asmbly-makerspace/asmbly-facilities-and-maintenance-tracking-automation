@@ -1,5 +1,23 @@
+import logging
 import os
+import re
+from typing import Any
+
 import requests
+
+logger = logging.getLogger(__name__)
+
+_SLACK_ERROR_PATTERN = re.compile(r"[a-z0-9_]{1,64}")
+
+
+def _slack_error_for_log(response_data: Any) -> str | None:
+    """Return Slack's error code from a response if it looks like one, '<invalid>' if not."""
+    if not isinstance(response_data, dict) or "error" not in response_data:
+        return None
+    error = response_data["error"]
+    if isinstance(error, str) and _SLACK_ERROR_PATTERN.fullmatch(error):
+        return error
+    return "<invalid>"
 
 TEST_CHANNEL_OVERRIDE = os.environ.get('TEST_CHANNEL_OVERRIDE')
 
@@ -23,7 +41,16 @@ class SlackState:
             return None
 
 
-def send_slack_message(token, channel_to_attempt, text, bot_name, icon_emoji, *, dry_run=False, thread_ts=None):
+def send_slack_message(
+    token: str,
+    channel_to_attempt: str,
+    text: str,
+    bot_name: str,
+    icon_emoji: str,
+    *,
+    dry_run: bool = False,
+    thread_ts: str | None = None,
+) -> Any:
     """
     Sends a message to a Slack channel, optionally as a threaded reply.
     If dry_run is True, it prints the message instead of sending it.
@@ -55,17 +82,19 @@ def send_slack_message(token, channel_to_attempt, text, bot_name, icon_emoji, *,
         response = requests.post(slack_api_url, headers=headers, json=payload)
         response_data = response.json()
         if not response_data.get("ok"):
-            print(f"Slack API Error Response: {response_data}")
+            logger.error(
+                "Slack chat.postMessage to %s failed: %s", final_target_channel, _slack_error_for_log(response_data)
+            )
         return response_data
     except Exception as e:
-        print(f"Network or script error sending to {final_target_channel}: {e}")
+        logger.error("Slack chat.postMessage to %s failed: %s", final_target_channel, type(e).__name__)
         return {"ok": False, "error": "script_error", "error_message": str(e)}
 
 
-def get_slack_post_url(slack_workspace_url, channel_id, message_ts):
+def get_slack_post_url(slack_workspace_url: str | None, channel_id: str, message_ts: str) -> str | None:
     """Constructs the permalink for a Slack message."""
     if not slack_workspace_url:
-        print("slack_workspace_url was not provided. Cannot generate permalink.")
+        logger.warning("slack_workspace_url was not provided. Cannot generate permalink.")
         return None
     # Timestamp needs to be without the dot for the URL
     ts_for_url = message_ts.replace('.', '')
