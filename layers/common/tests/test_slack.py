@@ -1,6 +1,9 @@
+import logging
 import os
 import sys
 from unittest.mock import patch, MagicMock
+
+import requests
 
 # Add the python directory to the path to allow common module imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'python')))
@@ -73,10 +76,13 @@ def test_get_slack_post_url_success():
     url = slack.get_slack_post_url("https://my.slack.com", "C123", "12345.67890")
     assert url == "https://my.slack.com/archives/C123/p1234567890"
 
-def test_get_slack_post_url_no_workspace_url():
-    """Test that the function returns None if the workspace URL is missing."""
+def test_get_slack_post_url_no_workspace_url(caplog, capsys):
+    """Test that the function returns None and logs a warning if the workspace URL is missing."""
+    caplog.set_level(logging.DEBUG, logger="common.slack")
     url = slack.get_slack_post_url(None, "C123", "12345.67890")
     assert url is None
+    assert capsys.readouterr().out == ""
+    assert any(r.name == "common.slack" and r.levelno == logging.WARNING for r in caplog.records)
 
 def test_get_slack_user_info():
     """Test retrieving user information from Slack."""
@@ -116,3 +122,79 @@ def test_get_slack_user_info():
         headers={"Authorization": f"Bearer {api_token}"},
         params={"user": user_id}
     )
+
+
+def _slack_errors(caplog):
+    return [r for r in caplog.records if r.name == "common.slack" and r.levelno == logging.ERROR]
+
+
+@patch('common.slack.requests.post')
+def test_send_slack_message_api_error_logs_error_code_only(mock_requests_post, caplog, capsys):
+    """A Slack API error logs the channel and error code, not the whole response or the token."""
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "ok": False,
+        "error": "channel_not_found",
+        "response_metadata": {"messages": ["pk_META_MARKER"]},
+    }
+    mock_requests_post.return_value = mock_response
+
+    response = slack.send_slack_message('xoxb-TOKEN-MARKER', '#general', 'Hello', 'Bot', ':emoji:')
+
+    assert response == {
+        "ok": False,
+        "error": "channel_not_found",
+        "response_metadata": {"messages": ["pk_META_MARKER"]},
+    }
+    assert capsys.readouterr().out == ""
+    errors = _slack_errors(caplog)
+    assert len(errors) == 1
+    assert "channel_not_found" in errors[0].getMessage()
+    assert "general" in errors[0].getMessage()
+    assert "pk_META_MARKER" not in caplog.text
+    assert "xoxb-TOKEN-MARKER" not in caplog.text
+
+
+@patch('common.slack.requests.post')
+def test_send_slack_message_exception_logs_type_only(mock_requests_post, caplog, capsys):
+    """A request failure logs the exception type, while the return value is unchanged."""
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_requests_post.side_effect = requests.exceptions.ConnectionError("pk_EXC_MARKER")
+
+    response = slack.send_slack_message('xoxb-TOKEN-MARKER', '#general', 'Hello', 'Bot', ':emoji:')
+
+    assert response == {"ok": False, "error": "script_error", "error_message": "pk_EXC_MARKER"}
+    assert capsys.readouterr().out == ""
+    errors = _slack_errors(caplog)
+    assert len(errors) == 1
+    assert "ConnectionError" in errors[0].getMessage()
+    assert "general" in errors[0].getMessage()
+    assert "pk_EXC_MARKER" not in caplog.text
+    assert "xoxb-TOKEN-MARKER" not in caplog.text
+
+
+@patch('common.slack.requests.post')
+def test_send_slack_message_api_error_invalid_code_not_logged(mock_requests_post, caplog, capsys):
+    """A Slack 'error' that doesn't look like an error code is replaced in the log."""
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"ok": False, "error": "pk_ERR_MARKER Jane jane@example.com"}
+    mock_requests_post.return_value = mock_response
+
+    response = slack.send_slack_message('xoxb-TOKEN-MARKER', '#general', 'Hello', 'Bot', ':emoji:')
+
+    assert response == {"ok": False, "error": "pk_ERR_MARKER Jane jane@example.com"}
+    assert capsys.readouterr().out == ""
+    errors = _slack_errors(caplog)
+    assert len(errors) == 1
+    assert "<invalid>" in errors[0].getMessage()
+    assert "pk_ERR_MARKER" not in caplog.text
+    assert "jane@example.com" not in caplog.text
+
+
+def test_slack_error_for_log_rejects_trailing_newline():
+    """A Slack error code with a trailing newline is not a valid code and is replaced."""
+    assert slack._slack_error_for_log({"error": "channel_not_found\n"}) == "<invalid>"
+    assert slack._slack_error_for_log({"error": "channel_not_found"}) == "channel_not_found"
+    assert slack._slack_error_for_log({"ok": False}) is None
