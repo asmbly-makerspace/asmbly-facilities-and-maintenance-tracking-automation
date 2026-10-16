@@ -51,10 +51,9 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: 'arn:aws:logs:*:*:*'
+                Resource: !GetAtt NewProblemReportRequestReceivedLogGroup.Arn
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
@@ -129,10 +128,9 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: 'arn:aws:logs:*:*:*'
+                Resource: !GetAtt ProblemReportReactionLogGroup.Arn
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
