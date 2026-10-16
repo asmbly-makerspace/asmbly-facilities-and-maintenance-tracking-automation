@@ -1,8 +1,13 @@
+import html
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 
 from common.aws import get_secret, get_json_parameter
 from common.clickup import get_all_clickup_tasks
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 # --- Environment Variables ---
@@ -13,7 +18,7 @@ SECRET_NAME = os.environ.get("SECRET_NAME")
 CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME = os.environ.get("CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME")
 
 
-def generate_html_page(tasks):
+def generate_html_page(tasks: list[dict]) -> str:
     """Generates the HTML page to display the recent tasks."""
     
     task_rows = ""
@@ -25,18 +30,20 @@ def generate_html_page(tasks):
             created_date = datetime.fromtimestamp(int(task['date_created']) / 1000, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
             
             # Use the custom_id if it exists, otherwise fall back to the standard id
-            display_id = task.get('custom_id', task['id'])
+            # (ClickUp sends "custom_id": null when a list has no custom IDs)
+            display_id = html.escape(str(task.get('custom_id') or task['id']))
+            task_name = html.escape(str(task['name']))
 
             task_rows += f"""
                 <tr>
                     <td class="task-id">{display_id}</td>
-                    <td>{task['name']}</td>
+                    <td>{task_name}</td>
                     <td>{created_date}</td>
                 </tr>
             """
 
     # Full HTML document with embedded CSS for styling
-    html = f"""
+    page = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -154,16 +161,15 @@ def generate_html_page(tasks):
     </body>
     </html>
     """
-    return html
+    return page
 
-def generate_error_page(message):
+def generate_error_page() -> str:
     """Generates a user-friendly HTML error page."""
     error_body = f"""
     <div class="container">
         <div class="error-box">
             <h2>An Error Occurred</h2>
             <p>Could not retrieve the list of submissions.</p>
-            <p><small>Error details: {message}</small></p>
         </div>
     </div>
     """
@@ -176,61 +182,66 @@ def generate_error_page(message):
     )
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: dict, context: object) -> dict:
     """
     Main handler for the Lambda function. Triggered by API Gateway.
     """
     # 1. Check for required environment variables
     if not SECRET_NAME:
-        print("ERROR: SECRET_NAME environment variable not set.")
+        logger.error("SECRET_NAME environment variable not set")
         return {
             "statusCode": 500,
             "headers": {"Content-Type": "text/html"},
-            "body": generate_error_page("Server configuration error: Missing secret name."),
+            "body": generate_error_page(),
         }
     if not CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME:
-        print("ERROR: CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME environment variable not set.")
+        logger.error("CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME environment variable not set")
         return {
             "statusCode": 500,
             "headers": {"Content-Type": "text/html"},
-            "body": generate_error_page("Server configuration error: Missing ClickUp config parameter name."),
+            "body": generate_error_page(),
         }
 
     try:
         # 2. Get ClickUp List ID from SSM Parameter Store
         list_id = get_json_parameter(CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME, "list_id")
-        print(f"--- INFO: Successfully loaded ClickUp List ID: '{list_id}'")
+        logger.info("Loaded ClickUp list ID %s", list_id)
 
         # 3. Get API token from Secrets Manager
         api_token = get_secret(SECRET_NAME, 'CLICKUP_API_TOKEN')
-        
+
         if not api_token:
-            print("ERROR: API Token is missing or null.")
+            logger.error("ClickUp API token missing from secret")
+            return {
+                "statusCode": 500,
+                "headers": {"Content-Type": "text/html"},
+                "body": generate_error_page(),
+            }
 
         # 4. Fetch recent tasks from ClickUp API
         twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
         timestamp_ms = int(twenty_four_hours_ago.timestamp() * 1000)
-        print(f"--- INFO: Fetching tasks created after {twenty_four_hours_ago.isoformat()} (timestamp: {timestamp_ms})")
+        logger.info("Fetching tasks created after %s (timestamp: %s)", twenty_four_hours_ago.isoformat(), timestamp_ms)
 
         tasks = get_all_clickup_tasks(list_id, api_token, date_created_gt_ms=timestamp_ms)
-        print(f"--- INFO: Retrieved {len(tasks)} tasks from ClickUp")
+        logger.info("Retrieved %s tasks from ClickUp", len(tasks))
 
         # Sort by date_created descending (newest first)
         tasks.sort(key=lambda x: int(x.get('date_created', 0)), reverse=True)
 
         # 5. Generate and return the HTML page
         html_body = generate_html_page(tasks)
-        
+
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "text/html"},
             "body": html_body,
         }
 
-    except Exception as e:
-        print(f"ERROR: An exception occurred: {e}")
+    except Exception:
+        logger.exception("Failed to load kiln drop-offs")
         return {
             "statusCode": 500,
             "headers": {"Content-Type": "text/html"},
-            "body": generate_error_page(str(e)),
+            "body": generate_error_page(),
         }
