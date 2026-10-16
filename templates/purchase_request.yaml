@@ -152,10 +152,9 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: 'arn:aws:logs:*:*:*'
+                Resource: !GetAtt PurchaseRequestReactionLogGroup.Arn
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
@@ -219,10 +218,9 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: 'arn:aws:logs:*:*:*'
+                Resource: !GetAtt NewPurchaseRequestReceivedLogGroup.Arn
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
