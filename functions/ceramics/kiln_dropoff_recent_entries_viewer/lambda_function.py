@@ -177,7 +177,7 @@ def generate_html_page(tasks: list[dict]) -> str:
 
 def generate_error_page() -> str:
     """Generates a user-friendly HTML error page."""
-    error_body = f"""
+    error_body = """
     <div class="container">
         <div class="error-box">
             <h2>An Error Occurred</h2>
