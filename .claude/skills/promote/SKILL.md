@@ -33,20 +33,31 @@ nothing, say so and stop.
 git log --oneline origin/stage..origin/main
 ```
 
-`main`'s ruleset requires a pull request's branch to be up to date with `main` before it
-can merge. Every promotion leaves a merge commit on `main` that `stage` doesn't have, so
-this usually lists the previous promotion's merge commit (and any change that went
-straight to `main`). If it lists anything, `stage` must take it first:
+Both `main` and `stage` only merge a pull request whose branch is up to date with its base
+(it contains the base's latest commit). Every promotion leaves a merge commit on `main`
+that `stage` doesn't have, so this usually lists the previous promotion's merge commit
+(and any change that went straight to `main`). If it lists anything, `stage` must take it
+first, through a branch that contains both tips:
 
 ```bash
-gh pr create --base stage --head main --title "Sync main into stage" \
-  --body "Brings the commits on main that stage lacks, so the promotion can merge. No new changes."
+git switch -c sync/main-into-stage-$(date +%Y%m%d) origin/stage
+git branch --unset-upstream
+git merge --no-edit origin/main          # a fast-forward when stage has nothing new
+git push -u origin HEAD
+gh pr create --base stage --title "Sync main into stage" \
+  --body "Brings the commits on main that stage lacks, so the promotion can merge."
 gh pr checks <sync N> --watch --interval 30
 ```
 
-Ask the person to merge it with a merge commit (it changes no files when `main` only has
-merge commits). Don't use "Update branch" on the promotion pull request: that would push
-to `stage` directly, which its ruleset forbids. When the sync has merged, fetch and go on.
+Don't open the sync with `main` itself as the head: when `stage` has commits `main`
+lacks, which is the usual case when promoting, that pull request is behind `stage` and
+can't merge. Don't use "Update branch" on the promotion pull request either: that would
+push to `stage` directly, which its ruleset forbids.
+
+Check what the sync changes (`gh pr diff <sync N> --name-only`): when `main` only had
+merge commits, it changes no files. Say so, and merge it on the person's word with
+`gh pr merge <sync N> --merge --delete-branch --match-head-commit <sha>`. Then fetch and
+go on.
 
 ## 2. Is stage healthy?
 
