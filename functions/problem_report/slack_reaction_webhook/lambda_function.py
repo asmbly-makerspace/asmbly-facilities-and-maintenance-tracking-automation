@@ -50,7 +50,11 @@ def lambda_handler(event, context):
             slack_secret_name,
             clickup_secret_name
         )
-        logger.info(f"Base processing result: {result}")
+        # Not the whole result: its message_text holds the reporter's contact details.
+        logger.info(
+            "Base processing result: status=%s task_id=%s reaction=%s reason=%s",
+            result.get("status"), result.get("task_id"), result.get("reaction"), result.get("reason"),
+        )
 
         # If the reaction was processed and a ClickUp task was found...
         if result.get("status") == "success":

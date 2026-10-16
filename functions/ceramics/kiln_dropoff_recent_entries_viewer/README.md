@@ -122,6 +122,7 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 ### Errors and security headers
 
 - If anything goes wrong (a missing environment variable, an empty token, an SSM, Secrets Manager or ClickUp error), the page says only "Could not retrieve the list of submissions." The details go to the log group `/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-<stage>`, never to the page.
+- The error page shows the title, the error message, "Please wait 1-2 minutes and refresh." and the Refresh button. It shows no list and no "No submissions found" line. That line appears only when the list loads and nothing was dropped off in the last 24 hours ("No submissions found in the last 24 hours. Please try refreshing.").
 - Every response, the list and the error page alike, is sent with these headers:
   - `Content-Type: text/html; charset=utf-8`
   - `X-Content-Type-Options: nosniff`
@@ -136,6 +137,25 @@ Tags in AWS will be:
 | Name        | Value                        |
 |-------------|------------------------------|
 | Project     | ceramics:kiln-dropoff-viewer |
+
+### Permissions
+
+The function's role (`KilnDropoffViewerLambdaRole` in `templates/ceramics.yaml`) can do
+three things and nothing else:
+
+- Write log streams and log events to its own log group,
+  `/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-<stage>`.
+- Read the `clickup/api/token` secret from Secrets Manager.
+- Read the `/<stage>/config/clickup/ceramics/dropOffRequests` parameter from SSM.
+
+The role can't create log groups. CloudFormation creates this one. If someone deletes it
+by hand, the function keeps working but its logs are lost until the log group exists
+again under the same name. A normal deploy won't bring it back, because CloudFormation
+doesn't notice a resource deleted outside it. An admin has to recreate the log group
+with that name and a 30-day retention.
+
+`tests/test_templates.py` fails if this role, or any other hand-written Lambda role, is
+given an IAM action or a logs grant on anything but its own function's log group.
 
 ## Configuration
 
