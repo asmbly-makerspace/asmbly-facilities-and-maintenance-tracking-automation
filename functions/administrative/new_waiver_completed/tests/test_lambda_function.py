@@ -148,3 +148,76 @@ class TestNewWaiverCompleted(TestCase):
         # Assertions
         self.assertEqual(response["statusCode"], 500)
         self.assertIn("Internal Server Error", response["body"])
+
+
+class TestNewWaiverCompletedLogging(TestCase):
+    """The logs carry the waiver ID and the Neon account ID, never the signer's details."""
+
+    PERSONAL_DATA = ("jane.doe@example.com", "jane.doe", "Jane Doe", "1990-01-02", "512-555-0142")
+
+    def setUp(self):
+        self.event = {"body": json.dumps({
+            "waiver_id": "W-123",
+            "email": "jane.doe@example.com",
+            "name": "Jane Doe",
+            "dateOfBirth": "1990-01-02",
+            "phone": "512-555-0142",
+            "signed_date": "2025-11-09T00:52:12.007Z",
+        })}
+        self.env_vars = {"NEON_SECRET_NAME": "prod/neon_token"}
+
+    def _assert_no_personal_data(self, output: str) -> None:
+        for leaked in self.PERSONAL_DATA:
+            self.assertNotIn(leaked, output)
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.requests.patch")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.requests.post")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    def test_logs_ids_not_personal_data_when_account_found(self, mock_aws, mock_post, mock_patch):
+        """A matched waiver logs the waiver ID and account ID, and no personal data."""
+        mock_aws.get_secret.side_effect = ["test_org_id", "test_api_key"]
+        mock_post.return_value = MagicMock(**{"json.return_value": {"searchResults": [{"Account ID": "12345"}]}})
+        mock_patch.return_value = MagicMock()
+
+        with patch.dict(os.environ, self.env_vars), self.assertLogs(level="DEBUG") as logs:
+            response = lambda_function.lambda_handler(self.event, None)
+
+        self.assertEqual(response["statusCode"], 200)
+        self._assert_no_personal_data("\n".join(logs.output))
+        messages = [record.getMessage() for record in logs.records]
+        self.assertIn("Parsed waiver W-123", messages)
+        self.assertIn("Waiver W-123 matches NeonCRM account 12345", messages)
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.requests.patch")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.requests.post")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    def test_logs_ids_not_personal_data_when_account_not_found(self, mock_aws, mock_post, mock_patch):
+        """An unmatched waiver logs the waiver ID, and no personal data."""
+        mock_aws.get_secret.side_effect = ["test_org_id", "test_api_key"]
+        mock_post.return_value = MagicMock(**{"json.return_value": {"searchResults": []}})
+
+        with patch.dict(os.environ, self.env_vars), self.assertLogs(level="DEBUG") as logs:
+            response = lambda_function.lambda_handler(self.event, None)
+
+        self.assertEqual(response["statusCode"], 404)
+        mock_patch.assert_not_called()
+        self._assert_no_personal_data("\n".join(logs.output))
+        messages = [record.getMessage() for record in logs.records]
+        self.assertIn("Parsed waiver W-123", messages)
+        self.assertTrue(any("W-123" in m and "No NeonCRM account" in m for m in messages), messages)
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    def test_unexpected_error_logs_type_and_waiver_id_not_message(self, mock_aws):
+        """The catch-all logs the exception's class and the waiver ID, not its text."""
+        mock_aws.get_secret.side_effect = RuntimeError("lookup failed for jane.doe@example.com")
+
+        with patch.dict(os.environ, self.env_vars), self.assertLogs(level="DEBUG") as logs:
+            response = lambda_function.lambda_handler(self.event, None)
+
+        self.assertEqual(response["statusCode"], 500)
+        self.assertEqual(response["body"], json.dumps("Internal Server Error"))
+        output = "\n".join(logs.output)
+        self._assert_no_personal_data(output)
+        self.assertNotIn("lookup failed", output)
+        errors = [record.getMessage() for record in logs.records if record.levelname == "ERROR"]
+        self.assertTrue(any("RuntimeError" in m and "W-123" in m for m in errors), errors)
