@@ -56,7 +56,7 @@ class NeonCRM:
             logger.warning("No NeonCRM account matches the searched email")
             return None
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error searching for NeonCRM account by email: {e}")
+            logger.error("Error searching for NeonCRM account: %s", type(e).__name__)
             return None
 
     def update_account_custom_field(self, account_id, field_id, field_value):

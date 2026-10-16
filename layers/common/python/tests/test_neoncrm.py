@@ -98,6 +98,21 @@ class TestNeonCRM(unittest.TestCase):
 
         self.assertIsNone(account_id)
 
+    @patch('common.neoncrm.requests.post')
+    def test_get_account_by_email_api_error_logs_type_not_email(self, mock_post):
+        """An API error logs the exception type only; the searched email never reaches the log."""
+        mock_post.side_effect = requests.exceptions.RequestException(
+            "400 Client Error for search value test@example.com"
+        )
+
+        with self.assertLogs(level="DEBUG") as logs:
+            account_id = self.client.get_account_by_email("test@example.com")
+
+        self.assertIsNone(account_id)
+        output = "\n".join(logs.output)
+        self.assertIn("RequestException", output)
+        self.assertNotIn("test@example.com", output)
+
     @patch('common.neoncrm.requests.patch')
     def test_update_account_custom_field_success(self, mock_patch):
         """Test successfully updating a custom field for an account."""
