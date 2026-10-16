@@ -144,3 +144,22 @@ class TestSlackEventRouter(TestCase):
 
         self.assertEqual(response["statusCode"], 200)
         self.assertIn("Internal server error", response["body"])
+
+    def test_reuses_boto3_clients_across_invocations(self, mock_boto3_client):
+        """Tests that a warm container builds its SSM and Lambda clients only once."""
+        clients = {'ssm': self.mock_ssm, 'lambda': self.mock_lambda}
+        mock_boto3_client.side_effect = lambda service, *args, **kwargs: clients[service]
+        event = self._create_slack_event("C_PURCHASE")
+
+        with patch.dict(os.environ, self.env_vars):
+            first = lambda_function.lambda_handler(event, None)
+            second = lambda_function.lambda_handler(event, None)
+
+        self.assertEqual(first["body"], json.dumps("Request forwarded successfully."))
+        self.assertEqual(second["body"], json.dumps("Request forwarded successfully."))
+        services = [call.args[0] for call in mock_boto3_client.call_args_list]
+        self.assertEqual(services.count('ssm'), 1)
+        self.assertEqual(services.count('lambda'), 1)
+        self.assertEqual(self.mock_lambda.invoke.call_count, 2)
+        # The routing config is read on every invocation, not cached.
+        self.assertEqual(self.mock_ssm.get_parameter.call_count, 2)
