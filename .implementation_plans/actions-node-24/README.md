@@ -45,7 +45,7 @@ the merge, so the issue is closed by hand once they pass (Decision 5).
 
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [Bump the workflow actions to their Node 24 majors](phase-1-bump-actions.md) | ci | S | [ ] Pending |
+| 1 | [Bump the workflow actions to their Node 24 majors](phase-1-bump-actions.md) | ci | S | [x] Complete |
 
 ## Dependencies
 
@@ -111,8 +111,11 @@ default. No named AWS resource is added, so nothing goes into the deploy-role po
 
 - **OIDC trust unchanged.** Each deploy job keeps `environment: name: stage` / `prod`,
   `permissions: id-token: write` and `contents: read`, the same `role-to-assume` ARN, and
-  only the `role-to-assume` and `aws-region` inputs. Phase 1's test asserts all four, so a
-  later edit that drops the environment or adds a credentials input fails `pytest`.
+  only the `role-to-assume` and `aws-region` inputs. Phase 1's test asserts the
+  environment, the permissions, the inputs and the role name (the ARN's
+  `:role/GitHub-OIDC-facilities-automation-deploy` suffix; the `git diff` acceptance check
+  covers the full ARN), so a later edit that drops the environment or adds a credentials
+  input fails `pytest`.
 - **No new permissions.** No job gains a permission; `list-routes` keeps
   `contents: read` only and no OIDC token.
 - **Third-party code.** The bumps move to newer releases of the same four actions

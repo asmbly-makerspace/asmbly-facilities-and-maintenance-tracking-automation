@@ -10,7 +10,7 @@ estimated_size: S
 
 # Phase 1: Bump the workflow actions to their Node 24 majors
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-17 on branch feature/actions-node-24
 
 ## Required reading
 
@@ -215,4 +215,26 @@ which changes, and no named AWS resource is added.
 
 ## Hand-off
 
-(Filled in when the phase is done.)
+- Every `uses:` in `.github/workflows/` is now `actions/checkout@v7`,
+  `actions/setup-python@v7`, `aws-actions/configure-aws-credentials@v6` or
+  `aws-actions/setup-sam@v3`; all four run on `node24` (checked in each tag's
+  `action.yml`). Nothing else in the workflows changed (`git diff stage --
+  .github/workflows/` shows only the eight `@vN` suffixes; `python-tests.yml` keeps its
+  missing final newline).
+- `tests/test_workflows.py` guards it: `MIN_NODE24_MAJOR` (checkout 5, setup-python 6,
+  configure-aws-credentials 6, setup-sam 3) is a minimum, so later Dependabot bumps pass;
+  an action not in the map, a non-`@v<N>` pin (such as a SHA) or a job-level reusable
+  workflow fails with a message naming it. The deploy jobs' environment, permissions,
+  single credentials step with `role-to-assume` and `aws-region` only, and role-name
+  suffix are asserted, and `list-routes` keeps `contents: read` and no environment.
+  Against `stage`'s workflows the guard names all eight stale references.
+- Release notes re-read on 2026-10-17: nothing newer than the table above.
+  `configure-aws-credentials` v6 also turns workflow `env` such as `AWS_REGION` into an
+  input (`translate-env-variables`, default true), but only for an input that isn't set;
+  `aws-region` is set explicitly, so it changes nothing. `setup-sam@v3` keeps the same
+  inputs as v2 (`version`, `python`, `use-installer`, `token`); none is passed.
+- Still to check after the merge (README Decision 5, `MANUAL_QA.md`): the PR's `test`
+  annotations (the PR head has two `test` check runs, push and pull_request; check the
+  pull_request one, or both), the stage deploy, and the next prod deploy. A failure on
+  `ubuntu-latest` after 2026-10-19 may be the Ubuntu 26 image, on the PR check too:
+  compare with a re-run on `stage`.

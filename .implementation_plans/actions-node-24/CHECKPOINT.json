@@ -1,0 +1,67 @@
+{
+  "plan_name": "actions-node-24",
+  "feature_branch": "feature/actions-node-24",
+  "epic": 126,
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1,
+      "title": "Bump the workflow actions to their Node 24 majors",
+      "file": "phase-1-bump-actions.md",
+      "status": "done",
+      "pre_phase_sha": "13689bc331e83f3109cab715c6ddac330583f16f",
+      "review_rounds": 1,
+      "files_changed": 6
+    }
+  ],
+  "integration": null,
+  "final_pr_number": null,
+  "admin_actions": [],
+  "events": [
+    {
+      "ts": "2026-10-17T17:04:30+00:00",
+      "type": "planned",
+      "epic": 126,
+      "stories": [
+        124
+      ],
+      "decisions": 7,
+      "note": "Epic #126 created to wrap #124 (now a story). Plan adds tests/test_workflows.py, which will fail on open PR #68's new job until it is rebased. PR should say Refs #124, not Closes."
+    },
+    {
+      "ts": "2026-10-17T17:04:30+00:00",
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "ts": "2026-10-17T17:08:07+00:00",
+      "type": "concurrent_work",
+      "note": "PR #127 (Dependabot config, owner-authorized merge to stage) was opened by a separate agent and is green, but its merge was blocked by this run's guardrail. Not merged by the run; merge it with a merge commit, then rebase this branch onto stage if the PR shows BEHIND."
+    },
+    {
+      "ts": "2026-10-17T17:14:12+00:00",
+      "type": "phase_done",
+      "phase": 1,
+      "review": "review-lead APPROVED, 0 BLOCK, 0 WARN, 5 NOTE; review round 1 clean",
+      "checks": "pytest 1721 passed; actionlint clean"
+    },
+    {
+      "ts": "2026-10-17T17:14:12+00:00",
+      "type": "decision",
+      "phase": 1,
+      "note": "Prep READY (no drift; auditor 0 HIGH, 1 MED, 7 LOW, all note-for-build). Added a tmp_path test so the version guard can't pass vacuously. Minimum majors: checkout 5, setup-python 6, configure-aws-credentials 6, setup-sam 3 (first node24 majors); targets checkout v7, setup-python v7, configure-aws-credentials v6, setup-sam v3."
+    },
+    {
+      "ts": "2026-10-17T17:14:12+00:00",
+      "type": "deferred",
+      "phase": 1,
+      "note": "tests/test_workflows.py:111 raises TypeError instead of an assert message if a deploy job's environment becomes the string form; it still fails. Left as is."
+    },
+    {
+      "ts": "2026-10-17T17:14:12+00:00",
+      "type": "deferred",
+      "phase": 1,
+      "note": "Post-merge only: #124 AC 2 (no Node 20 warning on the PR's test run; check both push and pull_request runs) and AC 4-6 (stage deploy, next prod deploy, no promote after a failed stage deploy). For MANUAL_QA.md."
+    }
+  ]
+}
