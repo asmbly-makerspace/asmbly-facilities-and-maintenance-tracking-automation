@@ -80,6 +80,8 @@ with the fixed body
 If Slack answers that the post failed, the body is `"Failed to send Slack message."`.
 The error and its traceback are logged with the task ID in the
 `/asmbly/lambda/NewPurchaseRequestReceivedFunction-<stage>` log group.
+A ClickUp or Slack request that gets no answer gives up after 8 seconds and is handled
+like the failures above. Progress lines are `[INFO]` records in the same log group.
 
 ## AWS Infrastructure
 

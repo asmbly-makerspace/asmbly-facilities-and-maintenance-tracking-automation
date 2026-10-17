@@ -103,14 +103,18 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
 
         # --- Execute the handler ---
         stdout = io.StringIO()
-        with contextlib.redirect_stdout(stdout):
+        with contextlib.redirect_stdout(stdout), self.assertLogs(level="INFO") as logs:
             result = lambda_handler(event, None)
 
         # --- Assertions ---
         self.assertEqual(result['statusCode'], 200)
         self.assertEqual(json.loads(result['body']), 'Successfully processed purchase request.')
-        self.assertNotIn('pk_TASK_MARKER', stdout.getvalue())
-        self.assertIn('Successfully updated task 86ad43ft6', stdout.getvalue())
+        # Progress lines are log records, not prints, and the returned task isn't logged.
+        self.assertEqual(stdout.getvalue(), '')
+        messages = [record.getMessage() for record in logs.records if record.levelname == "INFO"]
+        self.assertIn("Successfully updated task '86ad43ft6' with Slack post URL.", messages)
+        self.assertIn("Attempting to set custom field SLACK_POST_FIELD_ID on task '86ad43ft6'.", messages)
+        self.assertNotIn('pk_TASK_MARKER', "\n".join(logs.output))
 
         # Verify secrets were fetched
         mock_aws.get_secret.assert_any_call('test_clickup_secret', 'CLICKUP_API_TOKEN')
@@ -253,6 +257,31 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
                 self.assertIn('86ad43ft6', errors[0].getMessage())
                 self.assertIsNotNone(errors[0].exc_info)
 
+    @patch('functions.purchase_request.new_purchase_request_received.lambda_function.aws')
+    @patch('functions.purchase_request.new_purchase_request_received.lambda_function.clickup')
+    @patch('functions.purchase_request.new_purchase_request_received.lambda_function.slack')
+    @patch.dict(os.environ, {})
+    def test_handler_logs_instead_of_printing(self, mock_slack, mock_clickup, mock_aws):
+        """The test-webhook and Slack-failure paths log records and print nothing."""
+        os.environ.update(self.mock_env_vars)
+        mock_aws.get_secret.return_value = 'fake-token'
+        mock_clickup.get_task.return_value = self.mock_full_task_details
+        mock_slack.send_slack_message.return_value = {'ok': False, 'error': 'pk_SLACK_ERROR'}
+
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout), self.assertLogs(level="INFO") as logs:
+            test_result = lambda_handler({'body': json.dumps({"body": "Test message"})}, None)
+            failure_result = lambda_handler({'body': json.dumps(self.clickup_webhook_payload)}, None)
+
+        self.assertEqual(test_result['statusCode'], 200)
+        self.assertEqual(failure_result['statusCode'], 500)
+        self.assertEqual(stdout.getvalue(), '')
+        info = [r.getMessage() for r in logs.records if r.levelname == "INFO"]
+        errors = [r.getMessage() for r in logs.records if r.levelname == "ERROR"]
+        self.assertTrue(any("Likely a ClickUp test" in m for m in info), info)
+        self.assertEqual(errors, ["Failed to send Slack message for task '86ad43ft6'"])
+        self.assertNotIn('pk_SLACK_ERROR', "\n".join(logs.output))
+
     @patch.dict(os.environ, {})
     def test_missing_environment_variable(self):
         """Test that the function fails fast if a required environment variable is missing."""
@@ -262,10 +291,15 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
         os.environ.update(test_vars)
 
         event = {'body': json.dumps(self.clickup_webhook_payload)}
-        result = lambda_handler(event, None)
+
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout), self.assertLogs(level="ERROR") as logs:
+            result = lambda_handler(event, None)
 
         self.assertEqual(result['statusCode'], 500)
         self.assertIn("Missing required environment variables: SLACK_WORKSPACE_URL", result['body'])
+        self.assertEqual(stdout.getvalue(), '')
+        self.assertIn("Missing required environment variables: SLACK_WORKSPACE_URL", logs.records[0].getMessage())
 
 if __name__ == '__main__':
     unittest.main()

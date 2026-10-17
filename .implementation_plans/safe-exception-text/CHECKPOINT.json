@@ -32,13 +32,22 @@
         "cfn_lint": "4 W3005 warnings in template.yaml:582/592/605, pre-existing (no template changed)",
         "sam_validate": "pass",
         "sam_build": "pass"
-      }
+      },
+      "squashed_sha": "0338dea"
     },
     {
       "id": 3,
       "title": "Logging cleanup and request timeouts",
       "file": ".implementation_plans/safe-exception-text/phase-3-logging-cleanup-and-timeouts.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "0338dea",
+      "review_rounds": 2,
+      "checks": {
+        "pytest": "1831 passed",
+        "cfn_lint": "only the 4 pre-existing W3005 warnings",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      }
     }
   ],
   "integration": null,
@@ -164,6 +173,50 @@
       "type": "preexisting",
       "check": "cfn-lint",
       "detail": "4 W3005 warnings in template.yaml:582/592/605 on the base templates"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 2,
+      "sha": "0338dea"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 3
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 3,
+      "review_rounds": 2,
+      "pytest": "1831 passed"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 3,
+      "items": [
+        "/reorder SUBMISSION_FAILURE_TEXT kept as 'was not created' (#143 AC2); a create slower than 8 s is rare and a duplicate is cheap to close; the /reorder README tells volunteers to check ClickUp before resubmitting after a slow failure (README Decision 15)",
+        "8-second timeout per request on ClickUp and Slack requests (README Decision 10: per request, not per function)",
+        "New Neon/Discourse tests went into the existing layers/common/python/tests/ files (a second same-named file would fail collection)",
+        "Neon root-logger check runs in a fresh interpreter, not importlib.reload (reload rebinds NeonCRMError and breaks other tests)",
+        "PM reminder banners reworded to 'PM reminder run started' / 'PM reminder run finished: %d tasks processed'",
+        "Prep NEEDS_REVISION: amendments applied in the phase doc"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 3,
+      "items": [
+        "new_waiver_completed: a Neon search that times out or fails returns None -> logs 'no account' -> 404; an update that times out or fails -> 200 'success'. Before, a hung Neon ran into the 30 s Lambda limit. Recommend adding the timeout/search case to #99's scope",
+        "Timeouts are per request: /reorder submission makes 3 calls in a 10 s function, and no async invoke sets MaximumRetryAttempts, so a Lambda timeout retry could run create_task twice. Follow-up: deadline from context.get_remaining_time_in_millis() or MaximumRetryAttempts: 0",
+        "A write that ClickUp or Slack commits after 8 s now counts as a failure (/reorder 'not created'; new purchase request 500 after Slack posted, so a ClickUp retry posts again; new problem report 'Error creating task'). Follow-up: treat ReadTimeout on a write differently",
+        "/reorder's own views.open and views.update posts have no timeout",
+        "Discourse requests have no timeout (README Decision 11)",
+        "Style: test_discourse.py repeats test_neoncrm.py's fresh-interpreter import check; could share a conftest.py"
+      ]
     }
   ],
   "stories": [

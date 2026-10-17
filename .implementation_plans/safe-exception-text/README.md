@@ -61,7 +61,7 @@ that lands phase 3 says `Closes #141` and `Closes #95`, and phase 2's says `Clos
 | --- | --- | --- | --- | --- |
 | 1 | [ClickUp exception text and payload log lines](phase-1-clickup-exception-text.md) | layer, lambda | M | [x] Complete |
 | 2 | [Plain error replies and /reorder error modal](phase-2-plain-error-replies.md) | lambda, layer, docs | M | [x] Complete |
-| 3 | [Logging cleanup and request timeouts](phase-3-logging-cleanup-and-timeouts.md) | layer, lambda, docs | L | [ ] Pending |
+| 3 | [Logging cleanup and request timeouts](phase-3-logging-cleanup-and-timeouts.md) | layer, lambda, docs | L | [x] Complete |
 
 ## Dependencies
 
@@ -199,7 +199,9 @@ Made without asking, inside `/offshore` (2026-10-17).
     `github_app` and `neoncrm.search_events`. Reason: the shortest affected function
     (`/reorder`, the purchase-request reaction function, the kiln viewer) has a
     10-second limit; 8 s leaves time to log and answer. `search_events` keeps 10 s
-    (#145 says so; its only caller runs for 25 s).
+    (#145 says so; its only caller runs for 25 s). The limit is per request, not per
+    function: a function that makes several calls can still run out of time (phase 3
+    prep; see phase 3's Decisions).
 11. **Discourse gets no timeout here.** #145 lists ClickUp, Slack and Neon; the issue
     names `clickup.py` and `slack.py`. Alternative: add it in phase 3 too. Reason: keep
     to the stories; listed in the briefing as a follow-up.
@@ -217,3 +219,8 @@ Made without asking, inside `/offshore` (2026-10-17).
     `dynamic_dns_update` does), so their INFO lines still reach CloudWatch (Lambda's
     root default is WARNING). The layer modules use `logging.getLogger(__name__)` and set
     no level.
+15. **`/reorder`'s submission-failure text stays** although a `create_task` that ClickUp
+    commits after the 8-second timeout would show it for a task that exists (phase 3
+    prep). Alternative: "may not have been created". Reason: #143 AC2 asks for "was
+    not created", the case is rare, and a duplicate request is visible in ClickUp.
+    A briefing follow-up.

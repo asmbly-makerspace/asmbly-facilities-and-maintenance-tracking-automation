@@ -9,11 +9,11 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-def get_slack_post_url(channel_id, message_ts):
+def get_slack_post_url(channel_id: str, message_ts: str) -> str | None:
     """Constructs the permalink for a Slack message."""
     slack_workspace_url = os.environ.get('SLACK_WORKSPACE_URL')
     if not slack_workspace_url:
-        print("SLACK_WORKSPACE_URL environment variable not set. Cannot generate permalink.")
+        logger.warning("SLACK_WORKSPACE_URL environment variable not set. Cannot generate permalink.")
         return None
     # Timestamp needs to be without the dot for the URL
     ts_for_url = message_ts.replace('.', '')
@@ -41,7 +41,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
     if missing_vars:
         error_message = f"Missing required environment variables: {', '.join(missing_vars)}"
-        print(error_message)
+        logger.error("Missing required environment variables: %s", ", ".join(missing_vars))
         return {'statusCode': 500, 'body': json.dumps(error_message)}
 
     clickup_secret_name = os.environ['CLICKUP_SECRET_NAME']
@@ -60,7 +60,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # Real events have a 'trigger_id'. If it's missing, it's either a test
         # or an event we don't care about. Respond with 200 to satisfy the test.
         if 'trigger_id' not in body:
-            print("Received a request without a 'trigger_id'. Likely a ClickUp test. Responding with 200 OK.")
+            logger.info("Received a request without a 'trigger_id'. Likely a ClickUp test. Responding with 200 OK.")
             return {'statusCode': 200, 'body': json.dumps('Webhook test successful or unhandled event type.')}
 
         task = body.get('payload')
@@ -115,18 +115,19 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
 
         if not slack_response.get('ok'):
-            print(f"Failed to send Slack message: {slack_response.get('error')}")
+            # The Slack helper has already logged Slack's validated error code.
+            logger.error("Failed to send Slack message for task %r", task_id)
             # Decide if you want to fail the whole execution or just log
             return {'statusCode': 500, 'body': json.dumps('Failed to send Slack message.')}
 
         # --- 2. Update ClickUp Task with Slack Post URL ---
         slack_post_url = get_slack_post_url(slack_response['channel'], slack_response['ts'])
-        print(f"Generated Slack permalink: {slack_post_url}")
+        logger.info("Generated Slack permalink for task %r: %s", task_id, slack_post_url)
 
         slack_post_field_id = purchase_requests_config['slack_post_field_id']
-        print(f"Attempting to set custom field '{slack_post_field_id}' on task {task_id}.")
+        logger.info("Attempting to set custom field %s on task %r.", slack_post_field_id, task_id)
         clickup.set_custom_field_value(clickup_api_token, task_id, slack_post_field_id, slack_post_url)
-        print(f"Successfully updated task {task_id} with Slack post URL.")
+        logger.info("Successfully updated task %r with Slack post URL.", task_id)
 
         return {'statusCode': 200, 'body': json.dumps('Successfully processed purchase request.')}
 

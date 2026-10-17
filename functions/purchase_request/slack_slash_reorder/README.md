@@ -165,3 +165,8 @@ user closed the modal while the task was being created), no error modal appears,
 user isn't told to submit it again. Every failure, including Slack refusing the
 "Success!" modal, is logged with the modal's view ID in the
 `/asmbly/lambda/SlackSlashReorderFunction-<stage>` log group.
+
+A ClickUp request, or the Slack user lookup, that gets no answer gives up after 8 seconds
+and shows the matching message above. One case is ambiguous: if ClickUp creates the task
+but answers after those 8 seconds, the modal still says it was not created, so check the
+purchase requests list in ClickUp before submitting again.

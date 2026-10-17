@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import time
 from typing import Any
@@ -7,6 +8,9 @@ from datetime import datetime, timezone, timedelta
 from common.aws import get_secret, get_json_parameter
 from common.clickup import get_all_clickup_tasks, get_custom_field_value, ClickUpTask
 from common.slack import send_slack_message
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 # --- Environment Variables ---
 # These are set in the Lambda function's configuration (template.yaml)
@@ -74,21 +78,21 @@ def lambda_handler(event: Any, context: Any) -> dict[str, Any]:
     """
     Main function executed by AWS Lambda.
     """
-    print("--- HANDLER STARTED ---")
+    logger.info("PM reminder run started")
 
     try:
         # --- 1. Load Configuration and Secrets ---
         if not all([CLICKUP_SECRET_NAME, SLACK_SECRET_NAME, CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME, CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID]):
             raise ValueError("Missing critical environment variables...")
 
-        print("Fetching secrets from AWS Secrets Manager...")
+        logger.info("Fetching secrets from AWS Secrets Manager...")
         clickup_api_token = get_secret(CLICKUP_SECRET_NAME, secret_key='CLICKUP_API_TOKEN')
         slack_bot_token = get_secret(SLACK_SECRET_NAME, secret_key='SLACK_MAINTENANCE_BOT_TOKEN')
-        print("Secrets loaded successfully.")
+        logger.info("Secrets loaded successfully.")
 
-        print(f"Fetching ClickUp config from SSM Parameter '{CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME}'...")
+        logger.info("Fetching ClickUp config from SSM Parameter '%s'...", CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME)
         clickup_workspace_field_id = get_json_parameter(CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME, expected_key='workspace_field_id')
-        print(f"Fetching ClickUp PM Schedule List ID from SSM Parameter '{CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME}'...")
+        logger.info("Fetching ClickUp PM Schedule List ID from SSM Parameter '%s'...", CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME)
         clickup_list_id = get_json_parameter(CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME, expected_key='list_id')
 
         # --- 2. Fetch and Process Tasks from ClickUp ---
@@ -97,13 +101,13 @@ def lambda_handler(event: Any, context: Any) -> dict[str, Any]:
         now_ms = int(now_utc.timestamp() * 1000)
         one_week_ms = int(one_week_from_now_utc.timestamp() * 1000)
 
-        print("Fetching overdue tasks...")
+        logger.info("Fetching overdue tasks...")
         overdue_tasks = get_all_clickup_tasks(clickup_list_id, clickup_api_token, due_date_lt_ms=now_ms)
         for task in overdue_tasks:
             task['time_status'] = 'Overdue'
-        print(f"Found {len(overdue_tasks)} overdue tasks.")
+        logger.info("Found %d overdue tasks.", len(overdue_tasks))
 
-        print("Fetching upcoming tasks for the next 7 days...")
+        logger.info("Fetching upcoming tasks for the next 7 days...")
         upcoming_tasks = get_all_clickup_tasks(
             clickup_list_id, clickup_api_token,
             due_date_gt_ms=now_ms,
@@ -111,29 +115,32 @@ def lambda_handler(event: Any, context: Any) -> dict[str, Any]:
         )
         for task in upcoming_tasks:
             task['time_status'] = 'Upcoming'
-        print(f"Found {len(upcoming_tasks)} upcoming tasks.")
+        logger.info("Found %d upcoming tasks.", len(upcoming_tasks))
 
         all_tasks = overdue_tasks + upcoming_tasks
 
         if not all_tasks:
-            print("No tasks found meeting the criteria. Exiting successfully.")
+            logger.info("No tasks found meeting the criteria. Exiting successfully.")
             return {"statusCode": 200, "body": json.dumps("No tasks to process.")}
 
-        print("Sorting all tasks by asset name...")
+        logger.info("Sorting all tasks by asset name...")
         all_tasks.sort(key=lambda task: (get_custom_field_value(task, CLICKUP_ASSET_FIELD_ID) or '', task.get('name', '')))
 
-        print("Processing all tasks for Slack...")
+        logger.info("Processing all tasks for Slack...")
         unique_channels, processed_tasks = process_tasks_for_slack(
             all_tasks, clickup_workspace_field_id, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID
         )
-        print(f"Found {len(unique_channels)} unique channels and {len(processed_tasks)} tasks with valid workspace data.")
+        logger.info(
+            "Found %d unique channels and %d tasks with valid workspace data.",
+            len(unique_channels), len(processed_tasks),
+        )
 
         # --- 3. Send Messages to Slack ---
-        print(f"Tasks to process for Slack: {len(processed_tasks)}")
+        logger.info("Tasks to process for Slack: %d", len(processed_tasks))
 
         for task in processed_tasks:
             message = format_slack_message(task)
-            print(f"Attempting to send message to Slack channel: #{task.channel}")
+            logger.info("Attempting to send message to Slack channel: #%s", task.channel)
 
             # Send the main message and capture the response
             main_message_response = send_slack_message(
@@ -154,7 +161,7 @@ def lambda_handler(event: Any, context: Any) -> dict[str, Any]:
                 # Add a small delay before sending the threaded reply
                 time.sleep(1)
 
-                print(f"Sending threaded reply for task {task.task_id} in channel {channel_id}")
+                logger.info("Sending threaded reply for task %s in channel %s", task.task_id, channel_id)
 
                 # Send the description as a threaded reply
                 send_slack_message(
@@ -170,13 +177,11 @@ def lambda_handler(event: Any, context: Any) -> dict[str, Any]:
             # Main rate-limiting delay between processing each task
             time.sleep(1)
 
-    except Exception as e:
-        print(f"--- FATAL ERROR in handler: {str(e)} ---")
-        import traceback
-        traceback.print_exc()
+    except Exception:
+        logger.exception("PM reminder run failed")
         return {"statusCode": 500, "body": json.dumps("Error: the PM reminder run failed.")}
 
-    print("--- HANDLER FINISHED SUCCESSFULLY ---")
+    logger.info("PM reminder run finished: %d tasks processed", len(processed_tasks))
     return {
         "statusCode": 200,
         "body": json.dumps(f"Successfully processed {len(processed_tasks)} tasks.")

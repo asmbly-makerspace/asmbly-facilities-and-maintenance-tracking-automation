@@ -1,5 +1,12 @@
+import logging
+import os
+import pathlib
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch, Mock
+
+import pytest
 import requests
 from common import discourse
 
@@ -158,3 +165,60 @@ class TestDiscourse(unittest.TestCase):
         result_url = discourse.create_post("url", "title", "content", "key", "user", "12")
         
         self.assertIsNone(result_url)
+
+
+
+# --- Failure logging ---
+
+DISCOURSE_URL = "https://yo.asmbly.org/posts.json?api_key=pk_QUERY"
+LAYER_PYTHON_DIR = pathlib.Path(__file__).resolve().parents[1]
+
+
+def _discourse_errors(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.name == "common.discourse" and r.levelno == logging.ERROR]
+
+
+def test_http_error_logs_method_path_status_not_body(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.discourse")
+    response = Mock(status_code=422, text="pk_DISCOURSE_BODY reporter@example.com")
+    error = requests.exceptions.HTTPError(f"422 Client Error for url: {DISCOURSE_URL}", response=response)
+    with patch("common.discourse.requests.request") as mock_request:
+        mock_request.return_value.raise_for_status.side_effect = error
+
+        with pytest.raises(requests.exceptions.HTTPError) as excinfo:
+            discourse._make_discourse_request("POST", DISCOURSE_URL, "pk_API_KEY", "system", json={"raw": "x"})
+
+    assert excinfo.value is error
+    assert [r.getMessage() for r in _discourse_errors(caplog)] == ["Discourse POST /posts.json failed with HTTP 422"]
+    for marker in ("pk_DISCOURSE_BODY", "reporter@example.com", "pk_QUERY", "pk_API_KEY", "yo.asmbly.org"):
+        assert marker not in caplog.text
+
+
+def test_network_error_logs_type_only(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.discourse")
+    error = requests.exceptions.ConnectionError("pk_URL")
+    with patch("common.discourse.requests.request") as mock_request:
+        mock_request.side_effect = error
+
+        with pytest.raises(requests.exceptions.ConnectionError) as excinfo:
+            discourse._make_discourse_request("POST", DISCOURSE_URL, "pk_API_KEY", "system")
+
+    assert excinfo.value is error
+    assert [r.getMessage() for r in _discourse_errors(caplog)] == ["Discourse POST /posts.json failed: ConnectionError"]
+    assert "pk_URL" not in caplog.text
+    assert "pk_QUERY" not in caplog.text
+
+
+def test_logger_is_named() -> None:
+    """Records come from common.discourse, and importing the module sets no level."""
+    assert discourse.logger.name == "common.discourse"
+    code = (
+        "import logging\n"
+        "logging.getLogger().setLevel(logging.WARNING)\n"
+        "import common.discourse\n"
+        "print(logging.getLogger().level, logging.getLogger('common.discourse').level)\n"
+    )
+    env = {**os.environ, "PYTHONPATH": str(LAYER_PYTHON_DIR)}
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, check=True)
+
+    assert [int(level) for level in result.stdout.split()] == [logging.WARNING, logging.NOTSET]

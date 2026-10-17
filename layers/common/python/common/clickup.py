@@ -6,6 +6,9 @@ from typing import Any
 
 
 BASE_URL = "https://api.clickup.com/api/v2"
+# Seconds per request (to connect, and between bytes of the answer): under the
+# 10-second limit of the shortest function that calls ClickUp.
+DEFAULT_TIMEOUT_SECONDS = 8.0
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +62,7 @@ def _make_clickup_request(api_token: str, method: str, endpoint: str, **kwargs: 
     """Makes a request to the ClickUp API and handles errors."""
     headers = {"Authorization": api_token, "Content-Type": "application/json"}
     url = f"{BASE_URL}/{endpoint}"
+    kwargs.setdefault("timeout", DEFAULT_TIMEOUT_SECONDS)
 
     try:
         response = requests.request(method, url, headers=headers, **kwargs)

@@ -498,3 +498,43 @@ def test_make_clickup_request_200_non_json_body_not_in_message(mock_requests_req
 def test_endpoint_for_log_rejects_query_and_newline(endpoint, expected):
     """Only path characters pass; a query string, a newline or a non-string is replaced."""
     assert clickup._endpoint_for_log(endpoint) == expected
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_passes_default_timeout(mock_requests_request):
+    """Every ClickUp request gets the 8-second timeout by default."""
+    mock_requests_request.return_value.json.return_value = {"id": "t1"}
+
+    clickup.get_task("pk_TOKEN_MARKER", "t1")
+
+    assert clickup.DEFAULT_TIMEOUT_SECONDS == 8.0
+    assert mock_requests_request.call_args.kwargs["timeout"] == 8.0
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_caller_timeout_wins(mock_requests_request):
+    """A timeout passed to the request helper replaces the default."""
+    mock_requests_request.return_value.json.return_value = {}
+
+    clickup._make_clickup_request("pk_TOKEN_MARKER", "GET", "task/t1", timeout=3)
+
+    assert mock_requests_request.call_args.kwargs["timeout"] == 3
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_timeout_raises_network_error(mock_requests_request, caplog):
+    """A timeout is raised as the usual network error, naming the endpoint and ReadTimeout."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    mock_requests_request.side_effect = requests.exceptions.ReadTimeout(
+        "HTTPSConnectionPool(host='api.clickup.com'): Read timed out. pk_URL_MARKER"
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.create_task("pk_TOKEN_MARKER", "L1", {"name": "Item"})
+
+    assert str(excinfo.value) == "Network error during ClickUp API request: POST list/L1/task (ReadTimeout)"
+    assert excinfo.value.__cause__ is None
+    errors = _clickup_errors(caplog)
+    assert len(errors) == 1
+    assert errors[0].getMessage() == "ClickUp POST list/L1/task request failed: ReadTimeout"
+    assert "pk_URL_MARKER" not in caplog.text

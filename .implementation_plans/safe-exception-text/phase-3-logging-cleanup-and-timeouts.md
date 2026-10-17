@@ -10,7 +10,7 @@ estimated_size: L
 
 # Phase 3: Logging cleanup and request timeouts
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-17 on branch feature/safe-exception-text
 
 ## Required reading
 
@@ -40,22 +40,24 @@ other failure of that service.
 
 ## Files to create
 
-| Path | What |
-| --- | --- |
-| `layers/common/tests/test_neoncrm.py` | Tests for the Neon helper's logging and timeouts. |
-| `layers/common/tests/test_discourse.py` | Tests for the Discourse helper's failure logging. |
+None. (Prep amendment: the Neon and Discourse helpers' tests already live in
+`layers/common/python/tests/`. Neither layer test folder has an `__init__.py`, so a
+second `test_neoncrm.py` or `test_discourse.py` under `layers/common/tests/` would stop
+pytest with "import file mismatch". The new tests go into the existing files.)
 
 ## Files to modify
 
 | Path | Change |
 | --- | --- |
-| `layers/common/python/common/neoncrm.py` | `logging.getLogger(__name__)`, no `setLevel`; lazy, body-free log lines in `update_account_custom_field`; `DEFAULT_TIMEOUT_SECONDS = 8.0` on the account search and the account update. |
+| `layers/common/python/common/neoncrm.py` | `logging.getLogger(__name__)`, no `setLevel`; lazy, body-free log lines in `update_account_custom_field`; the HTTP status in `get_account_by_email`'s failure line; `DEFAULT_TIMEOUT_SECONDS = 8.0` on the account search and the account update. |
 | `layers/common/python/common/discourse.py` | `logging.getLogger(__name__)`; failure log line with method, path and status (or exception class), no body, no full URL; type hints on `_make_discourse_request`. |
 | `layers/common/python/common/clickup.py` | `DEFAULT_TIMEOUT_SECONDS = 8.0`; `kwargs.setdefault("timeout", DEFAULT_TIMEOUT_SECONDS)` in `_make_clickup_request`. |
-| `layers/common/python/common/slack.py` | `DEFAULT_TIMEOUT_SECONDS = 8.0`; `timeout=` on `requests.post` in `send_slack_message` and `session.get` in `get_slack_user_info`. |
+| `layers/common/python/common/slack.py` | `DEFAULT_TIMEOUT_SECONDS = 8.0`; `timeout=` on `requests.post` in `send_slack_message` and `session.get` in `get_slack_user_info`; `get_slack_user_info` logs a failed request (service, endpoint, exception class) and re-raises. |
+| `layers/common/python/tests/test_neoncrm.py` | The Neon tests below; add `timeout=8.0` to the two existing `assert_called_once_with` calls (lines 52 and 142). |
+| `layers/common/python/tests/test_discourse.py` | The Discourse tests below. |
 | `layers/common/tests/test_clickup.py` | Timeout tests. |
-| `layers/common/tests/test_slack.py` | Timeout tests; add `timeout=8.0` to the `assert_called_once_with` in `test_get_slack_user_info` (line 120). |
-| `functions/facilities/pm_bot_reminder/lambda_function.py` | Root `logger` at INFO; every `print` becomes a lazy `logger` call; `traceback.print_exc()` becomes `logger.exception`; drop the `traceback` import. |
+| `layers/common/tests/test_slack.py` | Timeout tests; add `timeout=8.0` to the `assert_called_once_with` in `test_get_slack_user_info` (line 120); a user-lookup failure test. |
+| `functions/facilities/pm_bot_reminder/lambda_function.py` | Root `logger` at INFO; every `print` becomes a lazy `logger` call; `traceback.print_exc()` becomes `logger.exception`; drop the inline `traceback` import. |
 | `functions/facilities/pm_bot_reminder/tests/test_pm_bot_reminder_lambda_function.py` | `test_lambda_handler_fatal_error` asserts on `caplog` instead of `capsys`; a new test for the INFO lines. |
 | `functions/purchase_request/new_purchase_request_received/lambda_function.py` | Every remaining `print` becomes a lazy `logger` call (phase 2 added the logger). |
 | `functions/purchase_request/new_purchase_request_received/tests/test_lambda_function.py` | A test that the handler prints nothing and logs its INFO lines. |
@@ -79,7 +81,16 @@ other failure of that service.
     `logger.error("Error updating NeonCRM account %s: %s (status %s)", account_id, type(e).__name__, status)`.
     No `e`, no `e.response.text`.
   - The method still returns `None` on failure; changing that is #99.
-- `get_account_by_email` keeps its log lines; a test pins that the email isn't in them.
+- `get_account_by_email` keeps its found and not-found lines; a test pins that the email
+  isn't in them. Its failure line gains the status (#144 AC2 asks for it; prep
+  amendment), built the same way:
+  `logger.error("Error searching for NeonCRM account: %s (status %s)", type(e).__name__, status)`.
+  The method still returns `None` on failure (a Neon outage then looks like "no account"
+  to `new_waiver_completed`; that is pre-existing and goes in the briefing next to #99).
+- Each `DEFAULT_TIMEOUT_SECONDS` (here, in `clickup.py` and in `slack.py`) gets a
+  one-line comment: seconds per request (to connect, and between bytes of the answer),
+  under the 10-second limit of the shortest function that uses the helper. This is the
+  "line each" for the helpers' timeout in README Decision 12; there is no layer README.
 
 ### layer: `common/discourse.py`
 
@@ -110,6 +121,17 @@ other failure of that service.
   `session.get(..., timeout=DEFAULT_TIMEOUT_SECONDS)` in `get_slack_user_info` (the
   exception propagates as today; `/reorder` catches it and shows its submission-failure
   modal). The dry-run branch is unchanged.
+- `get_slack_user_info` (prep amendment, #145 AC2): wrap the `get` and
+  `raise_for_status` in `try`/`except requests.exceptions.RequestException as e:`, log
+  `logger.error("Slack users.info failed: %s", type(e).__name__)` and `raise` (the same
+  exception, so `/reorder` behaves as today). Without it a timeout is logged only by
+  `/reorder`, as `requests`' text, which names no endpoint. Type the signature:
+  `get_slack_user_info(api_token: str, user_id: str, http_session: requests.Session | None = None) -> Any`.
+- The timeout is per request (README Decision 10). It doesn't cap a function's total
+  time: `/reorder`'s submission makes three calls in a 10-second function, so a slow
+  ClickUp can still run it out of time. And a write that ClickUp or Slack commits after
+  the 8 seconds now counts as a failure (see Decision below). Both are accepted for this
+  phase and listed in the briefing.
 
 ### lambda: `pm_bot_reminder`
 
@@ -121,8 +143,8 @@ other failure of that service.
   name; the threaded-reply line keeps the task ID and channel ID.
 - The fatal handler: `logger.exception("PM reminder run failed")` replaces the `print`
   and `traceback.print_exc()`; the 500 body is phase 2's.
-- The `requests` import, if unused after this, goes; check with `grep`.
-- Add type hints to `lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]`.
+- There is no `requests` import any more (phase 2 removed it); nothing to drop.
+- The handler is already typed (`event: Any`, phase 2); leave it.
 
 ### lambda: `new_purchase_request_received`
 
@@ -131,22 +153,32 @@ other failure of that service.
   - missing environment variables → `logger.error("Missing required environment variables: %s", ", ".join(missing_vars))`
     (the 500 body naming them is unchanged; out of scope).
   - the ClickUp test webhook → `logger.info`.
-  - Slack failure → `logger.error("Failed to send Slack message for task %s", task_id)`
+  - Slack failure → `logger.error("Failed to send Slack message for task %r", task_id)`
     (the helper already logged Slack's validated error code).
   - permalink, custom field, success → `logger.info` with the task ID and field ID.
-- Add type hints to the handler and `get_slack_post_url`.
+  - The task ID comes from an unauthenticated request body, so every line that logs it
+    uses `%r`, as phase 2's ERROR line does (prep amendment: `repr` escapes newlines).
+- The handler is already typed (phase 2); add hints to `get_slack_post_url(channel_id: str, message_ts: str) -> str | None`.
 
 ## Tests
 
-`layers/common/tests/test_neoncrm.py` (new; patch `common.neoncrm.requests.post` /
-`.patch`):
+`layers/common/python/tests/test_neoncrm.py` (existing; add these; patch
+`common.neoncrm.requests.post` / `.patch`):
 
-- `test_import_sets_no_log_level`: after `importlib.reload(common.neoncrm)` with the root
-  logger set to WARNING, the root level is still WARNING and
-  `logging.getLogger("common.neoncrm").level == logging.NOTSET`. Restore the root level
-  in a `finally`.
+- `test_get_account_by_email_found` and `test_update_account_custom_field_success`
+  (update): their `assert_called_once_with` gains `timeout=8.0`.
+- `test_import_sets_no_log_level`: import `common.neoncrm` in a fresh interpreter
+  (`subprocess.run([sys.executable, "-c", ...])` with `PYTHONPATH` set to
+  `layers/common/python`) that first sets the root logger to WARNING, and print the root
+  level and `logging.getLogger("common.neoncrm").level`; assert WARNING and NOTSET. Prep
+  amendment: don't `importlib.reload` the module. A reload rebinds `NeonCRM` and
+  `NeonCRMError`, so tests that imported them earlier (`pytest.raises(NeonCRMError)` here
+  and in `functions/classes/class_photo_upload_api/tests/`) fail depending on the order.
 - `test_get_account_by_email_logs_no_email`: found, not found and `ConnectionError`
   cases; `caplog.text` never holds the planted `pk_member@example.com`.
+- `test_get_account_by_email_http_error_logs_status`: an `HTTPError` whose response has
+  `status_code=401` and a body marker; the ERROR record holds `HTTPError` and `401`, not
+  the marker or the email.
 - `test_update_account_custom_field_failure_logs_status_not_body`: an `HTTPError` whose
   response has `status_code=400`, `text="pk_NEON_BODY jane@example.com"`; the ERROR
   record holds the account ID, `HTTPError` and `400`, not the body or email; the method
@@ -158,7 +190,8 @@ other failure of that service.
 - `test_search_events_keeps_ten_second_timeout`: `requests.post` gets `timeout=10.0` by
   default.
 
-`layers/common/tests/test_discourse.py` (new; patch `common.discourse.requests.request`):
+`layers/common/python/tests/test_discourse.py` (existing; add these; patch
+`common.discourse.requests.request`):
 
 - `test_http_error_logs_method_path_status_not_body`: an `HTTPError` with
   `status_code=422`, `text="pk_DISCOURSE_BODY reporter@example.com"`, URL
@@ -168,7 +201,8 @@ other failure of that service.
 - `test_network_error_logs_type_only`: `ConnectionError("pk_URL")` → the record names
   `ConnectionError`, not `pk_URL`; re-raised.
 - `test_logger_is_named`: records come from `common.discourse`, and the root level is
-  unchanged by importing the module.
+  unchanged by importing the module (the same fresh-interpreter check as Neon's; no
+  reload).
 
 `layers/common/tests/test_clickup.py`:
 
@@ -186,6 +220,10 @@ other failure of that service.
 - `test_send_slack_message_timeout_returns_script_error`: `ReadTimeout` →
   `{"ok": False, "error": "script_error"}` and an ERROR record naming `ReadTimeout`.
 - `test_get_slack_user_info` (update): `assert_called_once_with` includes `timeout=8.0`.
+- `test_get_slack_user_info_timeout_logs_and_reraises`: the session's `get` raises
+  `ReadTimeout("pk_URL")`; the same exception propagates, and one ERROR record from
+  `common.slack` reads `Slack users.info failed: ReadTimeout`, without `pk_URL` or the
+  token.
 
 Handlers:
 
@@ -225,16 +263,18 @@ deleting or skipping it.
 ## Verification
 
 ```bash
-.venv/bin/python -m pytest layers/common/tests functions/facilities functions/purchase_request functions/administrative functions/classes functions/problem_report
+.venv/bin/python -m pytest layers/common/tests layers/common/python/tests functions/facilities functions/purchase_request functions/administrative functions/classes functions/problem_report
 .venv/bin/python -m pytest
 sam build
 ```
 
 On the stage stack after deploy:
 
-- After the next scheduled PM reminder run on stage, the
+- After the next scheduled PM reminder run on stage (weekly, Saturdays 04:30 UTC), the
   `/asmbly/lambda/PMReminderBotFunction-stage` log shows `[INFO]` records (`Found N
-  overdue tasks.`) and no bare stdout lines.
+  overdue tasks.`) and no `--- HANDLER STARTED ---` line. Stage runs with `DRY_RUN=true`,
+  so the Slack helper's dry-run preview lines (`--- DRY RUN MODE ---`) still appear as
+  plain stdout there; that is expected.
 - Submit a waiver on stage (or replay the stage CleverWaiver test): the
   `NewWaiverCompletedFunction-stage` log still shows its INFO lines, with no email.
 - React to a problem-report message on stage: the reaction completes as before.
@@ -243,9 +283,61 @@ On the stage stack after deploy:
 
 None.
 
+## Decisions (prep, inside `/offshore`)
+
+- **`/reorder`'s submission-failure text stays** ("Your purchase request was not created.
+  Please try again in a few minutes."; phase 2's hand-off asked). With the 8-second
+  timeout, a `create_task` that ClickUp commits after 8 seconds shows that text although
+  the task exists, and a retry files a duplicate. Alternative: reword to "may not have
+  been created; check ClickUp before trying again". Reason: #143 AC2 requires a message
+  saying the request was not created; a create that takes over 8 seconds is rare, a
+  duplicate purchase request is visible in ClickUp and cheap to close, and every other
+  submission failure (HTTP errors, user lookup, item lookup) really did create nothing.
+  The same applies to the other writes: new purchase request answers 500 after Slack
+  posted (ClickUp may resend the webhook and post again), and new problem report says
+  "Error creating task" for a task that exists. Listed in the briefing as a follow-up
+  (tell a `ReadTimeout` on a write apart from other failures).
+- **The timeout is per request, not per function** (corrects README Decision 10's "8 s
+  leaves time to log and answer", which holds for one call). Listed in the briefing: a
+  deadline from `context.get_remaining_time_in_millis()`, or `MaximumRetryAttempts: 0`
+  on the async `/reorder` invocation so a Lambda timeout doesn't retry `create_task`.
+- **`_make_clickup_request`'s caller timeout** is reachable only from inside
+  `clickup.py`: the public helpers (`get_task`, `create_task`, …) don't pass `timeout`
+  through. The `setdefault` keeps that door open; no public signature changes here.
+
 ## Hand-off
 
 The plan is complete. The final pull request lists `Closes #142`, `#143`, `#144`,
 `#145`, `#141`, `#95` and `#83`, and the follow-ups in the README's Out of scope
 (`/reorder`'s direct Slack calls without a timeout, Discourse timeouts, #99) go in the
-briefing.
+briefing, with this phase's decisions above (a write committed after the timeout, the
+per-request limit) and `new_waiver_completed` treating a failed Neon search (now
+including a timeout) as "no account" and answering 404, and a failed or timed-out
+account update as success (200), because `update_account_custom_field` still returns
+`None` either way (#99). Before the timeout, a hung Neon ran the function into its
+30-second limit instead. Also: no async invocation sets `MaximumRetryAttempts`, so a
+`/reorder` submission that runs out of time is retried by Lambda.
+
+What this phase delivered (for the integration gate and the pull request):
+
+- `DEFAULT_TIMEOUT_SECONDS = 8.0` in `common.clickup` (applied with
+  `kwargs.setdefault("timeout", …)` in `_make_clickup_request`), `common.slack`
+  (`send_slack_message`, `get_slack_user_info`) and `common.neoncrm`
+  (`get_account_by_email(email, timeout=…)`, `update_account_custom_field(account_id,
+  field_id, field_value, timeout=…)`). `search_events` keeps `timeout=10.0`.
+- `get_slack_user_info` logs `Slack users.info failed: <ExceptionClass>` and re-raises the
+  same exception; it is now typed.
+- `common.neoncrm` and `common.discourse` log through `logging.getLogger(__name__)` and set
+  no level. Neon failure lines: `Error searching for NeonCRM account: <Class> (status
+  <code|no response>)`, `Error updating NeonCRM account <id>: <Class> (status …)`; success
+  `Updated custom field <field> for NeonCRM account <id>`. Discourse: `Discourse <METHOD>
+  <path> failed with HTTP <status>` or `… failed: <Class>`.
+- The PM reminder and new purchase request call no `print`. The PM reminder's banners are
+  now `PM reminder run started` and `PM reminder run finished: <n> tasks processed`, and a
+  failure is `PM reminder run failed` with `exc_info`. New purchase request logs the task
+  ID with `%r` on every line.
+- The Neon and Discourse tests live in `layers/common/python/tests/` (prep amendment); the
+  import-level checks run in a fresh interpreter.
+- Deferred (style, from the independent review): `test_discourse.py` repeats the
+  fresh-interpreter helper that `test_neoncrm.py` defines; a shared `conftest.py` could
+  hold it.
