@@ -64,6 +64,21 @@ def test_generate_html_page_with_tasks(mock_tasks_from_file):
     assert "No submissions found" not in html
 
 
+def test_time_submitted_is_shown_in_central_time_with_zone() -> None:
+    """Drop-off times are shown in US Central with CST or CDT, not in UTC."""
+    tasks = [
+        {'id': 'winter', 'custom_id': 'KO-1', 'name': 'Customer W', 'date_created': '1704067200000'},
+        {'id': 'summer', 'custom_id': 'KO-2', 'name': 'Customer S', 'date_created': '1720094400000'},
+    ]
+
+    page = lambda_function.generate_html_page(tasks)
+
+    assert '2023-12-31 18:00:00&nbsp;CST' in page
+    assert '2024-07-04 07:00:00&nbsp;CDT' in page
+    assert '2024-01-01 00:00:00' not in page
+    assert '2024-07-04 12:00:00' not in page
+
+
 def test_generate_html_page_no_tasks():
     """Test HTML page generation with no tasks."""
     html = lambda_function.generate_html_page([])
