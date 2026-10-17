@@ -2,7 +2,7 @@
   "plan_name": "class-photo-loading",
   "feature_branch": "feature/class-photo-loading",
   "epic": 114,
-  "status": "in-progress",
+  "status": "complete",
   "phases": [
     {
       "id": 1,
@@ -44,9 +44,9 @@
     },
     "cross_checks": "env vars both ways OK; table in both deploy policies, rule prod only; no new wildcards; function IAM GetItem/PutItem on exact table; IsProd on rule+permission, SourceArn matches; routes unchanged, authorizer covers ?refresh=1; page tokens/CSP intact, 70 KB; only dynamodb module imports boto3"
   },
-  "final_pr_number": null,
+  "final_pr_number": 119,
   "admin_actions": [
-    "Before the PR reaches stage: redeploy AsmblyFacilitiesMaintTrackingStack-cicd (adds ClassPhotoClassListCache-{stage,prod} table and class-photo-class-list-refresh-{stage,prod} rule).",
+    "Before the PR reaches stage: redeploy AsmblyFacilitiesMaintTrackingStack-cicd (adds table ClassPhotoClassListCache-{stage,prod} to both policies; rule class-photo-class-list-refresh-prod to the prod policy only).",
     "After prod deploy: one real prod submission; record 'Time left before the GitHub writes' on #114; close #114."
   ],
   "events": [
@@ -169,6 +169,15 @@
         118
       ],
       "total_steps": 24
+    },
+    {
+      "type": "pr_opened",
+      "pr": 119,
+      "checks": "green",
+      "node_tests_ran_in_ci": true
+    },
+    {
+      "type": "complete"
     }
   ],
   "stories": [
