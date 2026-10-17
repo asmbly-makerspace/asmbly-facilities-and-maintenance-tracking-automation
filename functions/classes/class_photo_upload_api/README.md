@@ -175,8 +175,10 @@ The first four are required; without one the function logs its name and answers 
 The GitHub App secret, `github/class-photo-upload-app` (us-east-2), is a JSON object with
 three string keys: `app_id`, `installation_id` and `private_key` (the whole `.pem`, line
 breaks as `\n`). A missing key makes a submission answer 500 and log the key's name. How
-to create the App and the secret: the plan's README, admin actions 4 and 5
-(`.implementation_plans/class-photo-upload/README.md`).
+to create the App and the secret, step by step:
+[docs/Deploying.md, "One-Time Admin Setup: Class Photo Upload"](../../../docs/Deploying.md#one-time-admin-setup-class-photo-upload)
+(also the plan's README, admin actions 4 and 5,
+`.implementation_plans/class-photo-upload/README.md`).
 
 `configs/class_photo_upload.json` holds the repository's coordinates: `repo_owner`,
 `repo_name`, `base_branch`, `images_dir`, `branch_prefix` (must end with `/`; the client

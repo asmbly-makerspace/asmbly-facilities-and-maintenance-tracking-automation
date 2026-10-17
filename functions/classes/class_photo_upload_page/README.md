@@ -184,7 +184,9 @@ Environment variables (all set by `templates/classes.yaml`):
 
 The first two are required. Outside this repository: the staff pool's
 `class-photo-upload` app client (AsmblyMCPs) must list the page's address, prod and
-stage, as both a callback URL and a sign-out URL (plan README, admin action 3).
+stage, as both a callback URL and a sign-out URL (plan README, admin action 3). The
+step-by-step setup of the app client and the `/config/cognito/staff/*` parameters is in
+[docs/Deploying.md, "One-Time Admin Setup: Class Photo Upload"](../../../docs/Deploying.md#one-time-admin-setup-class-photo-upload).
 
 ## Testing
 

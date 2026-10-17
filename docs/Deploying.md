@@ -5,6 +5,7 @@
 - [Prerequisites](#prerequisites)
 - [Architecture Overview](#architecture-overview)
 - [CI/CD Infrastructure (The Deployer Role)](#cicd-infrastructure-the-deployer-role)
+- [One-Time Admin Setup: Class Photo Upload](#one-time-admin-setup-class-photo-upload)
 - [Automated Production Deployment (via GitHub Actions)](#automated-production-deployment-via-github-actions)
 - [Manual Deployment (for Dev & Stage)](#manual-deployment-for-dev--stage)
 
@@ -71,6 +72,126 @@ For example, if you add a function `FooFunction-${Stage}` with a log group `/asm
 5.  **Re-run** the failed GitHub Actions job.
 
 If the FacilitiesApi REST API is ever replaced (new ID), or a stack is created from scratch, redeploy this stack with the new ID first; the role cannot create new REST APIs.
+
+## One-Time Admin Setup: Class Photo Upload
+
+The [Class Photo Upload](README.md#classes) service (`ClassPhotoUploadPageFunction`, `ClassPhotoUploadApiFunction`) needs four things that live outside this repository. An admin does them once, **in this order**, before the change that adds the service reaches `stage`: steps 1 and 2 must exist before the deploy role is redeployed (step 4), and the `stage` deploy fails until all four are done. Everything is in us-east-2. The names below are the exact names the templates and the code read; don't change them.
+
+| What | Exact name | Read by |
+| --- | --- | --- |
+| Cognito app client | `class-photo-upload`, in the staff sign-in pool (AsmblyMCPs) | The page's sign-in; its ID is the ID token's `aud` the API function checks |
+| SSM parameter (String) | `/config/cognito/staff/user-pool-id` | `template.yaml` (`StaffUserPoolId`, the `StaffCognitoAuthorizer`) and `template-cicd.yaml` |
+| SSM parameter (String) | `/config/cognito/staff/auth-domain` | `template.yaml` (`StaffAuthDomain`) → `STAFF_AUTH_DOMAIN` |
+| SSM parameter (String) | `/config/cognito/staff/class-photo-app-client-id` | `template.yaml` (`ClassPhotoAppClientId`) → `CLASS_PHOTO_APP_CLIENT_ID` |
+| GitHub App | `Asmbly Class Photos`, owned by `asmbly-makerspace`, installed on `asmbly-classes` only | The API function, through `common.github_app` |
+| Secrets Manager secret | `github/class-photo-upload-app` | `template.yaml` (`ClassPhotoGitHubAppSecretName`) → `GITHUB_APP_SECRET_NAME` |
+| Deploy role stack | `AsmblyFacilitiesMaintTrackingStack-cicd` | GitHub Actions |
+
+Both stages share the app client, the three `/config/cognito/staff/*` parameters, the App and the secret. Stage is a dry run: it asks GitHub for a read-only token and opens nothing.
+
+### Step 1: The Cognito app client and the `/config/cognito/staff/*` parameters
+
+The staff sign-in pool belongs to the AsmblyMCPs project. If that project defines its app clients in its own template, add the client there instead of in the console, so its stack doesn't drift.
+
+1.  **Find the stage page address.** It is the stage stack's `FacilitiesApiUrl` output plus `/class-photo-upload`:
+    ```bash
+    aws cloudformation describe-stacks --stack-name AsmblyFacilitiesMaintTrackingStack-stage --region us-east-2 \
+      --query "Stacks[0].Outputs[?OutputKey=='FacilitiesApiUrl'].OutputValue" --output text
+    ```
+    This prints `https://<stage id>.execute-api.us-east-2.amazonaws.com/stage`, so the stage page is `https://<stage id>.execute-api.us-east-2.amazonaws.com/stage/class-photo-upload`. The prod page is `https://facilities.asmbly.org/class-photo-upload`.
+2.  **Create the app client.** In the AWS console (us-east-2): **Amazon Cognito → User pools →** the staff pool **→ App clients → Create app client**:
+    * Application type: **Public client** (single-page application). **No client secret.**
+    * App client name: `class-photo-upload`.
+    * Allowed callback URLs: both page addresses from step 1.
+    * Allowed sign-out URLs: the same two addresses.
+    * Identity provider: **Cognito user pool**.
+    * OAuth 2.0 grant type: **Authorization code grant** only (the page uses PKCE).
+    * OpenID Connect scopes: **openid**.
+3.  **Note three values:**
+    * the pool's **User pool ID** (for example `us-east-2_AbCdEf123`), on the pool's overview;
+    * the new client's **Client ID**, on its page;
+    * the pool's hosted sign-in **domain**, under the pool's **Domain** settings, as a host name only: no `https://` and no trailing `/` (for example `asmbly-staff.auth.us-east-2.amazoncognito.com`). The template refuses any other form.
+4.  **Create the three SSM parameters.** They are plain `String` parameters (the templates can't read a `SecureString` this way). Skip any that already exist with the right value:
+    ```bash
+    aws ssm put-parameter --region us-east-2 --type String \
+      --name /config/cognito/staff/user-pool-id --value '<user pool id>'
+    aws ssm put-parameter --region us-east-2 --type String \
+      --name /config/cognito/staff/auth-domain --value '<domain host, no https://>'
+    aws ssm put-parameter --region us-east-2 --type String \
+      --name /config/cognito/staff/class-photo-app-client-id --value '<client id>'
+    ```
+    To change one later, add `--overwrite` and redeploy the application (the value is read at deploy time).
+
+If the stage `FacilitiesApi` is ever replaced (new ID), add its new page address to the app client's callback and sign-out URLs.
+
+### Step 2: The GitHub App "Asmbly Class Photos"
+
+A GitHub **organization owner** of `asmbly-makerspace` does this.
+
+1.  **Create the App.** On GitHub: **`asmbly-makerspace` organization → Settings → Developer settings → GitHub Apps → New GitHub App** (`https://github.com/organizations/asmbly-makerspace/settings/apps/new`):
+    * GitHub App name: `Asmbly Class Photos`.
+    * Homepage URL: `https://facilities.asmbly.org/class-photo-upload`.
+    * Callback URL, "Request user authorization (OAuth) during installation", "Setup URL": leave empty and unchecked.
+    * **Webhook:** uncheck **Active**.
+    * **Repository permissions:** **Contents: Read and write**, **Pull requests: Read and write**, **Metadata: Read-only** (GitHub selects it by itself). Leave every other repository permission at **No access**.
+    * **Organization permissions** and **Account permissions:** none.
+    * **Where can this GitHub App be installed?** **Only on this account.**
+    * Click **Create GitHub App**.
+2.  **Note the App ID.** It is under **About** on the App's settings page (`https://github.com/organizations/asmbly-makerspace/settings/apps/asmbly-class-photos`).
+3.  **Generate the private key.** On the same page, under **Private keys**, click **Generate a private key**. The browser downloads a `.pem` file (for example `asmbly-class-photos.<date>.private-key.pem`). Keep it only until step 3 is done.
+4.  **Install it on `asmbly-classes` only.** In the App's settings, **Install App → Install** next to `asmbly-makerspace`, choose **Only select repositories**, pick **`asmbly-classes`**, and click **Install**.
+5.  **Note the installation ID.** After installing, GitHub opens the installation's settings page, `https://github.com/organizations/asmbly-makerspace/settings/installations/<installation id>`. The number at the end of that address is the installation ID. (Later: **organization Settings → GitHub Apps → Asmbly Class Photos → Configure** opens the same page.)
+
+The function never needs more than this: every request asks for a token limited to `asmbly-classes` and to the permissions it needs (read-only on stage).
+
+### Step 3: The Secrets Manager secret `github/class-photo-upload-app`
+
+The secret is a JSON object with exactly three keys, and all three values must be **strings** (a number for `app_id` or `installation_id` is refused, and a submission answers 500 with the missing key's name in the log):
+
+```json
+{
+  "app_id": "1234567",
+  "installation_id": "87654321",
+  "private_key": "-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----\n"
+}
+```
+
+`private_key` is the whole `.pem` file, with its line breaks written as `\n`. This command builds the JSON with the right escaping (it needs `jq`); run it from the folder that holds the `.pem`, with your values in place of the examples:
+
+```bash
+aws secretsmanager create-secret --region us-east-2 --name github/class-photo-upload-app \
+  --description "Asmbly Class Photos GitHub App credentials (class photo upload)" \
+  --secret-string "$(jq -n --arg app_id 1234567 --arg installation_id 87654321 \
+    --rawfile private_key ./asmbly-class-photos.private-key.pem \
+    '{app_id: $app_id, installation_id: $installation_id, private_key: $private_key}')"
+```
+
+Then delete the local `.pem`. Check the secret's keys without printing the key:
+
+```bash
+aws secretsmanager get-secret-value --region us-east-2 --secret-id github/class-photo-upload-app \
+  --query SecretString --output text | jq 'keys'
+```
+
+It should print `["app_id", "installation_id", "private_key"]`.
+
+To rotate the key: generate a new one on the App's page, store it with the same `jq` command but `aws secretsmanager put-secret-value --region us-east-2 --secret-id github/class-photo-upload-app --secret-string "$(...)"`, then delete the old key on GitHub. The function reads the secret on every submission, so no redeploy is needed.
+
+### Step 4: Redeploy the deploy role
+
+The change adds `ClassPhotoUploadApiFunction-{stage,prod}`, `ClassPhotoUploadPageFunction-{stage,prod}`, their log groups `/asmbly/lambda/ClassPhotoUpload{Api,Page}Function-{stage,prod}`, the SSM parameters `/{stage,prod}/config/class-photo-upload`, reads of the three `/config/cognito/staff/*` parameters, and `cognito-idp:DescribeUserPool` on the staff pool to `template-cicd.yaml`. The role must have them before the `stage` deploy runs.
+
+1.  Check that step 1's parameters exist (the deploy role's template reads `/config/cognito/staff/user-pool-id` itself):
+    ```bash
+    aws ssm get-parameters --region us-east-2 --query "{found: Parameters[].Name, missing: InvalidParameters}" \
+      --names /config/route53/asmbly/hosted-zone-id /config/cognito/staff/user-pool-id \
+        /config/cognito/staff/auth-domain /config/cognito/staff/class-photo-app-client-id
+    ```
+    `missing` must be empty.
+2.  From the branch that holds the change, follow [How to Manage the Deployer Role](#how-to-manage-the-deployer-role), steps 2 to 4: look up both REST API IDs, preview with `--no-execute-changeset`, check nothing shows `Replacement: True`, then deploy `AsmblyFacilitiesMaintTrackingStack-cicd`.
+3.  Merge the pull request to `stage`, or re-run its failed deploy. After the `stage` deploy, open the stage page address from step 1, sign in, and submit a photo: the answer says "Dry run" and nothing is opened on `asmbly-classes`.
+
+To stop new pull requests at once (for example if the key leaks), suspend the App or uninstall it from `asmbly-classes`, then rotate the key as in step 3.
 
 ## Automated Production Deployment (via GitHub Actions)
 

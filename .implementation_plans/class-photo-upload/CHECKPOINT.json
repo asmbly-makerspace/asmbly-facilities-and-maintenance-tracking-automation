@@ -55,10 +55,24 @@
       "file": "phase-6-upload-page.md",
       "status": "done",
       "pre_sha": "937e379",
-      "review_rounds": "3 inline + 1 independent (APPROVED, 1 docs WARN fixed)"
+      "review_rounds": "3 inline + 1 independent (APPROVED, 1 docs WARN fixed)",
+      "squashed_sha": "55f0222"
     }
   ],
-  "integration": null,
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1499 passed",
+      "cfn_lint": "4 W3005 warnings, same on origin/stage",
+      "sam_validate": "pass",
+      "sam_build": "pass",
+      "ci_test_job": "1499 passed in a fresh venv"
+    },
+    "preexisting": [
+      "cfn-lint W3005 x4 template.yaml custom-domain DependsOn"
+    ],
+    "commits": 0
+  },
   "final_pr_number": null,
   "admin_actions": [
     "Create SSM String params (us-east-2) /config/cognito/staff/user-pool-id, /config/cognito/staff/auth-domain, /config/cognito/staff/class-photo-app-client-id before the PR reaches stage.",
@@ -249,6 +263,19 @@
       "type": "deferred",
       "phase": 6,
       "detail": "Confirm on stage that requestContext.path is /class-photo-upload on the custom domain (page answers 400 otherwise)."
+    },
+    {
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "type": "docs",
+      "updated": [
+        "docs/Deploying.md 153->274",
+        "docs/README.md",
+        "both function READMEs"
+      ],
+      "admin_procedure": "docs/Deploying.md#one-time-admin-setup-class-photo-upload"
     }
   ],
   "stories": [

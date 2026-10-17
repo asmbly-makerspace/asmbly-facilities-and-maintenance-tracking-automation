@@ -71,7 +71,7 @@ These services provide core functionality used by other parts of the system.
     * **URL:** `https://facilities.asmbly.org/class-photo-upload` (stage: `<FacilitiesApiUrl>/class-photo-upload`)
     * **Config Location:** The staff pool's `class-photo-upload` app client in AsmblyMCPs (callback and sign-out URLs, prod and stage); the GitHub App "Asmbly Class Photos", installed on `asmbly-classes` only; the secret `github/class-photo-upload-app`; SSM `/config/cognito/staff/*` and `/${Stage}/config/class-photo-upload` (from `configs/class_photo_upload.json`).
     * **How to undo a change:** Before it is merged, close the pull request on `asmbly-classes` (the photo stays visible in it, as the page warns). After it is merged, revert the merge commit on `asmbly-classes`. To stop new pull requests at once, suspend the App or uninstall it from `asmbly-classes`.
-    * **Docs:** [the page](../functions/classes/class_photo_upload_page/README.md), [the API](../functions/classes/class_photo_upload_api/README.md)
+    * **Docs:** [the page](../functions/classes/class_photo_upload_page/README.md), [the API](../functions/classes/class_photo_upload_api/README.md), [one-time admin setup (app client, SSM parameters, GitHub App, secret, deploy role)](Deploying.md#one-time-admin-setup-class-photo-upload)
 
 #### Administrative
 
