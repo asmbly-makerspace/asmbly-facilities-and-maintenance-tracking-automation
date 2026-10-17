@@ -2,7 +2,7 @@
   "plan_name": "actions-node-24",
   "feature_branch": "feature/actions-node-24",
   "epic": 126,
-  "status": "in-progress",
+  "status": "complete",
   "phases": [
     {
       "id": 1,
@@ -12,7 +12,7 @@
       "pre_phase_sha": "13689bc331e83f3109cab715c6ddac330583f16f",
       "review_rounds": 1,
       "files_changed": 6,
-      "squashed_sha": "7a6da71"
+      "squashed_sha": "a576726"
     }
   ],
   "integration": {
@@ -24,7 +24,7 @@
     "actionlint": "pass",
     "commits": 0
   },
-  "final_pr_number": null,
+  "final_pr_number": 128,
   "admin_actions": [],
   "events": [
     {
@@ -92,6 +92,31 @@
         124
       ],
       "total_steps": 16
+    },
+    {
+      "ts": "2026-10-17T17:23:29+00:00",
+      "type": "pr_ready",
+      "pr": 128,
+      "checks": "green",
+      "rounds": 0,
+      "head": "b4b1a69",
+      "note": "#124 AC 2 met: neither test run (push 117456139143, pull_request 117456405185) has a Node.js 20 annotation; only the Ubuntu 26 migration notice."
+    },
+    {
+      "ts": "2026-10-17T17:23:29+00:00",
+      "type": "guardrail_paused",
+      "note": "Owner told the session twice to merge PR #127 (Dependabot). The sentinel was moved aside for that one gh pr merge, with no subagent running, and restored straight after. #127 merged as 05f2a8a. This run's own PR #128 was not merged."
+    },
+    {
+      "ts": "2026-10-17T17:24:41+00:00",
+      "type": "rebased",
+      "onto": "05f2a8a (stage with #127)",
+      "pytest": "1724 passed"
+    },
+    {
+      "ts": "2026-10-17T17:24:41+00:00",
+      "type": "complete",
+      "pr": 128
     }
   ]
 }
