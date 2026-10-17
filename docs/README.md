@@ -84,7 +84,7 @@ These services provide core functionality used by other parts of the system.
 #### Ceramics
 
 * **Kiln Drop-Off Viewer** (`KilnOpsDropoffRecentEntriesViewer`)
-    * **What it does:** Creates a public web page that displays recent Kiln Drop Off entries. This lets members see their confirmation of submitting a kiln form easily.
+    * **What it does:** Creates a public web page, in the Asmbly look with the ceramics colour, that lists the Kiln Drop Off entries of the last 24 hours with their IDs. This lets members see their confirmation of submitting a kiln form easily. If the list can't be loaded, it shows a plain error page with the same look and no details.
     * **How it's triggered:** An HTTP `GET` request.
     * **Webhook URL:** `https://facilities.asmbly.org/KilnOpsDropoffRecentEntriesViewer`
     * **Config Location:** This URL is used as the "Redirect URL" in the ClickUp Form settings for "Ceramics - Drop Off Requests".
