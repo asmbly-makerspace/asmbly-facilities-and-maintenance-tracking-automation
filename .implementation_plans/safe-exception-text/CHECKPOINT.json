@@ -47,10 +47,26 @@
         "cfn_lint": "only the 4 pre-existing W3005 warnings",
         "sam_validate": "pass",
         "sam_build": "pass"
-      }
+      },
+      "squashed_sha": "2635f0b"
     }
   ],
-  "integration": null,
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1831 passed, 8 subtests",
+      "cfn_lint": "exit 4: 4 W3005 warnings (template.yaml:582/592/605), same on origin/stage; no errors",
+      "sam_validate": "pass",
+      "sam_build": "pass"
+    },
+    "preexisting": [
+      "cfn-lint W3005 x4 in template.yaml:582/592/605 (same on origin/stage 4cb5158)",
+      "TEST_CHANNEL_OVERRIDE read by pm_bot_reminder:25 and common/slack.py:26 but set by no template (optional local override; same on stage)"
+    ],
+    "cross_checks": "no template/config change; env vars unchanged; 183 test patch targets resolve; ruff F clean on 18 changed .py files; no caller reads removed error_message or old ClickUp text; neoncrm's root setLevel removal loses no INFO logs (callers set INFO); 8 s timeout under every caller's 10 s Lambda timeout",
+    "skipped": [],
+    "commits": 0
+  },
   "final_pr_number": null,
   "admin_actions": [],
   "events": [
@@ -217,6 +233,41 @@
         "Discourse requests have no timeout (README Decision 11)",
         "Style: test_discourse.py repeats test_neoncrm.py's fresh-interpreter import check; could share a conftest.py"
       ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 3,
+      "sha": "2635f0b"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "integration_start",
+      "pre_sha": "2635f0b"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "docs_start",
+      "pre_sha": "2635f0b"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "docs_done",
+      "regression_check": "no file shrank"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": "docs",
+      "items": [
+        "docs/README.md:117 names FacilitiesSlackPurchaseReorderFunction; template uses SlackSlashReorderFunction-${Stage} (pre-existing)",
+        "slack.py dry-run preview still uses print() (kept on purpose by #86; tests pin it)"
+      ]
     }
   ],
   "stories": [
@@ -228,5 +279,13 @@
   "closes_extra": [
     95,
     83
-  ]
+  ],
+  "docs": {
+    "updated": [
+      "functions/problem_report/slack_reaction_webhook/README.md (131->136)",
+      "functions/purchase_request/slack_reaction_webhook/README.md (155->160)"
+    ],
+    "docs_readme": "unchanged (Decision 12 holds)",
+    "regression": false
+  }
 }
