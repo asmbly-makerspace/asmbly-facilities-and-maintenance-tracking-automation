@@ -3,7 +3,7 @@
   "feature_branch": "feature/safe-exception-text",
   "epic": 141,
   "source_issue": 95,
-  "status": "in-progress",
+  "status": "complete",
   "phases": [
     {
       "id": 1,
@@ -67,7 +67,7 @@
     "skipped": [],
     "commits": 0
   },
-  "final_pr_number": null,
+  "final_pr_number": 146,
   "admin_actions": [],
   "events": [
     {
@@ -281,6 +281,27 @@
       "items": [
         "/waiver/new's 404 and 200 replies echo the submitted email, and 404-vs-200 tells a caller whether an email has a Neon account (pre-existing, waiver function untouched; candidate follow-up with #99)"
       ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "pr",
+      "number": 146,
+      "result": "ready-for-review",
+      "checks": "green",
+      "rounds": 0,
+      "closes": [
+        83,
+        95,
+        141,
+        142,
+        143,
+        144,
+        145
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "complete"
     }
   ],
   "stories": [
