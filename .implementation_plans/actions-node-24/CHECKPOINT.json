@@ -84,6 +84,14 @@
         "docs/Deploying.md (279 -> 281)"
       ],
       "note": "One paragraph on tests/test_workflows.py in The Deployment Pipeline; no other doc names action versions."
+    },
+    {
+      "ts": "2026-10-17T17:20:19+00:00",
+      "type": "manual_qa",
+      "stories_covered": [
+        124
+      ],
+      "total_steps": 16
     }
   ]
 }
