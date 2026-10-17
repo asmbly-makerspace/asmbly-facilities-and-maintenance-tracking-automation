@@ -1,4 +1,5 @@
 """Checks on the SAM templates that cfn-lint doesn't make."""
+import json
 import pathlib
 import re
 from typing import Any, Iterator
@@ -303,3 +304,91 @@ def test_class_photo_page_function_reads_nothing() -> None:
         "CLASS_PHOTO_APP_CLIENT_ID",
         "CLASS_PHOTO_DRY_RUN",
     }
+
+
+CICD_TEMPLATE = ROOT / "template-cicd.yaml"
+
+# IAM caps a managed policy at 6,144 characters, not counting whitespace, and refuses a
+# bigger one only when the admin deploys the deploy-role stack. Fail well before that.
+IAM_MANAGED_POLICY_LIMIT = 6144
+DEPLOY_POLICY_SIZE_BUDGET = 5800
+
+# Values for the names the deploy role's policies use that the template doesn't set:
+# pseudo parameters, parameters without a default, and parameters read from SSM (whose
+# default is the SSM path, not the value). Each is as long as the real value.
+CICD_TEMPLATE_VALUES = {
+    "AWS::Region": "us-east-2",
+    "AWS::AccountId": "123456789012",
+    "AWS::Partition": "aws",
+    "StageRestApiId": "abcde12345",
+    "ProdRestApiId": "fghij67890",
+    "AsmblyHostedZoneId": "Z0123456789ABCDEFGHIJ",
+    "StaffUserPoolId": "us-east-2_AbCdEfGhI",
+}
+
+
+def _cicd_values(template: dict[str, Any]) -> dict[str, str]:
+    values = {
+        name: str(parameter["Default"])
+        for name, parameter in template.get("Parameters", {}).items()
+        if "Default" in parameter and not str(parameter.get("Type", "")).startswith("AWS::SSM::")
+    }
+    return values | CICD_TEMPLATE_VALUES
+
+
+def _render(value: Any, values: dict[str, str]) -> Any:
+    """The value with every Ref and Sub resolved from `values`, as CloudFormation sends it to IAM."""
+
+    def lookup(name: str) -> str:
+        assert name in values, f"no value for {name}: add one to CICD_TEMPLATE_VALUES"
+        return values[name]
+
+    if isinstance(value, list):
+        return [_render(item, values) for item in value]
+    if not isinstance(value, dict):
+        return value
+    if set(value) == {"Ref"}:
+        return lookup(value["Ref"])
+    if set(value) == {"Fn::Sub"}:
+        text = value["Fn::Sub"]
+        assert isinstance(text, str), f"can't render a Sub with a variable map: {value}"
+        rendered = re.sub(r"\$\{(?!!)([^}]+)\}", lambda match: lookup(match.group(1)), text)
+        return rendered.replace("${!", "${")
+    functions = [key for key in value if key.startswith("Fn::")]
+    assert not functions, f"can't render {functions}"
+    return {key: _render(item, values) for key, item in value.items()}
+
+
+def _iam_size(document: dict[str, Any]) -> int:
+    """The policy's length as IAM counts it against the limit: every character but whitespace."""
+    return len(re.sub(r"\s", "", json.dumps(document, separators=(",", ":"))))
+
+
+def _deploy_policies() -> dict[str, dict[str, Any]]:
+    return {
+        name: resource
+        for name, resource in _load(CICD_TEMPLATE)["Resources"].items()
+        if resource.get("Type") == "AWS::IAM::ManagedPolicy"
+    }
+
+
+def test_every_deploy_policy_is_attached_to_the_deploy_role() -> None:
+    # A policy split off to stay under the size limit grants nothing until the role
+    # attaches it.
+    resources = _load(CICD_TEMPLATE)["Resources"]
+    attached = resources["GitHubOidcDeployRole"]["Properties"]["ManagedPolicyArns"]
+    assert sorted(attached, key=str) == sorted(({"Ref": name} for name in _deploy_policies()), key=str)
+
+
+@pytest.mark.parametrize("policy", sorted(_deploy_policies()))
+def test_deploy_policy_is_under_iams_size_limit(policy: str) -> None:
+    # Adding resource names to a policy that is close to the limit fails the admin's
+    # redeploy of the deploy-role stack (PolicySize quota, ServiceLimitExceeded). When
+    # this fails, move a cohesive group of statements into a new policy attached to
+    # GitHubOidcDeployRole (see docs/Deploying.md, "CI/CD Infrastructure").
+    template = _load(CICD_TEMPLATE)
+    document = _render(template["Resources"][policy]["Properties"]["PolicyDocument"], _cicd_values(template))
+    size = _iam_size(document)
+    assert size <= DEPLOY_POLICY_SIZE_BUDGET, (
+        f"{policy} is {size} characters; IAM allows {IAM_MANAGED_POLICY_LIMIT} and this test {DEPLOY_POLICY_SIZE_BUDGET}"
+    )

@@ -13,7 +13,9 @@ import calendar
 import datetime
 import hashlib
 import logging
+import math
 import re
+import time
 from typing import Any
 
 from common.neoncrm import NeonCRM
@@ -30,6 +32,8 @@ NEON_SEARCH_OUTPUT_FIELDS = ["Event ID", "Event Name"]
 # connect or answer for 4 s.
 NEON_PAGE_TIMEOUT_SECONDS = 4.0
 NEON_MAX_PAGES = 8
+# NeonCRM.search_events's default page_size; not passed, so the call's arguments don't change.
+NEON_PAGE_SIZE = 200
 
 _FUZZY_STRIP_PATTERN = re.compile(r"(\s|:|-|_)+")
 _EXACT_REPLACE_PATTERN = re.compile(r"(\s+|:)")
@@ -91,11 +95,16 @@ def fetch_classes(
     max_pages: int = NEON_MAX_PAGES,
 ) -> list[str]:
     """Reads the class list from Neon. ``NeonCRMError`` propagates to the caller."""
+    started = time.monotonic()
     events = neon.search_events(
         neon_search_fields(today), NEON_SEARCH_OUTPUT_FIELDS, timeout=timeout, max_pages=max_pages
     )
+    elapsed_ms = int((time.monotonic() - started) * 1000)
     classes = class_names_from_events(events)
-    logger.info("Read %d events, %d classes", len(events), len(classes))
+    pages = max(1, math.ceil(len(events) / NEON_PAGE_SIZE))
+    logger.info(
+        "Neon read %d events (%d pages) in %d ms: %d classes", len(events), pages, elapsed_ms, len(classes)
+    )
     return classes
 
 

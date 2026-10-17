@@ -1,0 +1,192 @@
+{
+  "plan_name": "class-photo-loading",
+  "feature_branch": "feature/class-photo-loading",
+  "epic": 114,
+  "status": "complete",
+  "phases": [
+    {
+      "id": 1,
+      "title": "Class-list cache, scheduled refresh and Neon timing",
+      "file": "phase-1-class-list-cache.md",
+      "status": "done",
+      "pre_sha": "571d05d",
+      "review_rounds": "build review + 3 cold review-lead rounds (round 2 BLOCK: botocore max_attempts -> total_max_attempts=1, fixed; all WARNs/NOTEs fixed)",
+      "squashed_sha": "80d9a7f"
+    },
+    {
+      "id": 2,
+      "title": "Submit against the cache, time left and what was written",
+      "file": "phase-2-submit-against-cache.md",
+      "status": "done",
+      "pre_sha": "80d9a7f",
+      "review_rounds": "build review + 2 cold review-lead rounds (all APPROVED; WARNs fixed)",
+      "squashed_sha": "3922b18"
+    },
+    {
+      "id": 3,
+      "title": "Page busy state, progress, retry and timeout messages",
+      "file": "phase-3-page-loading-and-progress.md",
+      "status": "done",
+      "pre_sha": "3922b18",
+      "review_rounds": "build review + 3 cold review-lead rounds (all APPROVED, no BLOCK; WARNs fixed or answered)",
+      "squashed_sha": "cc08f9e"
+    }
+  ],
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1701 passed",
+      "cfn_lint": "4 W3005 pre-existing on stage",
+      "sam_validate": "pass",
+      "sam_build": "pass (table, env var, IsProd rule+permission in build)",
+      "ci_test_job": "1701 passed in clean export, CI=true",
+      "node_tests_in_ci": "27 run under node 24; fail (not skip) without node in CI; node 20 not tested locally, static scan clean"
+    },
+    "cross_checks": "env vars both ways OK; table in both deploy policies, rule prod only; no new wildcards; function IAM GetItem/PutItem on exact table; IsProd on rule+permission, SourceArn matches; routes unchanged, authorizer covers ?refresh=1; page tokens/CSP intact, 70 KB; only dynamodb module imports boto3"
+  },
+  "final_pr_number": 119,
+  "admin_actions": [
+    "Before the PR reaches stage: redeploy AsmblyFacilitiesMaintTrackingStack-cicd (adds table ClassPhotoClassListCache-{stage,prod} to both policies; rule class-photo-class-list-refresh-prod to the prod policy only).",
+    "After prod deploy: one real prod submission; record 'Time left before the GitHub writes' on #114; close #114."
+  ],
+  "events": [
+    {
+      "type": "start",
+      "detail": "Branch from origin/stage a1479e6 (after #115, the #111 branding, merged)."
+    },
+    {
+      "type": "planned",
+      "detail": "Plan 571d05d; stories #116-#118; 18 decisions. Cache: one DynamoDB item (ClassPhotoClassListCache-${Stage}) refreshed by EventBridge (15 min prod, 60 min elsewhere) invoking the API function; >3 h old -> live read; Neon down -> stale copy marked."
+    },
+    {
+      "type": "decision",
+      "detail": "Busy indicator is native <progress> (token tests forbid animation units); submit progress = client-visible steps + elapsed seconds via XHR upload events; GITHUB_ERROR split into 'nothing was changed' vs 'submit again finishes the same PR'."
+    },
+    {
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "type": "owner_change",
+      "detail": "Owner: refresh once a day (not 15/60 min); cache max age ~26 h; add a 'Refresh class list' button (server: classes?refresh=1 with a ~60 s guard, phase 1; button: phase 3)."
+    },
+    {
+      "type": "owner_change",
+      "detail": "Owner: no scheduled refresh on stage (rule only on prod via IsProd; prod deploy policy only). Clean, decoupled design required: ClassListCache interface + DynamoDB implementation injected; pure freshness policy; shared service for schedule and route; in-memory fake + moto tests."
+    },
+    {
+      "type": "phase_done",
+      "phase": 1,
+      "checks": {
+        "pytest": "1638 passed",
+        "cfn_lint": "4 W3005 pre-existing",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      }
+    },
+    {
+      "type": "decision",
+      "phase": 1,
+      "detail": "Owner changes implemented: daily cron(0 10 * * ? *) on prod only (Condition IsProd); max age 26 h; GET classes?refresh=1 with 60 s guard; ClassListCache protocol + DynamoDB impl (only boto3 importer, lazy client) + pure FreshnessPolicy + ClassListService; modules beside the function (single user)."
+    },
+    {
+      "type": "decision",
+      "phase": 1,
+      "detail": "Deploy role gains exact-name table actions CloudFormation needs (DescribeContinuousBackups etc., found via CloudTrail/registry schema) and the prod-only rule; DynamoDB client 2 s timeouts, single attempt."
+    },
+    {
+      "type": "deferred",
+      "phase": 1,
+      "detail": "Scheduled refresh retried twice by Lambda on timeout (EventInvokeConfig would need a new deploy-role action) - accepted, documented. Unconditional cache write may overwrite a newer manual refresh by one read - accepted."
+    },
+    {
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "type": "owner_approval",
+      "detail": "Owner approved: orchestrator redeploys AsmblyFacilitiesMaintTrackingStack-cicd with AWS_PROFILE=asmbly once the #114 PR is green (after the sentinel is removed). No merge approval for #114."
+    },
+    {
+      "type": "phase_done",
+      "phase": 2,
+      "checks": {
+        "pytest": "1652 passed",
+        "cfn_lint": "4 W3005 pre-existing",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      }
+    },
+    {
+      "type": "decision",
+      "phase": 2,
+      "detail": "Submit reads the class list via injected ClassListService; still refuses unknown class and bad file name. GITHUB_ERROR split: 'Nothing was changed on GitHub' (pre-write and all dry-run failures) vs 'Submit the same class again' (failure during writes). Logs time left before writes and write duration."
+    },
+    {
+      "type": "decision",
+      "phase": 2,
+      "detail": "Accepted: blob/tree/commit failure moves no ref but says 'submit again' (safe). Neon down -> submit uses a cached copy of any age."
+    },
+    {
+      "type": "phase_start",
+      "phase": 3
+    },
+    {
+      "type": "phase_done",
+      "phase": 3,
+      "checks": {
+        "pytest": "1701 passed",
+        "node_tests": "26 scenarios pass under Node 24; skip locally without node, fail in CI without it; mutation-checked"
+      }
+    },
+    {
+      "type": "decision",
+      "phase": 3,
+      "detail": "aria-disabled (not disabled) for Try again, Refresh and Submit-while-submitting: Chrome moves focus to body when a focused button is disabled. Submit 35 s limit from end of upload; pre-upload failure -> network message, post-upload -> unconfirmed (prod) or dry-run timeout. Script organized: apiGet/apiPost/readAnswer, updateControls single state->controls place, REFRESH_OUTCOMES Map."
+    },
+    {
+      "type": "deferred",
+      "phase": 3,
+      "detail": "Empty class list (Neon empty, nothing cached) shows no message (pre-existing); 429 on /classes shows submit wording (pre-existing); Sign out usable during submit (pre-existing); 401 after a minutes-long upload with ~60 s token left (covered by re-sign-in). Recommend a follow-up issue for the empty-list message."
+    },
+    {
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "type": "owner_approval",
+      "detail": "Owner: 'you can merge when it's ready'. Order: PR green -> briefing -> deploy-role redeploy -> merge to stage -> watch stage deploy -> smoke test."
+    },
+    {
+      "type": "docs",
+      "detail": "API README gained cache clear (delete-item) and undo steps; other docs already matched"
+    },
+    {
+      "type": "manual_qa",
+      "stories_covered": [
+        116,
+        117,
+        118
+      ],
+      "total_steps": 24
+    },
+    {
+      "type": "pr_opened",
+      "pr": 119,
+      "checks": "green",
+      "node_tests_ran_in_ci": true
+    },
+    {
+      "type": "complete"
+    },
+    {
+      "type": "deploy_role_failed",
+      "detail": "Redeploy UPDATE_ROLLBACK_COMPLETE: PolicySize quota 6144 exceeded on GitHubDeployPolicystage (6279) and prod (6579). Fixed in 3cdb4dd: split into Data policies, permissions proven identical (720 tuples), size test added."
+    }
+  ],
+  "stories": [
+    116,
+    117,
+    118
+  ]
+}

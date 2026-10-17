@@ -49,9 +49,12 @@ Common fixes:
 - **Template and code disagree on a name:** decide which side is right (usually the one
   that matches its siblings), then change the other side, the test's environment, and
   the README.
-- **Resource missing from the deploy role:** add it to `GitHubDeployPolicystage` and
-  `GitHubDeployPolicyprod` with the literal stage name, and add the admin action to the
-  phase or the pull request's **Risk** section.
+- **Resource missing from the deploy role:** add it with the literal stage name to
+  `GitHubDeployPolicystage` and `GitHubDeployPolicyprod` (function, layer, log group) or
+  to `GitHubDeployPolicystageData` and `GitHubDeployPolicyprodData` (table, SSM parameter,
+  rule), and add the admin action to the phase or the pull request's **Risk** section. If
+  `tests/test_templates.py` then fails on a policy's size (IAM's limit is 6,144
+  characters), split the policy as `docs/Deploying.md` ("Size limit") describes.
 - **Exception text in a response:** log it with `logger.exception(...)` and return a
   plain message; add a test that the response doesn't contain it.
 - **Wide IAM statement:** narrow it to the exact ARNs the code uses; if the action has no

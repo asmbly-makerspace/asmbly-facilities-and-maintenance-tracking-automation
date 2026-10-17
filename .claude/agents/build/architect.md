@@ -43,8 +43,11 @@ first, and what depends on it. Make sure every name crosses its boundaries corre
 
 - An environment variable: the template's `Environment.Variables` and the code's
   `os.environ` read, with the same name, in the same step.
-- A named resource: its definition, its IAM grant, and its entries in
-  `GitHubDeployPolicystage` and `GitHubDeployPolicyprod` in `template-cicd.yaml`.
+- A named resource: its definition, its IAM grant, and its entries for both stages in
+  `template-cicd.yaml`: `GitHubDeployPolicystage` and `GitHubDeployPolicyprod` for a
+  function, layer or log group; `GitHubDeployPolicystageData` and
+  `GitHubDeployPolicyprodData` for a table, SSM parameter or rule. Each policy stays under
+  IAM's 6,144-character limit, which `tests/test_templates.py` checks.
 - A nested template parameter: declared in the nested template and passed from
   `template.yaml`.
 - A route: the `DefinitionBody` path, the `AWS::Lambda::Permission` in `template.yaml`,

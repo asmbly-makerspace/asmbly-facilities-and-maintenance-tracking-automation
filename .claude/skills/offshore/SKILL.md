@@ -354,8 +354,12 @@ Agent(
     Then the cross-checks across the whole diff against origin/stage:
     - every environment variable a template sets is read by the code, and every
       os.environ key the code reads is set by a template;
-    - every named resource the diff adds appears in both GitHubDeployPolicystage and
-      GitHubDeployPolicyprod in template-cicd.yaml;
+    - every named resource the diff adds appears for both stages in template-cicd.yaml
+      (functions, layers and log groups in GitHubDeployPolicystage and
+      GitHubDeployPolicyprod; tables, SSM parameters and rules in
+      GitHubDeployPolicystageData and GitHubDeployPolicyprodData; one stage only for a
+      resource that exists on one stage only), and tests/test_templates.py passes, so
+      every policy is under IAM's 6,144-character limit;
     - every nested-template parameter the diff adds is passed from template.yaml;
     - every new API route has a DefinitionBody path, an AWS::Lambda::Permission, and the
       nested stack output it references.

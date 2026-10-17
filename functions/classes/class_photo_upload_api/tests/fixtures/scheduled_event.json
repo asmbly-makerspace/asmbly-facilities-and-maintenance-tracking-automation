@@ -1,0 +1,13 @@
+{
+  "version": "0",
+  "id": "53dc4d37-cffa-4f76-80c9-8b7d4a4d2eaa",
+  "detail-type": "Scheduled Event",
+  "source": "aws.events",
+  "account": "123456789012",
+  "time": "2026-10-17T10:00:00Z",
+  "region": "us-east-2",
+  "resources": [
+    "arn:aws:events:us-east-2:123456789012:rule/class-photo-class-list-refresh-prod"
+  ],
+  "detail": {}
+}

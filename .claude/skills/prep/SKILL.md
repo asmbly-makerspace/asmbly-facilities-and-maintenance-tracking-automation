@@ -132,10 +132,14 @@ If nothing moves, note "N/A — no moved or renamed functions."
 The deploy role in `template-cicd.yaml` only lets the workflows create resources it
 names. For every named resource the phase adds (function, log group, SSM parameter,
 table, rule, layer, API route), check that the phase also lists the matching entries for
-**both** `GitHubDeployPolicystage` and `GitHubDeployPolicyprod`, and lists "an admin
-deploys the CI/CD stack by hand before this reaches `stage`" under Admin actions. A
+**both** stages in the right policy (`GitHubDeployPolicystage` and
+`GitHubDeployPolicyprod` for functions, layers and log groups;
+`GitHubDeployPolicystageData` and `GitHubDeployPolicyprodData` for tables, SSM parameters
+and rules; one stage only for a resource that exists on one stage only), and lists "an
+admin deploys the CI/CD stack by hand before this reaches `stage`" under Admin actions. A
 missing entry is a HIGH finding: the stage deploy will fail with "is not authorized to
-perform".
+perform". Each policy must also stay under IAM's 6,144-character limit, which
+`tests/test_templates.py` checks; see `docs/Deploying.md` ("Size limit").
 
 ### 5f: Environment variable wiring
 

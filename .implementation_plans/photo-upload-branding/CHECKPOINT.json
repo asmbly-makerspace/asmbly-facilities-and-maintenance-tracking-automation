@@ -2,7 +2,7 @@
   "plan_name": "photo-upload-branding",
   "feature_branch": "feature/photo-upload-branding",
   "epic": 111,
-  "status": "in-progress",
+  "status": "complete",
   "phases": [
     {
       "id": 1,
@@ -34,7 +34,7 @@
     },
     "cross_checks": "no infra seams touched; script and lambda_function.py byte-identical to stage; design-token rule holds; page 58 KB < 100 KB; CSP unchanged"
   },
-  "final_pr_number": null,
+  "final_pr_number": 115,
   "admin_actions": [],
   "events": [
     {
@@ -112,6 +112,17 @@
         113
       ],
       "total_steps": 27
+    },
+    {
+      "type": "pr_opened",
+      "pr": 115
+    },
+    {
+      "type": "merged",
+      "detail": "Owner merged #115 into stage (a1479e6) on 2026-10-17; stage deploy succeeded; page 58,046 bytes served."
+    },
+    {
+      "type": "complete"
     }
   ],
   "stories": [

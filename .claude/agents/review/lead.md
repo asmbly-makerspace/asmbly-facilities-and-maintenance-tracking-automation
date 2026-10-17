@@ -106,13 +106,18 @@ still wrong, or what they missed.
 ### The deploy role (BLOCK)
 
 - Every new named resource (function, log group, SSM parameter, DynamoDB table,
-  EventBridge rule, layer) has its name in both `GitHubDeployPolicystage` and
-  `GitHubDeployPolicyprod` in `template-cicd.yaml`. A missing name fails the stage deploy
-  with `is not authorized to perform`.
+  EventBridge rule, layer) has its name for both stages in `template-cicd.yaml`:
+  functions, layers and log groups in `GitHubDeployPolicystage` and
+  `GitHubDeployPolicyprod`; tables, SSM parameters and rules in
+  `GitHubDeployPolicystageData` and `GitHubDeployPolicyprodData`. Only a resource that
+  exists on one stage is in one stage's policy. A missing name fails the stage deploy
+  with `is not authorized to perform`; a policy over IAM's 6,144-character limit fails
+  the admin's deploy of the role, which `tests/test_templates.py` catches first
+  (`docs/Deploying.md`).
 - The pull request's **Risk** section says an admin must redeploy the deploy-role stack
   by hand before the change reaches `stage`. If you can't see the pull request body, say
   this in your findings as a NOTE so the caller checks.
-- A renamed resource is renamed in the deploy role too, in both policies.
+- A renamed resource is renamed in the deploy role too, for both stages.
 
 ### Shared helpers and their callers (BLOCK)
 
