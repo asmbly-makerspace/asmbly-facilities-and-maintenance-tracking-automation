@@ -268,6 +268,19 @@
         "docs/README.md:117 names FacilitiesSlackPurchaseReorderFunction; template uses SlackSlashReorderFunction-${Stage} (pre-existing)",
         "slack.py dry-run preview still uses print() (kept on purpose by #86; tests pin it)"
       ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "manual_qa",
+      "steps": 12
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": "qa",
+      "items": [
+        "/waiver/new's 404 and 200 replies echo the submitted email, and 404-vs-200 tells a caller whether an email has a Neon account (pre-existing, waiver function untouched; candidate follow-up with #99)"
+      ]
     }
   ],
   "stories": [
@@ -287,5 +300,22 @@
     ],
     "docs_readme": "unchanged (Decision 12 holds)",
     "regression": false
+  },
+  "manual_qa": {
+    "stories_covered": [
+      142,
+      143,
+      144
+    ],
+    "stories_without_surface": [
+      145
+    ],
+    "total_steps": 12,
+    "notes": [
+      "Stage shares prod's Slack bot, channels, ClickUp token, Neon secret and Discourse bot: steps 1-10 use made-up IDs; steps 11-12 (real Neon test account, real Purchase Requests task) optional",
+      "Step 3 posts a test message with a made-up ClickUp link in C063LH7MB45 and C026YVA7TK3; delete afterwards",
+      "Steps 7-9 use aws lambda invoke on stage (the router invokes reaction functions async)",
+      "/reorder error modals, PM reminder failure reply and Discourse failure lines can't be triggered on stage; covered by tests"
+    ]
   }
 }
