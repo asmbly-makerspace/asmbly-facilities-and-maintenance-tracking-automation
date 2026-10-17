@@ -178,6 +178,10 @@
     },
     {
       "type": "complete"
+    },
+    {
+      "type": "deploy_role_failed",
+      "detail": "Redeploy UPDATE_ROLLBACK_COMPLETE: PolicySize quota 6144 exceeded on GitHubDeployPolicystage (6279) and prod (6579). Fixed in 3cdb4dd: split into Data policies, permissions proven identical (720 tuples), size test added."
     }
   ],
   "stories": [

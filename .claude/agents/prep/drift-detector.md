@@ -52,9 +52,11 @@ Checking each claim by hand is mechanical work. It's yours.
    every key in a `configs/*.json` file the document relies on exists, or the document
    creates it.
 8. **Deploy role.** Every named resource the document adds has entries for both stages
-   in `template-cicd.yaml` (`GitHubDeployPolicystage`, `GitHubDeployPolicyprod`) among
-   the document's changes. Grep `template-cicd.yaml` for the name with `-stage` and
-   `-prod`.
+   in `template-cicd.yaml` among the document's changes, in the right policy: functions,
+   layers and log groups in `GitHubDeployPolicystage` / `GitHubDeployPolicyprod`; tables,
+   SSM parameters and EventBridge rules in `GitHubDeployPolicystageData` /
+   `GitHubDeployPolicyprodData` (one stage only for a resource that exists on one stage
+   only). Grep `template-cicd.yaml` for the name with `-stage` and `-prod`.
 9. **Naming.** New names follow their siblings: functions `<Name>Function-${Stage}`, log
    groups `/asmbly/lambda/<FunctionName>-${Stage}`, SSM parameters `/${Stage}/...`,
    folders `functions/<area>/<snake_case_name>/`, tests `tests/test_*.py` with

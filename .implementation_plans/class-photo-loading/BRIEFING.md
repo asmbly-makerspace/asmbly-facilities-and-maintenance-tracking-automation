@@ -18,7 +18,7 @@
 
 | When | Action | Why |
 | --- | --- | --- |
-| Before merge | Redeploy `AsmblyFacilitiesMaintTrackingStack-cicd` (docs/Deploying.md). It adds `table/ClassPhotoClassListCache-{stage,prod}` to both policies, with the exact read actions CloudFormation needs, and `rule/class-photo-class-list-refresh-prod` to the prod policy only. | The stage deploy fails without it. |
+| Before merge | Redeploy `AsmblyFacilitiesMaintTrackingStack-cicd` (docs/Deploying.md). The first attempt failed and rolled back cleanly: IAM caps a managed policy at 6,144 characters, and the new names pushed both per-stage policies over that cap. Commit `3cdb4dd` splits each stage's policy into `GitHubDeployPolicy{stage,prod}` and a new `GitHubDeployPolicy{stage,prod}Data`. The `…Data` policies take the table (both stages) and the refresh rule (prod only); the granted permissions are identical before and after, and a test now checks every policy's size. | The stage deploy fails without it. |
 | After the prod deploy | Check that `class-photo-class-list-refresh-prod` is ENABLED with `cron(0 10 * * ? *)`. The next day, `/asmbly/lambda/ClassPhotoUploadApiFunction-prod` should show `Scheduled class list refresh: done`. | Confirms the daily refresh. |
 | After the prod deploy | Make one real submission and record the `Time left before the GitHub writes` figure from the prod log on #114, then close #114. | This is #114's last Done-when item. |
 
@@ -85,7 +85,7 @@
 ## Review
 
 - Review rounds inside phases: 11, all cold and independent. Findings fixed: 1 BLOCK (botocore retries) and every WARN.
-- Pull request rounds: 0. No comments came in. CI was green on the first run.
+- Pull request rounds: 1. The deploy-role redeploy exceeded IAM's policy size limit, so `3cdb4dd` split the policies and added a size test, and the rules and agent checklists were updated to match. No reviewer comments came in.
 
 ## Rollback
 

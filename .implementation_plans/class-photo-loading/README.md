@@ -93,12 +93,21 @@ Phase 1 is a predecessor of both. Inside `/offshore` the phases run in order 1, 
 1. **Before the plan's pull request reaches `stage` (the stage deploy fails otherwise):**
    redeploy the deploy role, `AsmblyFacilitiesMaintTrackingStack-cicd`
    (`docs/Deploying.md`, "CI/CD Infrastructure (The Deployer Role)"). Phase 1 adds to
-   both `GitHubDeployPolicystage` and `GitHubDeployPolicyprod` the DynamoDB table
+   both `GitHubDeployPolicystageData` and `GitHubDeployPolicyprodData` the DynamoDB table
    `ClassPhotoClassListCache-{stage,prod}` (plus the five `Describe…`/`GetResourcePolicy`/
    `ListTagsOfResource` reads CloudFormation's table handler makes, on that table only),
-   and to `GitHubDeployPolicyprod` only the EventBridge rule
+   and to `GitHubDeployPolicyprodData` only the EventBridge rule
    `class-photo-class-list-refresh-prod` (with its tagging and `ListTargetsByRule` on
    that rule only). Stage has no rule (Decision 19).
+   The first redeploy failed: these additions took `GitHubDeployPolicystage` and
+   `GitHubDeployPolicyprod` past IAM's 6,144-character limit for a managed policy
+   (`PolicySize`, `ServiceLimitExceeded`) and the stack rolled back. Each stage's
+   DynamoDB, SSM parameter and EventBridge statements now sit in the new
+   `GitHubDeployPolicystageData` / `GitHubDeployPolicyprodData`
+   (`GitHub-OIDC-facilities-automation-deploy-{stage,prod}-data-policy`), also attached
+   to the role; the existing two policies keep their names and descriptions, so the
+   preview (`--no-execute-changeset`) should show the two new policies as `Add`, the
+   role and the two existing policies as `Modify`, and no `Replacement: True`.
 2. **After the stage deploy (nothing to configure):** the cache is empty until the first
    visit, which reads Neon live and fills it, or until someone presses **Refresh class
    list**. Stage has no scheduled refresh. To check: open the stage page twice; the second
@@ -306,7 +315,7 @@ The owner changed the design while phase 1 was being prepared. These override De
     day). The rule `class-photo-class-list-refresh-prod` and its invoke permission carry
     `Condition: IsProd`; stage and dev stacks have no schedule and fill the cache on a
     visit, on an expired copy, or from **Refresh class list**. The deploy role lists the
-    rule in `GitHubDeployPolicyprod` only (CloudFormation makes no call for a resource
+    rule in `GitHubDeployPolicyprodData` only (CloudFormation makes no call for a resource
     whose condition is false). About one Neon search a day from the schedule, instead of
     about 240.
 20. **Maximum age 26 hours** (`class_list_freshness.MAX_AGE`), a bit over a day, so the

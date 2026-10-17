@@ -88,9 +88,13 @@ because a reviewer has to verify it by reading.
   and a `Project` tag.
 - When a nested template gets a new parameter, pass it from `template.yaml`.
 - When you add a named resource (function, log group, SSM parameter, table, rule, layer),
-  add its name to both `GitHubDeployPolicystage` and `GitHubDeployPolicyprod` in
-  `template-cicd.yaml`, and say in the pull request's **Risk** section that an admin must
-  deploy that stack by hand before the change reaches `stage`. The deploy fails otherwise.
+  add its name for both stages in `template-cicd.yaml` (one stage only if the resource
+  exists only there): a function, layer or log group to `GitHubDeployPolicystage` and
+  `GitHubDeployPolicyprod`; a table, SSM parameter or rule to `GitHubDeployPolicystageData`
+  and `GitHubDeployPolicyprodData`. Each policy must stay under IAM's 6,144-character
+  limit, which `tests/test_templates.py` checks ([docs/Deploying.md](docs/Deploying.md)).
+  Say in the pull request's **Risk** section that an admin must deploy that stack by hand
+  before the change reaches `stage`. The deploy fails otherwise.
 - Grant the least privilege that works: `ssm:GetParameter` on the exact parameter ARNs,
   `secretsmanager:GetSecretValue` on the exact `secret:<name>-*`. `Resource: "*"` only
   for actions that have no resource-level permissions.

@@ -41,9 +41,16 @@ The account is shared with other Asmbly projects, so the role is locked down to 
     * `repo:asmbly-makerspace/asmbly-facilities-and-maintenance-tracking-automation:environment:prod` (`deploy.yml`, `main` branch)
 
     Workflows on other branches, and jobs without one of these `environment:` values, cannot get credentials. The subject names the environment, not the branch, so the `stage` and `prod` GitHub environments must be limited to their branch (**Settings → Environments → Deployment branches and tags**).
-* **What it can touch:** only the `AsmblyFacilitiesMaintTrackingStack-stage` and `-prod` stacks (and their nested stacks) and the resources they create, listed **by name** in the policy. Dev is deployed by hand and is not covered. There are three managed policies:
-    * `GitHubDeployPolicy`: resources shared by both stages (generated IAM role names, the FacilitiesApi REST APIs, the `facilities.asmbly.org` domain, certificate and DNS records, reads of the shared `/config/...` SSM parameters the templates resolve, and a read-only `cognito-idp:DescribeUserPool` on the staff sign-in pool behind the API's Cognito authorizer).
-    * `GitHubDeployPolicystage` / `GitHubDeployPolicyprod`: one per stage, identical apart from the stage name (Lambda functions and layers, log groups, SSM parameters, DynamoDB table, EventBridge rule, SAM artifacts).
+* **What it can touch:** only the `AsmblyFacilitiesMaintTrackingStack-stage` and `-prod` stacks (and their nested stacks) and the resources they create, listed **by name** in the policies. Dev is deployed by hand and is not covered. There are five managed policies, all attached to the role:
+
+    | Logical ID (`template-cicd.yaml`) | Policy name | What it covers |
+    | --- | --- | --- |
+    | `GitHubDeployPolicy` | `GitHub-OIDC-facilities-automation-deploy-policy` | Resources shared by both stages: generated IAM role names, the FacilitiesApi REST APIs, the `facilities.asmbly.org` domain, certificate and DNS records, reads of the shared `/config/...` SSM parameters the templates resolve, and a read-only `cognito-idp:DescribeUserPool` on the staff sign-in pool behind the API's Cognito authorizer. |
+    | `GitHubDeployPolicystage` / `GitHubDeployPolicyprod` | `GitHub-OIDC-facilities-automation-deploy-{stage,prod}-policy` | Per stage: the stage's CloudFormation stacks, SAM artifacts, Lambda functions and layers, and log groups. |
+    | `GitHubDeployPolicystageData` / `GitHubDeployPolicyprodData` | `GitHub-OIDC-facilities-automation-deploy-{stage,prod}-data-policy` | Per stage: the stage's DynamoDB tables, SSM parameters and EventBridge rules. |
+
+    The stage and prod policies are identical apart from the stage name, except that only `GitHubDeployPolicyprodData` has the `class-photo-class-list-refresh-prod` rule (stage has no such rule).
+* **Size limit:** IAM caps each managed policy at **6,144 characters**, not counting whitespace, and refuses a bigger one only when the admin deploys this stack (`Cannot exceed quota for PolicySize: 6144`, `ServiceLimitExceeded`; the stack rolls back). That is why each stage has two policies. `tests/test_templates.py` renders every policy in `template-cicd.yaml` with realistic values and fails when one is over 5,800 characters, so the `test` check catches it first. When it fails, move a cohesive group of statements into a new policy with a new logical ID and name, and add it to the role's `ManagedPolicyArns`. Don't rename an existing policy or change its `Description` (see step 4 below).
 
 ### How to Manage the Deployer Role
 
@@ -51,7 +58,7 @@ This stack (`AsmblyFacilitiesMaintTrackingStack-cicd`) is **NEVER** deployed by 
 
 **You will touch this file when a deployment fails with a permissions error.** Because permissions are granted per resource name, this includes **adding a new named resource** (a new Lambda function, log group, SSM parameter, table, rule, and so on), not just a new kind of resource.
 
-For example, if you add a function `FooFunction-${Stage}` with a log group `/asmbly/lambda/FooFunction-${Stage}`, add both names to **both** `GitHubDeployPolicystage` and `GitHubDeployPolicyprod`. If you add an SQS queue and the `prod` deploy fails with `is not authorized to perform: sqs:CreateQueue`, add `sqs:CreateQueue` scoped to that queue's ARN. Never use `Resource: "*"` unless the action does not support resource-level permissions.
+For example, if you add a function `FooFunction-${Stage}` with a log group `/asmbly/lambda/FooFunction-${Stage}`, add both names to **both** `GitHubDeployPolicystage` and `GitHubDeployPolicyprod`. A new DynamoDB table, SSM parameter or EventBridge rule goes in **both** `GitHubDeployPolicystageData` and `GitHubDeployPolicyprodData` instead. If you add an SQS queue and the `prod` deploy fails with `is not authorized to perform: sqs:CreateQueue`, add `sqs:CreateQueue` scoped to that queue's ARN. Never use `Resource: "*"` unless the action does not support resource-level permissions.
 
 1.  **Edit `template-cicd.yaml`.**
 2.  **Look up the REST API IDs.** Each is the physical ID of the stack's `FacilitiesApi` resource (run it once for `-stage` and once for `-prod`):
@@ -67,7 +74,7 @@ For example, if you add a function `FooFunction-${Stage}` with a log group `/asm
       --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND --region us-east-2 \
       --parameter-overrides StageRestApiId=<stage id> ProdRestApiId=<prod id>
     ```
-    Add `--no-execute-changeset` first to preview the changes, and check that nothing shows `Replacement: True` (for example, changing a managed policy's `Description` replaces it, which fails because the policy has a fixed name).
+    Add `--no-execute-changeset` first to preview the changes, and check that nothing shows `Replacement: True` (for example, changing a managed policy's `Description` replaces it, which fails because the policy has a fixed name). A new policy shows as `Add` and the role and the existing policies as `Modify`, which is expected.
     `CAPABILITY_AUTO_EXPAND` is required because the template uses the `AWS::LanguageExtensions` and SAM transforms.
 5.  **Re-run** the failed GitHub Actions job.
 

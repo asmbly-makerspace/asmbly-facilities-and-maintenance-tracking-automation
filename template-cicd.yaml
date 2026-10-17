@@ -72,7 +72,9 @@ Resources:
       ManagedPolicyArns:
         - !Ref GitHubDeployPolicy
         - !Ref GitHubDeployPolicystage
+        - !Ref GitHubDeployPolicystageData
         - !Ref GitHubDeployPolicyprod
+        - !Ref GitHubDeployPolicyprodData
       Tags:
         - Key: Project
           Value: facilities-automation
@@ -244,9 +246,17 @@ Resources:
                   - A
                   - CNAME
 
-  # One policy per CI-deployed stage (stage, prod), scoped to the resource names each
+  # Two policies per CI-deployed stage (stage, prod), scoped to the resource names each
   # stage's stack creates. Dev is deployed by hand and is not covered.
-  # The two policies are identical apart from the stage name; keep them in sync.
+  #   GitHubDeployPolicy<stage>:     stacks, SAM artifacts, functions, layers, log groups.
+  #   GitHubDeployPolicy<stage>Data: DynamoDB tables, SSM parameters, EventBridge rules.
+  # IAM caps a managed policy at 6,144 characters (not counting whitespace); one policy
+  # per stage outgrew it. tests/test_templates.py fails when a policy passes 5,800.
+  # If one grows too big again, add another policy with a new logical ID and name, and
+  # leave the existing ones' names and Descriptions alone: changing either replaces
+  # the policy, and a Description change then fails because the name is fixed.
+  # The stage and prod policies are identical apart from the stage name (prod alone has
+  # the class-list refresh rule); keep them in sync.
   # (Fn::ForEach would remove the duplication, but SAM CLI cannot deploy it.)
   GitHubDeployPolicystage:
     Type: AWS::IAM::ManagedPolicy
@@ -342,6 +352,17 @@ Resources:
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/DynamicDnsUpdateFunction-stage*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadApiFunction-stage*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadPageFunction-stage*"
+
+  # The stage stack's DynamoDB tables, SSM parameters and EventBridge rules, kept apart
+  # from GitHubDeployPolicystage so that each policy stays under IAM's size limit.
+  GitHubDeployPolicystageData:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "GitHub-OIDC-facilities-automation-deploy-stage-data-policy"
+      Description: !Sub "Least-privilege policy for the facilities automation GitHub Actions deployer (stage tables, parameters and rules)."
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
           - Sid: AllowDynamoDBTableManagement
             Effect: Allow
             Action:
@@ -489,6 +510,17 @@ Resources:
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/DynamicDnsUpdateFunction-prod*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadApiFunction-prod*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadPageFunction-prod*"
+
+  # The prod stack's DynamoDB tables, SSM parameters and EventBridge rules, kept apart
+  # from GitHubDeployPolicyprod so that each policy stays under IAM's size limit.
+  GitHubDeployPolicyprodData:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "GitHub-OIDC-facilities-automation-deploy-prod-data-policy"
+      Description: !Sub "Least-privilege policy for the facilities automation GitHub Actions deployer (prod tables, parameters and rules)."
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
           - Sid: AllowDynamoDBTableManagement
             Effect: Allow
             Action:
