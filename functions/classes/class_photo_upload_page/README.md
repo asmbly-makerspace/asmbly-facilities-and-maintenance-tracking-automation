@@ -85,7 +85,8 @@ the page fetches nothing for it. Everything is inline:
   one 640×40 motif in an SVG `<pattern>` that fills a single `<rect>`, and it is hidden
   from screen readers.
 - **Fonts.** The page uses system font stacks and loads no font file: no `@font-face`
-  and no `url(`.
+  and no `url(` that points outside the page (the only `url(` is the pattern's own
+  `fill="url(#brand-tiles)"`).
   - Body text is Roboto where the device has it, or the system sans-serif otherwise.
   - Headings use a bold system stack (`"Helvetica Neue"`, `"Segoe UI"`, …). PP Gosha,
     the brand's heading face, isn't loaded until Asmbly confirms its web licence covers
