@@ -28,7 +28,7 @@ pull request it would open or update, and opens nothing on GitHub.
   2. The three SSM `String` parameters in us-east-2: `/config/cognito/staff/user-pool-id`,
      `/config/cognito/staff/auth-domain` (host only, no `https://`),
      `/config/cognito/staff/class-photo-app-client-id`.
-  3. The GitHub App `Asmbly Class Photos` (Contents RW, Pull requests RW, Metadata R,
+  3. The GitHub App `Asmbly Class Photos Upload` (Contents RW, Pull requests RW, Metadata R,
      webhook off), installed on `asmbly-classes` only.
   4. The secret `github/class-photo-upload-app` (`app_id`, `installation_id`,
      `private_key`, all strings). Stage reads it too: it asks GitHub for a read-only
@@ -297,7 +297,7 @@ Use a photo the class's owner wants, and decide with them whether to merge.
 31. **#107, the first real pull request.** Choose the class and its photo (ideally one
     taken with location on, so step 32 means something) and click **Submit**.
     **Expect:** "Opened pull request #N" with a link. On GitHub, pull request #N on
-    `asmbly-classes`: opened by the Asmbly Class Photos app, from
+    `asmbly-classes`: opened by `asmbly-class-photos-upload[bot]`, from
     `class-photo/<slug>-<8 hex>` into `main`, title `Class photo: <class name>`, the
     description as in step 22 with your username under **Requested by**; **Files changed**
     adds or replaces `app/src/lib/images/<file>` and deletes exactly the files listed as
