@@ -202,6 +202,12 @@ fail if that changes.
 Add a token only when a rule uses it. `--lasers` is the one token no rule reads; it is
 the parent of the two lasers tokens.
 
+The token, colour, contrast and logo checks run from `tests/page_style.py` at the
+repository root, shared with the class photo upload page. This function's test file holds
+the page's data (`STYLE_BLOCK`, `BRAND_COLOURS`, `DERIVED_COLOURS`, `CONTRAST_PAIRS`,
+`ALLOWED_VALUE_WORDS`, `TOKEN_VALUE`, `RESERVED_TOKENS`, `SHARED_LITERALS`,
+`SVG_ATTRIBUTES`) and its own layout tests.
+
 ### Contrast
 
 WCAG 2.1, computed by `test_colour_pairs_meet_contrast` from the token values.

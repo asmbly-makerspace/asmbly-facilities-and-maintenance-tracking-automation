@@ -12,6 +12,7 @@ import pytest
 
 # Now we can import the lambda function module directly
 from functions.ceramics.kiln_dropoff_recent_entries_viewer import lambda_function
+from tests import page_style
 
 LAMBDA_FUNCTION_PATH = "functions.ceramics.kiln_dropoff_recent_entries_viewer.lambda_function"
 
@@ -358,6 +359,9 @@ def test_generate_html_page_escapes_quotes_and_ampersands():
 
 PAGE_HTML = (pathlib.Path(lambda_function.__file__).parent / "page.html").read_text(encoding="utf-8")
 STYLE_BLOCK = re.compile(r"<style>(.*?)</style>", re.S)
+# The page's stylesheet and its markup without it, read with the shared checks in tests/page_style.py.
+SHEET = page_style.Stylesheet.from_page(PAGE_HTML, STYLE_BLOCK)
+MARKUP = page_style.markup(PAGE_HTML, STYLE_BLOCK)
 
 
 def _sha256_source(text: str) -> str:
@@ -620,17 +624,11 @@ def test_header_band_shows_ceramics_icon_and_title() -> None:
 
 def test_footer_shows_asmbly_logo() -> None:
     """The official logo, as on the class photo upload page, at the foot of every page."""
-    logo = '<svg class="logo" role="img" aria-label="Asmbly Makerspace" viewBox="0 0 443.61 122.16" focusable="false">'
     for name, page in _pages().items():
         footer = page[page.index('<footer class="site-footer">') : page.index('</footer>')]
         assert page.count('<svg class="logo"') == 1, name
-        assert footer.count(logo) == 1, name
-        svg = footer[footer.index(logo) : footer.index('</svg>')]
-        assert svg.count('<path ') == 17
-        assert 'd="m122.16,77.71V0H0v44.44h20.85' in svg  # the official icon path
-        for forbidden in ('fill', 'stroke', 'style', 'xmlns', 'href', '<image'):
-            assert forbidden not in svg, forbidden
-    logo_rule = _rule('.logo')
+        assert page_style.logo_problems(page_style.find_logo(footer)) == [], name
+    logo_rule = SHEET.rule('.logo')
     assert 'color: var(--logo-colour)' in logo_rule and 'fill: currentColor' in logo_rule
 
 
@@ -675,16 +673,13 @@ def test_long_name_is_in_a_wrapping_cell() -> None:
     page = lambda_function.generate_html_page([{'id': 'a1', 'custom_id': 'KO-1', 'name': name, 'date_created': '1704067200000'}])
 
     assert f'<td>{name}</td>' in page
-    assert 'overflow-wrap: anywhere' in _rule('td')
+    assert 'overflow-wrap: anywhere' in SHEET.rule('td')
 
 
-# ---- Brand tokens, contrast and layout (copied from the class photo upload page's tests, adapted) ----
+# ---- Brand tokens, contrast and layout ----
+# The checks' logic is in tests/page_style.py (shared with the class photo upload page);
+# this file holds the kiln page's data and its own layout tests.
 
-CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
-TOKEN = re.compile(r"(--[\w-]+)\s*:\s*([^;]+);")
-VAR_REFERENCE = re.compile(r"var\(\s*(--[\w-]+)\s*\)")
-HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}(?![\w-])")
-PURE_WHITE_OR_BLACK = re.compile(r"(?<![\w-])(white|black)(?![\w-])", re.I)
 # Outside :root a declaration's value may hold only var() references, 0, 100% and these
 # CSS keywords, none of which can carry a colour or a length.
 ALLOWED_VALUE_WORDS = {
@@ -692,8 +687,6 @@ ALLOWED_VALUE_WORDS = {
     "inline-flex", "left", "none", "normal", "nowrap", "solid", "top", "wrap",
 }
 TOKEN_VALUE = re.compile(r"#[0-9a-fA-F]{6}|var\(--[\w-]+\)|\d*\.?\d+(?:rem|px)?")
-FONT_STACK = re.compile(r'(?:"[\w ]+"|[\w-]+)(?:, (?:"[\w ]+"|[\w-]+))*')
-GLYPH_TOKEN = re.compile(r'"[^"\s]" / ""')
 # Tokens no rule reads through var(), with the reason.
 RESERVED_TOKENS = {
     "--lasers": "the parent of --lasers-shade and --lasers-20 (test_derived_tokens_follow_the_formula)",
@@ -703,7 +696,6 @@ SHARED_LITERALS = {
     "1rem": {"--font-size-body", "--space-4"},  # body text size; a spacing step
 }
 SVG_ATTRIBUTES = {"aria-label", "class", "d", "focusable", "role", "viewBox"}
-ROOT_FONT_PX = 16
 
 BRAND_COLOURS = {
     "--asmbly-purple": "#292D6A",
@@ -738,200 +730,41 @@ CONTRAST_PAIRS = [
     ("--focus", "--page-bg", 3.0),
     ("--logo-colour", "--page-bg", 3.0),
 ]
-MEDIA_BLOCK = re.compile(r"@media([^{]*)\{((?:[^{}]*\{[^{}]*\})*[^{}]*)\}")
-RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
-HOVER_MEDIA = "(hover: hover)"
-
-
-def _style() -> str:
-    """The text of the page's one <style> block."""
-    blocks = STYLE_BLOCK.findall(PAGE_HTML)
-    assert len(blocks) == 1
-    return blocks[0]
-
-
-def _css() -> str:
-    """The stylesheet without comments."""
-    return CSS_COMMENT.sub("", _style())
-
-
-def _root_block() -> str:
-    """The body of the :root rule, which must be the stylesheet's only :root and its first rule."""
-    css = _css().strip()
-    assert css.startswith(":root {"), "the token block must be the first rule"
-    assert css.count(":root") == 1, "there must be one token block"
-    return css[len(":root {") : css.index("}")]
-
-
-def _rules_after_root() -> str:
-    css = _css().strip()
-    return css[css.index("}") + 1 :]
-
-
-def _tokens() -> dict[str, str]:
-    return {name: value.strip() for name, value in TOKEN.findall(_root_block())}
-
-
-def _colour(name: str) -> str:
-    """A token's colour as lower-case #rrggbb, following var() references."""
-    value = _tokens()[name]
-    reference = VAR_REFERENCE.fullmatch(value)
-    if reference:
-        return _colour(reference.group(1))
-    assert re.fullmatch(r"#[0-9a-fA-F]{6}", value), f"{name} is not a #rrggbb colour: {value}"
-    return value.lower()
-
-
-def _channels(colour: str) -> list[int]:
-    return [int(colour[index : index + 2], 16) for index in (1, 3, 5)]
-
-
-def _mix(a: str, b: str, p: float) -> str:
-    """p × a + (1 − p) × b per sRGB channel, rounded, as #rrggbb."""
-    mixed = [round(p * x + (1 - p) * y) for x, y in zip(_channels(a), _channels(b))]
-    return "#" + "".join(f"{channel:02x}" for channel in mixed)
-
-
-def _luminance(colour: str) -> float:
-    def linear(channel: int) -> float:
-        value = channel / 255
-        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
-
-    red, green, blue = (linear(channel) for channel in _channels(colour))
-    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
-
-
-def _contrast(foreground: str, background: str) -> float:
-    """The WCAG 2.1 contrast ratio of two #rrggbb colours."""
-    lighter, darker = sorted((_luminance(foreground), _luminance(background)), reverse=True)
-    return (lighter + 0.05) / (darker + 0.05)
-
-
-def _declaration_values(css: str) -> list[str]:
-    """The value of every declaration in every rule body (not selectors, not @media conditions)."""
-    values = []
-    for body in re.findall(r"\{([^{}]*)\}", css):
-        for declaration in body.split(";"):
-            if ":" in declaration:
-                values.append(declaration.split(":", 1)[1].strip())
-    return values
-
-
-def _rules() -> list[tuple[str, list[str], str]]:
-    """Every rule after the token block as (media condition or "", selectors, declarations)."""
-    css = _rules_after_root()
-    found = []
-    for media in MEDIA_BLOCK.finditer(css):
-        for selectors, body in RULE.findall(media.group(2)):
-            found.append((media.group(1).strip(), [s.strip() for s in selectors.split(",")], body))
-    for selectors, body in RULE.findall(MEDIA_BLOCK.sub("", css)):
-        found.append(("", [s.strip() for s in selectors.split(",")], body))
-    return found
-
-
-def _rule(selector: str, media: str = "") -> str:
-    """The declarations of every rule whose selector list holds exactly `selector`, joined."""
-    bodies = [" ".join(body.split()) for condition, selectors, body in _rules() if condition == media and selector in selectors]
-    assert bodies, f"no rule for {selector} {media}".strip()
-    return "; ".join(bodies)
-
-
-def _markup() -> str:
-    """The page without its <style> block."""
-    return STYLE_BLOCK.sub("", PAGE_HTML)
-
-
-def _rem_to_px(value: str) -> float:
-    assert value.endswith("rem"), value
-    return float(value.removesuffix("rem")) * ROOT_FONT_PX
 
 
 def test_brand_tokens_match_the_guide() -> None:
-    tokens = _tokens()
-    for name, value in BRAND_COLOURS.items():
-        assert tokens[name].lower() == value.lower(), name
+    assert page_style.brand_colour_problems(SHEET, BRAND_COLOURS) == []
 
 
 @pytest.mark.parametrize("name,first,second,share", DERIVED_COLOURS)
 def test_derived_tokens_follow_the_formula(name: str, first: str, second: str, share: float) -> None:
-    assert _colour(name) == _mix(_colour(first), _colour(second), share)
+    assert page_style.derived_colour_problems(SHEET, [(name, first, second, share)]) == []
 
 
 def test_styles_use_tokens_only() -> None:
-    rules = _rules_after_root()
-
-    assert not HEX_COLOUR.search(rules)
-    assert not re.search(r"\b(rgba?|hsla?)\(", rules)
-    values = _declaration_values(rules)
-    assert len(values) > 60, "the declaration parser found too few declarations"
-    for value in values:
-        literal = VAR_REFERENCE.sub("", value)
-        assert '"' not in literal, f"string in: {value}"
-        numbers = re.findall(r"\d*\.?\d+(?:[a-z%]+)?", literal)
-        assert all(number in ("0", "100%") for number in numbers), f"magic value in: {value}"
-        words = set(re.findall(r"[A-Za-z][\w-]*", literal))
-        assert words <= ALLOWED_VALUE_WORDS, f"literal {sorted(words - ALLOWED_VALUE_WORDS)} in: {value}"
-    for match in re.finditer(r"font-family:\s*([^;}]+)", rules):
-        assert re.fullmatch(r"var\(--font-[\w-]+\)", match.group(1).strip()), match.group(0)
-    assert not re.search(r"(?<![\w-])font:", rules)
-    markup = _markup()
+    assert page_style.tokens_only_problems(SHEET, allowed_words=ALLOWED_VALUE_WORDS, min_declarations=61) == []
     for forbidden in ('fill=', 'stroke=', "style=", "color=", "<style", "onclick"):
-        assert forbidden not in markup, forbidden
-    for svg in re.findall(r"<svg\b.*?</svg>", markup, re.S):
-        for name, _ in re.findall(r'([\w:-]+)="([^"]*)"', svg):
-            assert name in SVG_ATTRIBUTES, f"SVG attribute {name}"
+        assert forbidden not in MARKUP, forbidden
+    assert page_style.svg_attribute_problems(MARKUP, SVG_ATTRIBUTES) == []
 
 
 def test_token_block_holds_only_tokens() -> None:
-    assert _root_block().strip().endswith(";"), "every token ends with a semicolon"
-    for declaration in _root_block().split(";"):
-        if not declaration.strip():
-            continue
-        name, value = (part.strip() for part in declaration.split(":", 1))
-        if name == "color-scheme":
-            assert value == "light"
-            continue
-        assert name.startswith("--"), f"{name} in the token block"
-        if name.startswith("--font-") and not name.startswith("--font-size"):
-            assert FONT_STACK.fullmatch(value), f"{name}: {value}"
-        elif name.startswith("--glyph-"):
-            assert GLYPH_TOKEN.fullmatch(value), f"{name}: {value}"
-        else:
-            assert TOKEN_VALUE.fullmatch(value), f"{name}: {value}"
+    assert page_style.token_block_problems(SHEET, token_value=TOKEN_VALUE) == []
 
 
 def test_tokens_are_defined_once() -> None:
-    definitions = TOKEN.findall(_root_block())
-    names = [name for name, _ in definitions]
-    assert len(names) == len(set(names))
-
-    literals = [value.strip() for _, value in definitions if not VAR_REFERENCE.fullmatch(value.strip())]
-    colours = [value.lower() for value in literals if HEX_COLOUR.fullmatch(value)]
-    assert len(colours) == len(set(colours))
-    stacks = [value for value in literals if "," in value]
-    assert len(stacks) == len(set(stacks))
-    by_value: dict[str, set[str]] = {}
-    for name, value in definitions:
-        if not VAR_REFERENCE.fullmatch(value.strip()):
-            by_value.setdefault(value.strip(), set()).add(name)
-    shared = {value: names for value, names in by_value.items() if len(names) > 1}
-    assert shared == SHARED_LITERALS, shared
-    steps = [_rem_to_px(value.strip()) for name, value in definitions if re.fullmatch(r"--space-\d+", name)]
+    assert page_style.defined_once_problems(SHEET, SHARED_LITERALS) == []
+    definitions = page_style.TOKEN.findall(SHEET.root_block())
+    steps = [page_style.rem_to_px(value.strip()) for name, value in definitions if re.fullmatch(r"--space-\d+", name)]
     assert steps == sorted(set(steps)) and len(steps) >= 6
 
 
 def test_every_token_is_used() -> None:
-    used = set(VAR_REFERENCE.findall(_css()))
-
-    unused = set(_tokens()) - used
-    assert unused == set(RESERVED_TOKENS), f"unused tokens: {sorted(unused - set(RESERVED_TOKENS))}"
+    assert page_style.unused_token_problems(SHEET, RESERVED_TOKENS) == []
 
 
 def test_every_token_used_is_defined() -> None:
-    used = set(VAR_REFERENCE.findall(_css()))
-
-    assert used
-    assert used <= set(_tokens())
+    assert page_style.undefined_token_problems(SHEET) == []
 
 
 def test_page_has_no_pure_white_black_or_old_colours() -> None:
@@ -939,107 +772,108 @@ def test_page_has_no_pure_white_black_or_old_colours() -> None:
     for name, page in _pages().items():
         for colour in old:
             assert colour not in page.lower(), (name, colour)
-    assert not PURE_WHITE_OR_BLACK.search(_css())
-    assert [name for name, value in _tokens().items() if value == "var(--asmbly-purple)"] == ["--logo-colour"]
-    assert "var(--asmbly-purple)" not in _rules_after_root()
+    assert not page_style.PURE_WHITE_OR_BLACK.search(SHEET.css)
+    assert [name for name, value in SHEET.tokens().items() if value == "var(--asmbly-purple)"] == ["--logo-colour"]
+    assert "var(--asmbly-purple)" not in SHEET.rules_after_root()
 
 
 def test_ceramics_is_the_accent() -> None:
-    tokens = _tokens()
+    tokens = SHEET.tokens()
     assert tokens["--accent"] == "var(--ceramics)"
-    assert _colour("--accent-strong") == _colour("--ceramics-shade")
-    assert _colour("--table-head-bg") == _colour("--ceramics-20")
-    assert "background: var(--accent)" in _rule(".brand-band")
-    assert "background: var(--accent-strong)" in _rule(".reload-button")
-    assert "background: var(--table-head-bg)" in _rule("th")
-    assert "color: var(--accent-strong)" in _rule(".task-id")
+    assert SHEET.colour("--accent-strong") == SHEET.colour("--ceramics-shade")
+    assert SHEET.colour("--table-head-bg") == SHEET.colour("--ceramics-20")
+    assert "background: var(--accent)" in SHEET.rule(".brand-band")
+    assert "background: var(--accent-strong)" in SHEET.rule(".reload-button")
+    assert "background: var(--table-head-bg)" in SHEET.rule("th")
+    assert "color: var(--accent-strong)" in SHEET.rule(".task-id")
 
 
 @pytest.mark.parametrize("foreground,background,minimum", CONTRAST_PAIRS)
 def test_colour_pairs_meet_contrast(foreground: str, background: str, minimum: float) -> None:
-    assert _contrast(_colour(foreground), _colour(background)) >= minimum
+    assert page_style.contrast_problems(SHEET, [(foreground, background, minimum)]) == []
 
 
 def test_band_text_is_large() -> None:
     """The band's h1 is large text at every width, so 3:1 is its minimum (README Decision 4)."""
-    tokens = _tokens()
-    assert _rem_to_px(tokens["--font-size-h1"]) >= 24
+    tokens = SHEET.tokens()
+    assert page_style.rem_to_px(tokens["--font-size-h1"]) >= 24
     assert int(tokens["--weight-heading"]) >= 700
-    assert "font-size: var(--font-size-h1)" in _rule(".brand-band h1")
-    assert "font-weight: var(--weight-heading)" in _rule("h1")
-    for media, selectors, body in _rules():
+    assert "font-size: var(--font-size-h1)" in SHEET.rule(".brand-band h1")
+    assert "font-weight: var(--weight-heading)" in SHEET.rule("h1")
+    for media, selectors, body in SHEET.rules():
         if media:
             assert not any("h1" in selector for selector in selectors), selectors
             assert "font-size" not in body, selectors
 
 
 def test_headings_are_bold_and_larger_than_body() -> None:
-    tokens = _tokens()
-    body = _rem_to_px(tokens["--font-size-body"])
-    assert _rem_to_px(tokens["--font-size-h2"]) >= 1.25 * body
-    assert _rem_to_px(tokens["--font-size-h1"]) >= 1.25 * body
+    tokens = SHEET.tokens()
+    body = page_style.rem_to_px(tokens["--font-size-body"])
+    assert page_style.rem_to_px(tokens["--font-size-h2"]) >= 1.25 * body
+    assert page_style.rem_to_px(tokens["--font-size-h1"]) >= 1.25 * body
     assert int(tokens["--weight-heading"]) >= 700
-    heading_rule = _rule("h2")
+    heading_rule = SHEET.rule("h2")
     assert "font-weight: var(--weight-heading)" in heading_rule
     assert "font-family: var(--font-heading)" in heading_rule
 
 
 def test_drop_off_ids_are_bold_whole_and_at_least_body_size() -> None:
     """Members copy the ID onto a slip: it is bold, at least body size, and never split (#133)."""
-    tokens = _tokens()
-    rule = _rule(".task-id")
+    tokens = SHEET.tokens()
+    rule = SHEET.rule(".task-id")
     assert "font-weight: var(--weight-heading)" in rule and int(tokens["--weight-heading"]) >= 700
     assert "font-size: var(--font-size-id)" in rule
-    assert _rem_to_px(tokens["--font-size-id"]) >= _rem_to_px(tokens["--font-size-body"])
+    assert page_style.rem_to_px(tokens["--font-size-id"]) >= page_style.rem_to_px(tokens["--font-size-body"])
     assert "white-space: nowrap" in rule
 
 
 def test_reload_button_is_a_44px_target_with_visible_focus() -> None:
-    rule = _rule(".reload-button")
+    rule = SHEET.rule(".reload-button")
     assert "min-height: var(--tap-target)" in rule and "min-width: var(--tap-target)" in rule
-    assert _rem_to_px(_tokens()["--tap-target"]) >= 44
-    assert "outline: var(--focus-width) solid var(--focus)" in _rule(".reload-button:focus-visible")
-    assert "outline-offset: var(--focus-offset)" in _rule(".reload-button:focus-visible")
-    assert float(_tokens()["--focus-width"].removesuffix("px")) >= 2
-    assert not re.search(r"outline:\s*(none|0)\b", _css())
+    assert page_style.rem_to_px(SHEET.tokens()["--tap-target"]) >= 44
+    assert "outline: var(--focus-width) solid var(--focus)" in SHEET.rule(".reload-button:focus-visible")
+    assert "outline-offset: var(--focus-offset)" in SHEET.rule(".reload-button:focus-visible")
+    assert float(SHEET.tokens()["--focus-width"].removesuffix("px")) >= 2
+    assert not re.search(r"outline:\s*(none|0)\b", SHEET.css)
 
 
 def test_hover_only_where_hover_exists() -> None:
-    assert [query.strip() for query in re.findall(r"@media([^{]*)\{", _css())] == [HOVER_MEDIA]
-    assert "background: var(--row-hover-bg)" in _rule("tbody tr:hover", HOVER_MEDIA)
-    assert "background: var(--accent-hover)" in _rule(".reload-button:hover", HOVER_MEDIA)
-    assert not [selectors for media, selectors, _ in _rules() if media != HOVER_MEDIA and any(":hover" in s for s in selectors)]
+    hover = page_style.HOVER_MEDIA
+    assert [query.strip() for query in re.findall(r"@media([^{]*)\{", SHEET.css)] == [hover]
+    assert "background: var(--row-hover-bg)" in SHEET.rule("tbody tr:hover", hover)
+    assert "background: var(--accent-hover)" in SHEET.rule(".reload-button:hover", hover)
+    assert not [selectors for media, selectors, _ in SHEET.rules() if media != hover and any(":hover" in s for s in selectors)]
 
 
 def test_table_text_wraps_and_page_does_not_scroll_sideways() -> None:
     # A cell's text wraps anywhere, so no name widens the page.
-    assert "overflow-wrap: anywhere" in _rule("td")
+    assert "overflow-wrap: anywhere" in SHEET.rule("td")
     # Headers wrap between words, so "Submitted" keeps the time column wide enough for the
     # date in the small size; the time ("2023-12-31 18:00:00&nbsp;CST") wraps only at its
     # one plain space, between the date and the time.
-    assert "overflow-wrap" not in _rule("th")
-    time = _rule("td:nth-child(3)")
+    assert "overflow-wrap" not in SHEET.rule("th")
+    time = SHEET.rule("td:nth-child(3)")
     assert "overflow-wrap: normal" in time and "font-size: var(--font-size-small)" in time
-    nowrap = [selectors for _, selectors, body in _rules() if "white-space: nowrap" in body]
+    nowrap = [selectors for _, selectors, body in SHEET.rules() if "white-space: nowrap" in body]
     assert nowrap == [[".task-id"]]
-    widths = set(re.findall(r"(?<![\w-])width:\s*([^;]+);", _rules_after_root()))
+    widths = set(re.findall(r"(?<![\w-])width:\s*([^;]+);", SHEET.rules_after_root()))
     assert widths <= {"100%", "auto"}, widths
-    assert "width: 100%" in _rule("table")
-    assert not re.search(r"overflow(-x)?:\s*hidden", _css())
-    assert "max-width: 100%" in _rule(".logo")
+    assert "width: 100%" in SHEET.rule("table")
+    assert not re.search(r"overflow(-x)?:\s*hidden", SHEET.css)
+    assert "max-width: 100%" in SHEET.rule(".logo")
 
 
 def test_error_box_differs_beyond_colour() -> None:
-    assert "border-left: var(--border-width-accent) solid var(--error-edge)" in _rule(".error-box")
-    assert "background: var(--error-bg)" in _rule(".error-box") and "color: var(--text)" in _rule(".error-box")
-    glyph = _rule(".error-box h2::before")
+    assert "border-left: var(--border-width-accent) solid var(--error-edge)" in SHEET.rule(".error-box")
+    assert "background: var(--error-bg)" in SHEET.rule(".error-box") and "color: var(--text)" in SHEET.rule(".error-box")
+    glyph = SHEET.rule(".error-box h2::before")
     assert "content: var(--glyph-error)" in glyph and "color: var(--error-edge)" in glyph
-    assert GLYPH_TOKEN.fullmatch(_tokens()["--glyph-error"])
+    assert page_style.GLYPH_TOKEN.fullmatch(SHEET.tokens()["--glyph-error"])
 
 
 def test_icon_and_logo_are_tokens_and_meet_the_logo_minimum() -> None:
     """The icon and logo take their colour from the text colour; the logo is at least 50px tall."""
-    icon = _rule(".ceramics-icon")
+    icon = SHEET.rule(".ceramics-icon")
     assert "height: var(--icon-height)" in icon and "fill: currentColor" in icon
-    assert "height: var(--logo-height)" in _rule(".logo")
-    assert _rem_to_px(_tokens()["--logo-height"]) >= 50
+    assert "height: var(--logo-height)" in SHEET.rule(".logo")
+    assert page_style.rem_to_px(SHEET.tokens()["--logo-height"]) >= 50

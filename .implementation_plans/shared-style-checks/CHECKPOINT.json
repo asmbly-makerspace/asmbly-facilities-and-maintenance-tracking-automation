@@ -1,0 +1,187 @@
+{
+  "plan_name": "shared-style-checks",
+  "feature_branch": "feature/shared-style-checks",
+  "epic": 136,
+  "stories": [
+    137
+  ],
+  "status": "complete",
+  "phases": [
+    {
+      "id": 1,
+      "title": "Shared style-check module",
+      "file": ".implementation_plans/shared-style-checks/phase-1-shared-style-check-module.md",
+      "status": "done",
+      "pre_sha": "b84d084",
+      "review_rounds": 2,
+      "checks": {
+        "pytest": "1847 passed, 0 skipped (1831 + 16 new)",
+        "cfn_lint": "4 pre-existing W3005 warnings only",
+        "sam_validate": "pass",
+        "sam_build": "pass; page_style absent from .aws-sam/build (positive control found)",
+        "test_counts": {
+          "kiln": 73,
+          "photo": 113,
+          "suite": 1847
+        }
+      },
+      "squashed_sha": "00ada2c"
+    }
+  ],
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1847 passed, 8 subtests, 0 skipped",
+      "cfn_lint": "4 W3005 warnings, byte-identical to origin/stage",
+      "sam_validate": "pass",
+      "sam_build": "pass"
+    },
+    "preexisting": [
+      "cfn-lint 4 W3005 warnings in template.yaml (582, 592, 605 x2)"
+    ],
+    "cross_checks": "no template/code/config change; page_style absent from .aws-sam/build (19 other test files present); kiln 73=73, photo 113=113 test IDs; passes alone, together, in either order and after layers/common tests; tests package always resolves to repo-root tests/; ruff F clean",
+    "skipped": [],
+    "commits": 0
+  },
+  "final_pr_number": 147,
+  "admin_actions": [],
+  "events": [
+    {
+      "ts": "2026-10-17",
+      "type": "preflight",
+      "python": "3.12.11",
+      "sam": "1.166.2",
+      "gh": "ok"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "branch",
+      "name": "feature/shared-style-checks",
+      "base": "b96cac3"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "item": "Work is story #137 only (epic #136 has #137, #138, #139). Plan scoped to #137 so the PR covers one story; #138 and #139 get their own runs. Plan name shared-style-checks."
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "planned",
+      "commit": "b84d084",
+      "decisions": 11,
+      "notes": "One phase (size L): helper tests/page_style.py + tests/test_page_style.py + empty tests/__init__.py; imported as 'from tests import page_style'. Baseline: kiln 73 tests, photo test_lambda_function.py 113, suite 1831."
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": "plan",
+      "items": [
+        "Every function's CodeUri packages its tests/ folder into the Lambda zip, and CommonLayer's ContentUri layers/common/ packages layers/common/tests and layers/common/python/tests: test code ships to Lambda today (pre-existing; README Related work)"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 1,
+      "review_rounds": 2,
+      "pytest": "1847 passed"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 1,
+      "items": [
+        "No split: ~1,440-line diff, but ~515 lines are deleted duplicates and ~250 mechanical renames; designing the API against both pages at once (plan Decision 2) holds",
+        "Shared checks return every problem rather than asserting (pytest doesn't rewrite asserts outside test modules)",
+        "Deliberate tightenings, all passing today: photo logo uses kiln's stricter forbidden list; from_page requires exactly one style block on the photo page; unbalanced quote reported on photo page; <style> inside inline SVG reported on kiln page",
+        "Mutation check: 23 page mutations (11 kiln, 12 photo) each fail their named test; pages restored",
+        "Test IDs unchanged: kiln 73, photo 113 (comm -23 empty); suite is a superset of the 1831 baseline",
+        "Prep NEEDS_REVISION: amendments applied in the phase doc"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "owner_decision",
+      "phase": 1,
+      "item": "CLAUDE.md map row not added (agent config): proposed '| Style checks for the HTML pages | tests/page_style.py | Its tests in tests/test_page_style.py |' for the owner to add or decline"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 1,
+      "items": [
+        "page_style token_block_problems accepts a single word as a --font-* stack (e.g. --font-x: red); inherited from both old copies",
+        "Stylesheet.rules() splits selector lists on commas inside :is()/:not(a, b); neither page uses these today"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 1,
+      "sha": "00ada2c"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "integration_start",
+      "pre_sha": "00ada2c"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "docs_start",
+      "pre_sha": "00ada2c"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "docs_done",
+      "regression_check": "no file shrank"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "manual_qa",
+      "steps": 14
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "pr",
+      "number": 147,
+      "result": "ready-for-review",
+      "checks": "green",
+      "rounds": 0,
+      "closes": [
+        137
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "complete"
+    }
+  ],
+  "docs": {
+    "updated": [
+      "docs/CONTRIBUTING.md (267->271)"
+    ],
+    "verified_unchanged": [
+      "kiln viewer README",
+      "class photo upload page README",
+      "docs/README.md"
+    ],
+    "regression": false
+  },
+  "manual_qa": {
+    "stories_covered": [
+      137
+    ],
+    "stories_without_surface": [],
+    "total_steps": 14
+  }
+}
