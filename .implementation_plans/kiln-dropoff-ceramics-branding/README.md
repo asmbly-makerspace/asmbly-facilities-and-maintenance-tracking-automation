@@ -61,7 +61,7 @@ Phase 1 lands both stories: its pull request says `Closes #133`, `Closes #134` a
 
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [Ceramics-branded page shell, tokens and tests](phase-1-ceramics-page-shell.md) | lambda, docs | M | [ ] Pending |
+| 1 | [Ceramics-branded page shell, tokens and tests](phase-1-ceramics-page-shell.md) | lambda, docs | M | [x] Complete |
 
 ## Dependencies
 

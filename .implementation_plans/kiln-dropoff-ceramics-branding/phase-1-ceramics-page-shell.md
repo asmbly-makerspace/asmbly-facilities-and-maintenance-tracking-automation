@@ -10,7 +10,7 @@ estimated_size: M
 
 # Phase 1: Ceramics-branded page shell, tokens and tests
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-17 on branch feature/kiln-dropoff-ceramics-branding
 
 ## Required reading
 
@@ -28,7 +28,7 @@ estimated_size: M
 - `functions/ceramics/kiln_dropoff_recent_entries_viewer/README.md`, "Errors and security
   headers" and "Testing".
 - The reference: `functions/classes/class_photo_upload_page/page.html` (the `:root`
-  token block, lines 8–113; the base rules after it; the inline logo `<svg class="logo"
+  token block, lines 12–114; the base rules after it; the inline logo `<svg class="logo"
   …>` at line 258) and
   `functions/classes/class_photo_upload_page/tests/test_lambda_function.py` lines
   330–760 (the regexes, `_style`, `_css`, `_root_block`, `_tokens`, `_colour`, `_mix`,
@@ -85,8 +85,10 @@ def _style_hash(page: str) -> str:
 ```
 
 - `_style_hash` finds exactly one `<style>` block (raise `ValueError` at import if there
-  are zero or several, so a broken `page.html` fails the deploy's first request loudly
-  rather than serving an unstyled page), takes its text exactly as written (no
+  are zero or several, so a broken `page.html` makes every request fail at import, which
+  API Gateway answers with its bare 502, rather than serving an unstyled page; this does
+  **not** fail the deploy itself, so the tests are the guard: say so in the code comment
+  and the README), takes its text exactly as written (no
   stripping: the browser hashes the element's text content byte for byte), and returns
   `"'sha256-" + base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode() + "'"`.
 - `RESPONSE_HEADERS` keeps `Content-Type`, `X-Content-Type-Options` and `Cache-Control`
@@ -189,7 +191,15 @@ Type and sizes (same names and stacks as the photo page where they mean the same
 `--gutter`, `--radius`, `--content-max-width: 50rem; --icon-height: 3rem;
 --logo-height: 2.5rem; --border-width: 1px; --border-width-accent: 4px;
 --focus-width: 3px; --focus-offset: 2px; --tap-target: 2.75rem;`
-Add a token only when a rule uses it (a test checks every token is used).
+Add a token only when a rule uses it (a test checks every token is used). Two
+consequences (prep): `--lasers` is used only as the parent of `--lasers-shade` and
+`--lasers-20`, so the copied `test_every_token_is_used` exempts it in a
+`RESERVED_TOKENS`-style dict with that reason; and `--space-1` and
+`--line-height-heading` are dropped unless a rule uses them (an `h1, h2 { line-height:
+var(--line-height-heading) }` rule is fine). The copied `test_tokens_are_defined_once`
+needs its own `SHARED_LITERALS` for this page (`1rem`: `--font-size-body`, `--space-4`;
+`1.25rem`: `--font-size-h2`, `--font-size-id`, or make `--font-size-id:
+var(--font-size-h2)`), each with a reason.
 
 ### Rules (tokens only)
 
@@ -211,7 +221,11 @@ Add a token only when a rule uses it (a test checks every token is used).
   `--border-width solid --line`, `overflow-wrap: anywhere`, no `white-space: nowrap`.
   `th`: background `--table-head-bg`, colour `--text`, `--font-heading`,
   `--weight-heading`. `.task-id`: `--font-mono`, `--font-size-id`, `--weight-heading`,
-  colour `--accent-strong`. `.no-tasks`: centred, colour `--text`.
+  colour `--accent-strong`, **`white-space: nowrap`** (prep: members copy the ID onto a
+  slip, so it must never split; with `overflow-wrap: anywhere` on every cell the table's
+  auto layout would break `KO-FAKE-001` mid-ID at 320px. IDs are short ClickUp-generated
+  values, so one line never widens the page; the name column wraps, the date wraps at
+  its space). `.no-tasks`: centred, colour `--text`.
 - `@media (hover: hover) { tbody tr:hover { background: var(--row-hover-bg); } … }`:
   hover looks only where hover exists.
 - `.reload-section`: centred. `.reload-button`: `display: inline-flex`,
@@ -224,8 +238,10 @@ Add a token only when a rule uses it (a test checks every token is used).
 - `.error-box`: background `--error-bg`, colour `--text`,
   `border-left: var(--border-width-accent) solid var(--error-edge)`, radius `--radius`,
   padding `--space-4`; `.error-box h2`: `--font-size-h2`, `--weight-heading`, colour
-  `--text`, margin; `.error-box h2::before { content: var(--glyph-error); … }` so the
-  error differs by more than colour.
+  `--text`, margin; `.error-box h2::before { content: var(--glyph-error); color:
+  var(--error-edge); … }` so the error differs by more than colour. Browsers without the
+  `content: "…" / ""` syntax (before iOS Safari 17.4, Firefox 128) drop the glyph; the
+  edge and the heading still mark the error (accepted; say so in the README).
 - `.site-footer`: centred, padding `--space-6 --gutter`. `.logo`: height
   `--logo-height`, `width: auto`, `max-width: 100%`, `fill: currentColor`, colour
   `--logo-colour`.
@@ -246,6 +262,7 @@ Add a token only when a rule uses it (a test checks every token is used).
 | `--on-accent` | `--accent-hover` | Refresh button, hover | 4.5 | 7.53 |
 | `--text` | `--error-bg` | error box text | 4.5 | 11.79 |
 | `--error-edge` | `--page-bg` | error box edge | 3.0 | 5.60 |
+| `--error-edge` | `--error-bg` | error box edge and glyph (h2, 20px bold: large text) | 3.0 | 4.27 |
 | `--focus` | `--page-bg` | focus outline | 3.0 | 7.53 |
 | `--logo-colour` | `--page-bg` | Asmbly logo | 3.0 | 11.30 |
 
@@ -290,8 +307,11 @@ New:
   is present in every page, with the same `viewBox` and path count as the photo page's
   logo; `.logo` is coloured by `--logo-colour`.
 - `test_error_page_shares_the_shell`: the error page contains the same band, icon, logo
-  and reload button markup as the list page (compare the text before `__MAIN_CONTENT__`
-  and after it in the template with both rendered pages).
+  and reload button markup as the list page. Split the template on **both** placeholders
+  into its three fixed parts (before `__MAIN_CONTENT__`, between it and
+  `__RELOAD_TEXT__`, after `__RELOAD_TEXT__`) and check each part appears in both rendered
+  pages (the reload text differs between them, so the text after `__MAIN_CONTENT__` can't
+  be compared whole).
 - `test_brand_tokens_match_the_guide`; `test_derived_tokens_follow_the_formula`
   (parametrized: each derived token, its two parents and its share).
 - `test_styles_use_tokens_only`; `test_token_block_holds_only_tokens`;
@@ -301,7 +321,9 @@ New:
 - `test_page_has_no_pure_white_black_or_old_colours`: no `#fff`, `#ffffff`, `#000`,
   `#000000`, `white`, `black`, `#27ae60`, `#229954`, `#2980b9`, `#e8ecef`, `#c0392b`,
   `#e74c3c`, `#fbeae5`, `#333`, `#555` in any page; `--asmbly-purple` is used only by
-  `--logo-colour`.
+  `--logo-colour`. Match `white` and `black` with the photo page's `PURE_WHITE_OR_BLACK`
+  boundary regex on the CSS only, so the token names `--asmbly-white` and
+  `--midnight-black` don't match.
 - `test_ceramics_is_the_accent`: `--accent` resolves to `--ceramics`; `.brand-band`,
   `.reload-button`, `th` and `.task-id` use `--accent`, `--accent-strong` or
   `--table-head-bg`.
@@ -314,8 +336,14 @@ New:
 - `test_hover_only_where_hover_exists`: every `:hover` selector is inside
   `@media (hover: hover)`.
 - `test_table_text_wraps_and_page_does_not_scroll_sideways`: `th, td` have
-  `overflow-wrap: anywhere`; no `white-space: nowrap`, no fixed `width` other than
-  `100%`, no `overflow(-x): hidden` on `html`, `body`, `main`, `table`.
+  `overflow-wrap: anywhere`; `white-space: nowrap` only on `.task-id` (nowhere else), no
+  fixed `width` other than `100%`, no `overflow(-x): hidden` on `html`, `body`, `main`,
+  `table`.
+- `test_drop_off_ids_are_bold_whole_and_at_least_body_size` (#133 AC4): `.task-id` uses
+  `--weight-heading` (≥ 700), `--font-size-id` ≥ `--font-size-body`, and
+  `white-space: nowrap`.
+- `test_long_name_is_in_a_wrapping_cell` (#133 AC4): a task with a 60-character name
+  (one word, no spaces) renders inside a plain `<td>` (no `nowrap` class), escaped.
 - `test_error_box_differs_beyond_colour`: the edge rule, the glyph rule and the
   `--glyph-error` token.
 - `test_page_with_50_dropoffs_is_under_60kb`.
@@ -354,14 +382,17 @@ No template change, so `cfn-lint` and `sam validate` are not required (run them 
 if cheap). Locally, render the three pages to files in the scratchpad
 (`generate_html_page([...fixture...])`, `generate_html_page([])`,
 `generate_error_page()`) and open them in a browser at 320px, 375px, 768px and desktop
-width and at 200% zoom: no sideways scroll, wrapped names, sharp icon and logo. A local
+width and at 200% zoom: no sideways scroll, wrapped names, IDs on one line; and at 400%
+zoom (#133 AC1): sharp icon and logo. A local
 file has no CSP header, so CSP is checked on stage.
 
 After the stage deploy, open `<FacilitiesApiUrl of AsmblyFacilitiesMaintTrackingStack-stage>/KilnOpsDropoffRecentEntriesViewer`
 on a phone (or DevTools at 320px): the band, icon, table and Refresh button look as
 described; Refresh reloads; DevTools shows the CSP header as planned, **no CSP
-violation** in the console, and the network panel shows only the page request (a
-`/favicon.ico` request blocked or 403 is pre-existing and not caused by this change).
+violation** in the console other than the browser's own `/favicon.ico` request (Firefox
+reports it as blocked by `default-src 'none'`; that, or a 403 for it, is pre-existing
+and not caused by this change; the QA doc names it as the one allowed exception), and
+the network panel shows only the page request.
 The stage page lists real members' names: don't screenshot the rows (crop them, or use
 an empty or error state). Prod changes only after `/promote`.
 
@@ -369,7 +400,73 @@ an empty or error state). Prod changes only after `/promote`.
 
 None.
 
+## Prep amendments (2026-10-17, inside /offshore)
+
+Applied above: `.task-id` stays on one line (`white-space: nowrap`, allowed only there);
+`--lasers` exempted from the "every token used" test, `--space-1` and
+`--line-height-heading` only if used, this page's own `SHARED_LITERALS`; the import-time
+`ValueError` is described as a 502 per request, not a failed deploy; the error glyph's
+colour and its contrast pair; the shell test splits on both placeholders; the
+white/black check uses the boundary regex on the CSS; two tests for #133 AC4 (IDs bold,
+whole, at least body size; a 60-character name in a wrapping cell); 400% zoom and the
+favicon exception in Verification.
+
+Declined: `width`/`height` attributes on the SVGs as an unstyled fallback. The style
+block can only be blocked by a hash mismatch, which the hash is computed from the same
+file at import to prevent and `test_csp_style_hash_matches_served_style` checks; and
+the attributes would write the icon and logo sizes a second time outside `:root`,
+against the Design rule.
+
 ## Hand-off
 
-Fill in when done: the final token list, the CSP as served, any deviation from this
-document and why.
+**Delivered:** `page.html` (the shell, one `<style>` block, inline ceramics icon and
+Asmbly logo), `lambda_function.py` (`PAGE_PATH`, `PAGE_TEMPLATE`, `_style_hash`,
+placeholder rendering; `generate_html_page`, `generate_error_page`, `html_response` and
+`lambda_handler` behave as before), 65 kiln tests, and the function README ("Look and
+brand tokens", CSP, Testing). No template, config, layer or deploy-role change; no admin
+action.
+
+**CSP as served** (the hash changes with every edit of the style block and is recomputed
+at import): `default-src 'none'; style-src 'sha256-TIozlXrCOPM2b2IDoFptHTTXYtY9fgzkXALXEKXi+sw='; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`.
+
+**Final tokens:** brand `--asmbly-purple`, `--asmbly-white`, `--midnight-black`,
+`--ceramics`, `--lasers`; derived `--ceramics-shade`, `--ceramics-shade-60`,
+`--ceramics-40`, `--ceramics-20`, `--ceramics-10`, `--lasers-shade`, `--lasers-20`;
+semantic `--page-bg`, `--text`, `--accent`, `--on-accent`, `--accent-strong`,
+`--accent-hover`, `--table-head-bg`, `--row-hover-bg`, `--line`, `--focus`,
+`--logo-colour`, `--error-bg`, `--error-edge`, `--glyph-error`; type `--font-body`,
+`--font-heading`, `--font-mono`, `--font-size-body` 1rem, `--font-size-h1` 1.75rem,
+`--font-size-h2` 1.25rem, `--font-size-id` 1.125rem, `--font-size-small` 0.875rem,
+`--line-height`, `--line-height-heading`, `--weight-heading`, `--weight-strong`; size
+`--space-1` … `--space-6`, `--gutter`, `--radius`, `--content-max-width`,
+`--icon-height` 3rem, `--logo-height` 3.5rem, `--border-width`, `--border-width-accent`,
+`--focus-width`, `--focus-offset`, `--tap-target`.
+
+**Deviations, and why:**
+
+- `--logo-height` is 3.5rem (56px), not 2.5rem: the brand guide's minimum logo height is
+  50px (the photo page's `test_logo_meets_brand_minimum`); a test now pins it here too.
+- Table layout, after rendering at a true 320px in headless Chrome: with
+  `overflow-wrap: anywhere` on `th, td`, 1.25rem IDs and `--space-2` side padding, an
+  11-character ID left the name column about 40px wide ("Cust/omer") and the date broke
+  at its hyphens. Now: `overflow-wrap: anywhere` on `td` only (headers wrap between
+  words, so "Submitted" floors the time column); the time cell
+  (`td:nth-child(3)`) is `--font-size-small` with `overflow-wrap: normal`, so it wraps
+  only at its space; cell side padding `--space-1`; `--font-size-id` 1.125rem (still
+  bold and larger than body text, #133 AC4). The tests changed to match.
+- `test_footer_shows_asmbly_logo` pins the logo's viewBox, path count (17) and official
+  icon path rather than reading the photo page's `page.html`, so this function's tests
+  don't depend on a file shared with #114.
+- `test_page_external_urls_are_covered_by_csp` was replaced by
+  `test_pages_load_nothing_from_outside`, and `EXPECTED_CSP` recomputes the hash from
+  `page.html`, as planned.
+
+**Checks:** pytest 1771 passed; `sam build` packages
+`.aws-sam/build/CeramicsStack/KilnDropoffRecentEntriesViewerFunction/page.html`;
+cfn-lint shows only the 4 pre-existing W3005 warnings in the untouched `template.yaml`;
+`sam validate` passes. Local renders at 320px, 375px and 1280px checked (list, empty,
+error). Still for QA on stage: 768px, 200% and 400% zoom, the CSP header and console,
+with no member rows in screenshots.
+
+**Deferred:** times are still shown in UTC (README Decision 14); the photo page's and
+this page's test helpers are duplicated (Decision 11).
