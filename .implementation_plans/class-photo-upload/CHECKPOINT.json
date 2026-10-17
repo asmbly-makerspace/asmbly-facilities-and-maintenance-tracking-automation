@@ -1,0 +1,308 @@
+{
+  "plan_name": "class-photo-upload",
+  "feature_branch": "claude/inspiring-bell-o4i5t9",
+  "epic": 73,
+  "status": "complete",
+  "phases": [
+    {
+      "id": 1,
+      "title": "Class list and file-name rule",
+      "file": "phase-1-class-names.md",
+      "status": "done",
+      "pre_sha": "060129e",
+      "review_rounds": "2 inline + 1 independent (APPROVED, 1 WARN fixed)",
+      "squashed_sha": "425febe"
+    },
+    {
+      "id": 2,
+      "title": "Photo checks",
+      "file": "phase-2-photo-checks.md",
+      "status": "done",
+      "pre_sha": "425febe",
+      "review_rounds": "2 inline + 1 independent (APPROVED, 3 WARNs fixed)",
+      "squashed_sha": "f1a7c81"
+    },
+    {
+      "id": 3,
+      "title": "GitHub App client",
+      "file": "phase-3-github-app-client.md",
+      "status": "done",
+      "pre_sha": "f1a7c81",
+      "review_rounds": "1 inline + 1 independent (APPROVED; 2 hardenings applied)",
+      "squashed_sha": "e8daf15"
+    },
+    {
+      "id": 4,
+      "title": "Pull request flow and dry run",
+      "file": "phase-4-pull-request-flow.md",
+      "status": "done",
+      "pre_sha": "e8daf15",
+      "review_rounds": "3 inline + 1 independent (APPROVED; 2 WARNs + 1 note fixed)",
+      "squashed_sha": "7247336"
+    },
+    {
+      "id": 5,
+      "title": "API function, routes and Cognito authorizer",
+      "file": "phase-5-api-and-infra.md",
+      "status": "done",
+      "pre_sha": "7247336",
+      "review_rounds": "3 inline + 1 independent (APPROVED, no findings)",
+      "squashed_sha": "937e379"
+    },
+    {
+      "id": 6,
+      "title": "The upload page and docs",
+      "file": "phase-6-upload-page.md",
+      "status": "done",
+      "pre_sha": "937e379",
+      "review_rounds": "3 inline + 1 independent (APPROVED, 1 docs WARN fixed)",
+      "squashed_sha": "55f0222"
+    }
+  ],
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1499 passed",
+      "cfn_lint": "4 W3005 warnings, same on origin/stage",
+      "sam_validate": "pass",
+      "sam_build": "pass",
+      "ci_test_job": "1499 passed in a fresh venv"
+    },
+    "preexisting": [
+      "cfn-lint W3005 x4 template.yaml custom-domain DependsOn"
+    ],
+    "commits": 0
+  },
+  "final_pr_number": 110,
+  "admin_actions": [
+    "Create SSM String params (us-east-2) /config/cognito/staff/user-pool-id, /config/cognito/staff/auth-domain, /config/cognito/staff/class-photo-app-client-id before the PR reaches stage.",
+    "Redeploy deploy role stack AsmblyFacilitiesMaintTrackingStack-cicd before the PR reaches stage.",
+    "Create Cognito app client class-photo-upload in the AsmblyMCPs staff pool (public, PKCE code grant, openid; callback/sign-out URLs for prod and stage).",
+    "GitHub org owner: create GitHub App 'Asmbly Class Photos' (Contents RW, Pull requests RW, Metadata R; webhook off; this account only), install on asmbly-classes only, generate private key.",
+    "Store Secrets Manager secret github/class-photo-upload-app (us-east-2) as JSON {app_id, installation_id, private_key}.",
+    "Optional: create epic/story labels and apply to #73 and #104-#109."
+  ],
+  "events": [
+    {
+      "ts": "2026-10-16T23:00:00Z",
+      "type": "env_branch",
+      "detail": "Session requires developing and pushing on claude/inspiring-bell-o4i5t9; used it instead of feature/class-photo-upload. Owner may rename."
+    },
+    {
+      "ts": "2026-10-16T23:00:00Z",
+      "type": "env_tool",
+      "detail": "gh CLI not available in this environment; GitHub operations go through the GitHub MCP tools."
+    },
+    {
+      "ts": "2026-10-16T23:05:00Z",
+      "type": "env_note",
+      "tool": "sam",
+      "detail": "sam CLI was not preinstalled; installed aws-sam-cli 1.169.0 into a scratch venv (not committed). sam validate passes on stage baseline."
+    },
+    {
+      "ts": "2026-10-16T23:40:00Z",
+      "type": "planned",
+      "detail": "Plan commit 060129e; stories #104-#109 as sub-issues of #73; 24 decisions. Decision 7: GET /class-photo-upload page shell has no authorizer (browser navigation can't carry a token); data routes use Cognito authorizer."
+    },
+    {
+      "ts": "2026-10-16T23:41:00Z",
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "ts": "2026-10-17T00:30:00Z",
+      "type": "phase_done",
+      "phase": 1,
+      "pytest": "646 passed"
+    },
+    {
+      "ts": "2026-10-17T00:30:00Z",
+      "type": "env_note",
+      "detail": "Phase subagents have no Agent tool, so /prep, /build and /review ran their sub-reviews inline. The orchestrator adds an independent review-lead pass per phase."
+    },
+    {
+      "ts": "2026-10-17T00:30:00Z",
+      "type": "decision",
+      "phase": 1,
+      "detail": "superseded_images compares extensions case-sensitively (Vite glob ignores .JPG); collision warning plural form; NeonCRMError raised from None."
+    },
+    {
+      "ts": "2026-10-17T00:30:00Z",
+      "type": "decision",
+      "phase": 1,
+      "detail": "Stories #104-#109 lack the story label (label doesn't exist; MCP can't create labels); prep's label rule not treated as a blocker."
+    },
+    {
+      "ts": "2026-10-17T00:32:00Z",
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "ts": "2026-10-17T01:20:00Z",
+      "type": "phase_done",
+      "phase": 2,
+      "pytest": "1250 passed"
+    },
+    {
+      "ts": "2026-10-17T01:20:00Z",
+      "type": "decision",
+      "phase": 2,
+      "detail": "Location data = GPS coordinates (EXIF GPS IFD in IFD0/IFD1/Exif sub-IFD, XMP GPS, in the primary image and up to 16 embedded images/trailers). Reverse-geocoded place names (IPTC City, XMP photoshop:City, LocationCreated) are not checked: owner may want to widen. README Decisions 25-26."
+    },
+    {
+      "ts": "2026-10-17T01:20:00Z",
+      "type": "decision",
+      "phase": 2,
+      "detail": "4 MB = 4 x 1024 x 1024 bytes; 3:2 rule integer 100*|2w-3h| <= 3h (1% tolerance)."
+    },
+    {
+      "ts": "2026-10-17T01:20:00Z",
+      "type": "deferred",
+      "phase": 2,
+      "detail": "Valid-but-rare JPEGs (bytes between segments, DNL height 0, malformed EXIF APP1) are refused as unreadable; note in manual QA."
+    },
+    {
+      "ts": "2026-10-17T01:22:00Z",
+      "type": "phase_start",
+      "phase": 3
+    },
+    {
+      "type": "phase_done",
+      "phase": 3,
+      "pytest": "1297 passed"
+    },
+    {
+      "type": "decision",
+      "phase": 3,
+      "detail": "PyJWT[crypto]==2.15.1 pinned (newest 2.x >= 2 weeks old); function requirements must pin the same. Installation tokens always scoped to one repo + explicit permissions. Branch prefix must end with '/'; GitHubConflict only from create_branch/update_branch/create_pull_request."
+    },
+    {
+      "type": "deferred",
+      "phase": 3,
+      "detail": "cryptography is unpinned transitively (same practice as slack-sdk)."
+    },
+    {
+      "type": "phase_start",
+      "phase": 4
+    },
+    {
+      "type": "phase_done",
+      "phase": 4,
+      "pytest": "1362 passed"
+    },
+    {
+      "type": "decision",
+      "phase": 4,
+      "detail": "Tree and PR description always computed from current main. Repeat upload with open PR: fast-forward commit, second parent = main only if main moved (Decision 27). Branch exists without open PR (merged/closed): force-reset class-photo/ branch onto main and open a new PR; old PR never reopened."
+    },
+    {
+      "type": "decision",
+      "phase": 4,
+      "detail": "User-derived text in PR body in CommonMark-safe code spans; '#'/'@' neutralized in PR title and commit message so a class name can't reference/close issues or mention users."
+    },
+    {
+      "type": "deferred",
+      "phase": 4,
+      "detail": "Known limit: two simultaneous submissions for the same class racing a force-reset can leave the other's description; the loser gets a conflict error."
+    },
+    {
+      "type": "phase_start",
+      "phase": 5
+    },
+    {
+      "type": "phase_done",
+      "phase": 5,
+      "checks": {
+        "pytest": "1457 passed",
+        "cfn_lint": "4 W3005 pre-existing on base, nothing new",
+        "sam_validate": "pass",
+        "sam_build": "pass (non-container)"
+      }
+    },
+    {
+      "type": "decision",
+      "phase": 5,
+      "detail": "Time budget: Neon 4 s x max 8 pages, GitHub 5 s per call, Lambda timeout 25 s; no prod write starts with <8 s left. CLASS_PHOTO_DRY_RUN = !If [IsProd,'false','true'] (fails safe). Handler checks aud (compare_digest) + token_use=id before any secret/Neon read. Oversize base64 refused before decode."
+    },
+    {
+      "type": "decision",
+      "phase": 5,
+      "detail": "Added cognito-idp:DescribeUserPool on the exact staff pool ARN to the deploy role as a precaution (couldn't verify offline whether API Gateway needs it). Consider dropping after the first successful stage deploy."
+    },
+    {
+      "type": "deferred",
+      "phase": 5,
+      "detail": "Pre-existing: template.yaml MethodSettings ResourcePath '/nic/update' probably needs '/~1nic~1update'. Not fixed (out of scope)."
+    },
+    {
+      "type": "phase_start",
+      "phase": 6
+    },
+    {
+      "type": "phase_done",
+      "phase": 6,
+      "checks": {
+        "pytest": "1499 passed",
+        "cfn_lint": "4 W3005 pre-existing",
+        "sam_validate": "pass",
+        "sam_build": "pass",
+        "browser_test": "page JS vs server check_photo parity on 5,062 photos, 0 mismatches; end-to-end page under real CSP 54/54"
+      }
+    },
+    {
+      "type": "decision",
+      "phase": 6,
+      "detail": "NEEDS OWNER ACK: GET /class-photo-upload (static sign-in shell) has no caller check (plan Decision 7), an exception to CLAUDE.md's 'a new route must check its caller'. A browser navigation can't carry a bearer token; the page embeds only public values (hosted-UI host, public client ID). Both data routes use the Cognito authorizer plus aud/token_use checks. Independent review judged it acceptable."
+    },
+    {
+      "type": "decision",
+      "phase": 6,
+      "detail": "ID token kept in sessionStorage on the shared facilities.asmbly.org origin (#74 already escapes the kiln page). Sign out returns straight to hosted sign-in. 'README.md Core Services' interpreted as docs/README.md (no root README)."
+    },
+    {
+      "type": "deferred",
+      "phase": 6,
+      "detail": "Confirm on stage that requestContext.path is /class-photo-upload on the custom domain (page answers 400 otherwise)."
+    },
+    {
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "type": "docs",
+      "updated": [
+        "docs/Deploying.md 153->274",
+        "docs/README.md",
+        "both function READMEs"
+      ],
+      "admin_procedure": "docs/Deploying.md#one-time-admin-setup-class-photo-upload"
+    },
+    {
+      "type": "manual_qa",
+      "stories_covered": [
+        104,
+        105,
+        106,
+        107,
+        108,
+        109
+      ],
+      "total_steps": 37
+    },
+    {
+      "type": "pr_opened",
+      "pr": 110
+    },
+    {
+      "type": "complete"
+    }
+  ],
+  "stories": [
+    104,
+    105,
+    106,
+    107,
+    108,
+    109
+  ]
+}

@@ -9,3 +9,4 @@ pytest-cov
 pytest-env
 pyyaml
 tzdata
+PyJWT[crypto]==2.15.1

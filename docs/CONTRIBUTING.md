@@ -124,9 +124,15 @@ closest example of how new code should look.
    - a `Project` tag
 
    If the nested template gets a new parameter, pass that parameter from `template.yaml`.
-3. **Deploy role.** Add every new resource name to both `GitHubDeployPolicystage` and
-   `GitHubDeployPolicyprod` in `template-cicd.yaml`. In the pull request's **Risk** section,
-   say that an admin must redeploy that stack before the change reaches `stage`
+3. **Deploy role.** Add every new resource name to `template-cicd.yaml` for both stages
+   (leave a stage out only when the resource doesn't exist there): functions, layers and
+   log groups to `GitHubDeployPolicystage` and `GitHubDeployPolicyprod`; tables, SSM
+   parameters and EventBridge rules to `GitHubDeployPolicystageData` and
+   `GitHubDeployPolicyprodData`. Each policy must stay under IAM's 6,144-character limit,
+   which `tests/test_templates.py` checks
+   ([What the Deployer Role Can Do](Deploying.md#what-the-deployer-role-can-do)). In the
+   pull request's **Risk** section, say that an admin must redeploy that stack before the
+   change reaches `stage`
    ([How to Manage the Deployer Role](Deploying.md#how-to-manage-the-deployer-role)).
 4. **Configuration and secrets.**
    - Channel, list, and field IDs go in `configs/*.json`. The templates turn that file

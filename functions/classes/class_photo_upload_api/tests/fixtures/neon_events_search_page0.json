@@ -1,0 +1,26 @@
+{
+  "searchResults": [
+    {
+      "Event ID": "90001",
+      "Event Name": "Intro to Forging w/ Instructor A"
+    },
+    {
+      "Event ID": "90002",
+      "Event Name": "Intro to Forging w/ Instructor B"
+    },
+    {
+      "Event ID": "90003",
+      "Event Name": "Ceramics: Glazing Workshop w/ Instructor C"
+    },
+    {
+      "Event ID": "90004",
+      "Event Name": "  Woodshop Safety  "
+    }
+  ],
+  "pagination": {
+    "currentPage": 0,
+    "pageSize": 4,
+    "totalPages": 2,
+    "totalResults": 7
+  }
+}

@@ -104,8 +104,12 @@ assumptions for the user to confirm.
    a new helper that exists.
 3. **Wiring.** Read the parts of `template.yaml` the feature touches: the API paths, the
    invoke permissions, the parameters passed to the nested stack, the SSM parameters.
-4. **The deploy role.** Read `template-cicd.yaml` (`GitHubDeployPolicystage`,
-   `GitHubDeployPolicyprod`) to see which names it already allows.
+4. **The deploy role.** Read `template-cicd.yaml` (`GitHubDeployPolicystage` and
+   `GitHubDeployPolicyprod` for functions, layers and log groups;
+   `GitHubDeployPolicystageData` and `GitHubDeployPolicyprodData` for tables, SSM
+   parameters and rules) to see which names it already allows. Each policy must stay
+   under IAM's 6,144-character limit, which `tests/test_templates.py` checks
+   (`docs/Deploying.md`, "Size limit").
 5. **Other plans and issues.** Read the README of any plan in `.implementation_plans/`
    that touches the same files, and search open issues (`gh issue list --search
    "<keywords>"`). If a plan for this feature exists, ask whether to extend it or start

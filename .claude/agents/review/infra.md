@@ -49,10 +49,16 @@ Your files: `template.yaml`, `templates/*.yaml`, `template-cicd.yaml`, `samconfi
 
 ### The deploy role, `template-cicd.yaml` (BLOCK)
 
-- A new named resource in any template has its name in both `GitHubDeployPolicystage`
-  and `GitHubDeployPolicyprod`, identical apart from the stage. Check function ARNs, log
-  group ARNs (with the trailing `*`), parameter ARNs, table ARNs, rule ARNs, and layer
-  names.
+- A new named resource in any template has its name for both stages, identical apart
+  from the stage: functions, layers and log groups in `GitHubDeployPolicystage` and
+  `GitHubDeployPolicyprod`; tables, SSM parameters and EventBridge rules in
+  `GitHubDeployPolicystageData` and `GitHubDeployPolicyprodData`. Only a resource that
+  exists on one stage (such as the prod-only `class-photo-class-list-refresh-prod` rule)
+  is in one stage's policy. Check function ARNs, log group ARNs (with the trailing `*`),
+  parameter ARNs, table ARNs, rule ARNs, and layer names.
+- Every policy stays under IAM's 6,144-character limit: `tests/test_templates.py` fails
+  one over 5,800. A split adds a new policy, with a new logical ID and name, to the role's
+  `ManagedPolicyArns` and renames nothing (`docs/Deploying.md`, "Size limit").
 - No wildcard resource names, no `Resource: "*"` beyond what the role has, no new trust
   subjects. The trust policy accepts only the `stage` and `prod` GitHub environments of
   this repository.

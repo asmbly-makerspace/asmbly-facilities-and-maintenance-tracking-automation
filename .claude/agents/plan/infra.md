@@ -121,9 +121,14 @@ local time it means), and the `AWS::Lambda::Permission` for `events.amazonaws.co
 TTL where state is temporary (`SlackReorderStateTable`).
 
 **The deploy role.** Every new named resource (function, log group, SSM parameter,
-table, rule, layer) gets its name in **both** `GitHubDeployPolicystage` and
-`GitHubDeployPolicyprod` in `template-cicd.yaml`, in the statement that already lists
-that kind of resource. Write the exact lines. A new kind of resource (a queue, a bucket)
+table, rule, layer) gets its name for **both** stages in `template-cicd.yaml`, in the
+statement that already lists that kind of resource: functions, layers and log groups in
+`GitHubDeployPolicystage` and `GitHubDeployPolicyprod`; tables, SSM parameters and
+EventBridge rules in `GitHubDeployPolicystageData` and `GitHubDeployPolicyprodData`. A
+resource that exists on one stage only goes in that stage's policy only. Write the exact
+lines. Each policy must stay under IAM's 6,144-character limit (`tests/test_templates.py`
+fails one over 5,800); if the additions would pass that, plan a new policy as
+docs/Deploying.md ("Size limit") describes. A new kind of resource (a queue, a bucket)
 needs its actions scoped to its ARN; never `Resource: "*"` unless the action has no
 resource-level permissions. Then add to the phase's **Admin actions**: "Redeploy
 `AsmblyFacilitiesMaintTrackingStack-cicd` (docs/Deploying.md, 'How to Manage the

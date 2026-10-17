@@ -40,6 +40,10 @@ Parameters:
     Type: 'AWS::SSM::Parameter::Value<String>'
     Default: /config/route53/asmbly/hosted-zone-id
     Description: The Route 53 Hosted Zone ID for asmbly.org. Fetched from SSM Parameter Store.
+  StaffUserPoolId:
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: /config/cognito/staff/user-pool-id
+    Description: ID of Asmbly's staff sign-in user pool (managed by AsmblyMCPs), whose authorizer the facilities API uses. Fetched from SSM.
   SamArtifactBucket:
     Type: String
     Default: "aws-sam-cli-managed-default-samclisourcebucket-rvnhradqtyq6"
@@ -68,7 +72,9 @@ Resources:
       ManagedPolicyArns:
         - !Ref GitHubDeployPolicy
         - !Ref GitHubDeployPolicystage
+        - !Ref GitHubDeployPolicystageData
         - !Ref GitHubDeployPolicyprod
+        - !Ref GitHubDeployPolicyprodData
       Tags:
         - Key: Project
           Value: facilities-automation
@@ -174,7 +180,18 @@ Resources:
             Action:
               - ssm:GetParameter
               - ssm:GetParameters
-            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/route53/asmbly/hosted-zone-id"
+            Resource:
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/route53/asmbly/hosted-zone-id"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/cognito/staff/user-pool-id"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/cognito/staff/class-photo-app-client-id"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/cognito/staff/auth-domain"
+          # The facilities API's Cognito authorizer names the staff pool (owned by
+          # AsmblyMCPs). Read-only lookup of that one pool, in case API Gateway checks
+          # it with the deployer's credentials when it creates the authorizer.
+          - Sid: AllowStaffUserPoolLookup
+            Effect: Allow
+            Action: cognito-idp:DescribeUserPool
+            Resource: !Sub "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${StaffUserPoolId}"
           # RequestCertificate has no resource ARN before it runs; limit it to
           # the facilities domain instead.
           - Sid: AllowFacilitiesCertificateRequest
@@ -229,9 +246,17 @@ Resources:
                   - A
                   - CNAME
 
-  # One policy per CI-deployed stage (stage, prod), scoped to the resource names each
+  # Two policies per CI-deployed stage (stage, prod), scoped to the resource names each
   # stage's stack creates. Dev is deployed by hand and is not covered.
-  # The two policies are identical apart from the stage name; keep them in sync.
+  #   GitHubDeployPolicy<stage>:     stacks, SAM artifacts, functions, layers, log groups.
+  #   GitHubDeployPolicy<stage>Data: DynamoDB tables, SSM parameters, EventBridge rules.
+  # IAM caps a managed policy at 6,144 characters (not counting whitespace); one policy
+  # per stage outgrew it. tests/test_templates.py fails when a policy passes 5,800.
+  # If one grows too big again, add another policy with a new logical ID and name, and
+  # leave the existing ones' names and Descriptions alone: changing either replaces
+  # the policy, and a Description change then fails because the name is fixed.
+  # The stage and prod policies are identical apart from the stage name (prod alone has
+  # the class-list refresh rule); keep them in sync.
   # (Fn::ForEach would remove the duplication, but SAM CLI cannot deploy it.)
   GitHubDeployPolicystage:
     Type: AWS::IAM::ManagedPolicy
@@ -290,6 +315,8 @@ Resources:
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewPurchaseRequestReceivedFunction-stage"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:facilities-slack-event-router-stage"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DynamicDnsUpdateFunction-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ClassPhotoUploadApiFunction-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ClassPhotoUploadPageFunction-stage"
           - Sid: AllowLambdaLayerManagement
             Effect: Allow
             Action:
@@ -323,6 +350,19 @@ Resources:
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewPurchaseRequestReceivedFunction-stage*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/facilities-slack-event-router-stage*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/DynamicDnsUpdateFunction-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadApiFunction-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadPageFunction-stage*"
+
+  # The stage stack's DynamoDB tables, SSM parameters and EventBridge rules, kept apart
+  # from GitHubDeployPolicystage so that each policy stays under IAM's size limit.
+  GitHubDeployPolicystageData:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "GitHub-OIDC-facilities-automation-deploy-stage-data-policy"
+      Description: !Sub "Least-privilege policy for the facilities automation GitHub Actions deployer (stage tables, parameters and rules)."
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
           - Sid: AllowDynamoDBTableManagement
             Effect: Allow
             Action:
@@ -334,7 +374,19 @@ Resources:
               - dynamodb:UpdateTimeToLive
               - dynamodb:TagResource
               - dynamodb:UntagResource
-            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-stage"
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-stage"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-stage"
+          # CloudFormation's table handler reads these after CreateTable (seen in CloudTrail).
+          - Sid: AllowClassListCacheTableReads
+            Effect: Allow
+            Action:
+              - dynamodb:DescribeContinuousBackups
+              - dynamodb:DescribeContributorInsights
+              - dynamodb:DescribeKinesisStreamingDestination
+              - dynamodb:GetResourcePolicy
+              - dynamodb:ListTagsOfResource
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-stage"
           - Sid: AllowSSMParameterWrite
             Effect: Allow
             Action:
@@ -353,6 +405,7 @@ Resources:
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/clickup/facilities/problemReports"
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/clickup/facilities/masterItemsList"
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/clickup/facilities/purchaseRequests"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/stage/config/class-photo-upload"
           - Sid: AllowEventBridgeRuleManagement
             Effect: Allow
             Action:
@@ -420,6 +473,8 @@ Resources:
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewPurchaseRequestReceivedFunction-prod"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:facilities-slack-event-router-prod"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DynamicDnsUpdateFunction-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ClassPhotoUploadApiFunction-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ClassPhotoUploadPageFunction-prod"
           - Sid: AllowLambdaLayerManagement
             Effect: Allow
             Action:
@@ -453,6 +508,19 @@ Resources:
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewPurchaseRequestReceivedFunction-prod*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/facilities-slack-event-router-prod*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/DynamicDnsUpdateFunction-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadApiFunction-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadPageFunction-prod*"
+
+  # The prod stack's DynamoDB tables, SSM parameters and EventBridge rules, kept apart
+  # from GitHubDeployPolicyprod so that each policy stays under IAM's size limit.
+  GitHubDeployPolicyprodData:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "GitHub-OIDC-facilities-automation-deploy-prod-data-policy"
+      Description: !Sub "Least-privilege policy for the facilities automation GitHub Actions deployer (prod tables, parameters and rules)."
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
           - Sid: AllowDynamoDBTableManagement
             Effect: Allow
             Action:
@@ -464,7 +532,19 @@ Resources:
               - dynamodb:UpdateTimeToLive
               - dynamodb:TagResource
               - dynamodb:UntagResource
-            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-prod"
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-prod"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-prod"
+          # CloudFormation's table handler reads these after CreateTable (seen in CloudTrail).
+          - Sid: AllowClassListCacheTableReads
+            Effect: Allow
+            Action:
+              - dynamodb:DescribeContinuousBackups
+              - dynamodb:DescribeContributorInsights
+              - dynamodb:DescribeKinesisStreamingDestination
+              - dynamodb:GetResourcePolicy
+              - dynamodb:ListTagsOfResource
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-prod"
           - Sid: AllowSSMParameterWrite
             Effect: Allow
             Action:
@@ -483,6 +563,7 @@ Resources:
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/clickup/facilities/problemReports"
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/clickup/facilities/masterItemsList"
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/clickup/facilities/purchaseRequests"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/prod/config/class-photo-upload"
           - Sid: AllowEventBridgeRuleManagement
             Effect: Allow
             Action:
@@ -491,4 +572,16 @@ Resources:
               - events:DescribeRule
               - events:PutTargets
               - events:RemoveTargets
-            Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/pm-reminder-bot-schedule-prod"
+            Resource:
+              - !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/pm-reminder-bot-schedule-prod"
+              - !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/class-photo-class-list-refresh-prod"
+          # The class-list refresh rule exists on prod only and has Tags; CloudFormation's
+          # rule handler tags it on create and lists its targets on delete (a rollback).
+          - Sid: AllowClassListRefreshRuleTagging
+            Effect: Allow
+            Action:
+              - events:TagResource
+              - events:UntagResource
+              - events:ListTagsForResource
+              - events:ListTargetsByRule
+            Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/class-photo-class-list-refresh-prod"

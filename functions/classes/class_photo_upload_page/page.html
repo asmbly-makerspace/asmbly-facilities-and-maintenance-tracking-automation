@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Class photo upload</title>
+<style nonce="__CSP_NONCE__">
+  /* Design tokens: the only place a colour, font stack, length or number is written.
+     Every rule below uses them through var(); the tests enforce it (README, "Brand and
+     design tokens"). */
+  :root {
+    color-scheme: light;
+
+    /* Brand colours (Asmbly brand guide). */
+    --asmbly-purple: #292D6A;
+    --asmbly-white: #F2F4EF;
+    --midnight-black: #171d1a;
+    --woodwork: #F3B61B;
+    --metalwork: #578BC9;
+    --lasers: #D33E43;
+    --textiles: #79CCC4;
+    --electronics: #00916E;
+    --printing-3d: #EE6E23;
+    --ceramics: #b34a9a;
+
+    /* Derived, per sRGB channel, rounded:
+       tint(p) = p × colour + (1 − p) × asmbly-white (the guide's 20% steps);
+       shade = 0.8 × colour + 0.2 × midnight-black. A test recomputes each. */
+    --asmbly-purple-80: #515585;
+    --asmbly-purple-60: #797d9f;
+    --asmbly-purple-40: #a2a4ba;
+    --asmbly-purple-20: #caccd4;
+    --lasers-shade: #ad373b;
+    --electronics-shade: #057a5d;
+    --lasers-20: #ecd0cd;
+    --woodwork-20: #f2e8c5;
+
+    /* What each colour is for. */
+    --page-bg: var(--asmbly-white);
+    --text: var(--midnight-black);
+    --brand: var(--asmbly-purple);
+    --on-dark: var(--asmbly-white);
+    --line: var(--asmbly-purple-40);
+    --line-on-dark: var(--asmbly-purple-60);
+    --control-border: var(--asmbly-purple-60);
+    --tint-bg: var(--asmbly-purple-20);
+    --error: var(--lasers-shade);
+    --ok: var(--electronics-shade);
+    --focus: var(--asmbly-purple);
+    --focus-on-dark: var(--woodwork);
+    --disabled-bg: var(--asmbly-purple-20);
+    --hover-bg: var(--asmbly-purple-80);
+    --drag-bg: var(--asmbly-purple-20);
+    --code-bg: var(--asmbly-purple-20);
+    --warning-bg: var(--lasers-20);
+    --banner-bg: var(--woodwork-20);
+    --banner-edge: var(--brand);
+
+    /* Message glyphs, one per kind. After the slash is the glyph's alternative text,
+       empty so screen readers skip it. A browser without that syntax shows no glyph;
+       the edge, background and weight still tell the kinds apart. */
+    --glyph-error: "✕" / "";
+    --glyph-ok: "✓" / "";
+    --glyph-warning: "!" / "";
+    --glyph-banner: "i" / "";
+
+    /* Type. PP Gosha Bold is the brand's heading face; it isn't loaded until Asmbly
+       confirms its web licence covers this page (plan README, Decision 5), so headings
+       use a bold system stack. Roboto is the brand's body face, used where the device
+       has it; no font file is fetched. */
+    --font-body: Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-heading: "Helvetica Neue", "Segoe UI", Roboto, Arial, system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --font-size-body: 1rem;
+    --font-size-h1: 1.75rem;
+    --font-size-h2: 1.25rem;
+    --font-size-small: 0.875rem;
+    --line-height: 1.5;
+    --line-height-heading: 1.2;
+    --weight-heading: 700;
+    --weight-strong: 600;
+
+    /* Space and size. */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --gutter: var(--space-4);
+    --radius: var(--space-2);
+    --radius-control: var(--space-1);
+    --content-max-width: 47.5rem;
+    --logo-height: 3.5rem;
+    --pattern-height: 2.5rem;
+    --preview-max-height: 20rem;
+    --border-width: 1px;
+    --border-width-strong: 2px;
+    --border-width-accent: 4px;
+    --focus-width: 3px;
+    --focus-offset: 2px;
+    --visually-hidden-size: 1px;
+    --tap-target: 2.75rem;
+    --glyph-size: 1.25rem;
+    --glyph-offset: 0.125rem;
+    --underline-offset: 0.1875rem;
+    --track-fill: 1fr;
+    --progress-height: var(--space-2);
+    --progress-fill: var(--brand);
+    /* The @media rule below repeats this value (CSS can't use var() there); a test
+       checks they match. */
+    --breakpoint-wide: 40rem;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  ::selection { background: var(--tint-bg); color: var(--text); }
+  body { margin: 0; background: var(--page-bg); color: var(--text); font-family: var(--font-body); font-size: var(--font-size-body); line-height: var(--line-height); }
+  h1, h2 { font-family: var(--font-heading); font-weight: var(--weight-heading); line-height: var(--line-height-heading); }
+  h2 { font-size: var(--font-size-h2); margin: var(--space-5) 0 var(--space-2); color: var(--brand); }
+  a, a:visited { color: var(--brand); }
+
+  .brand-band { background: var(--brand); color: var(--on-dark); }
+  .brand-inner {
+    max-width: var(--content-max-width); margin: 0 auto; padding: var(--space-4) var(--gutter);
+    display: grid; grid-template-columns: var(--track-fill) auto; grid-template-areas: "logo logo" "title sign-out";
+    align-items: center; gap: var(--space-3) var(--space-5);
+  }
+  .logo { grid-area: logo; display: block; height: var(--logo-height); width: auto; fill: currentColor; }
+  .brand-band h1 { grid-area: title; margin: 0; font-size: var(--font-size-h1); color: var(--on-dark); }
+  .brand-band #sign-out { grid-area: sign-out; }
+  .pattern { display: block; width: 100%; height: var(--pattern-height); overflow: hidden; }
+  .pattern .woodwork { fill: var(--woodwork); }
+  .pattern .metalwork { fill: var(--metalwork); }
+  .pattern .lasers { fill: var(--lasers); }
+  .pattern .textiles { fill: var(--textiles); }
+  .pattern .electronics { fill: var(--electronics); }
+  .pattern .printing-3d { fill: var(--printing-3d); }
+  .pattern .ceramics { fill: var(--ceramics); }
+  .pattern .asmbly-white { fill: var(--asmbly-white); }
+  .pattern .brand { fill: var(--brand); }
+
+  main { max-width: var(--content-max-width); margin: 0 auto; padding: var(--space-5) var(--gutter); }
+
+  /* Buttons: Submit, Choose a photo (a label), Sign in again; Sign out on the band. */
+  button, .button {
+    font: inherit; font-weight: var(--weight-strong);
+    display: inline-block; min-height: var(--tap-target); padding: var(--space-2) var(--space-5);
+    border: var(--border-width-strong) solid var(--brand); border-radius: var(--radius-control);
+    background: var(--brand); color: var(--on-dark); cursor: pointer; text-align: center;
+  }
+  /* aria-disabled: Try again, Refresh class list and Submit while they're busy. A focused
+     button that turns disabled drops focus to the page; aria-disabled keeps it there. */
+  button:disabled, button[aria-disabled="true"] { background: var(--disabled-bg); color: var(--text); border-color: var(--control-border); border-style: dashed; cursor: not-allowed; }
+  .brand-band button.secondary { background: transparent; color: var(--on-dark); border-color: var(--on-dark); padding: var(--space-2) var(--space-4); }
+  #sign-in-again, #class-retry, #class-refresh { margin-top: var(--space-3); }
+
+  /* The class list. A long class name is cut inside the list, never widening the page. */
+  select {
+    font: inherit; width: 100%; max-width: 100%; min-height: var(--tap-target); padding: var(--space-2) var(--space-3);
+    border: var(--border-width-strong) solid var(--control-border); border-radius: var(--radius-control);
+    background: var(--page-bg); color: var(--text); cursor: pointer; text-overflow: ellipsis;
+  }
+  select:disabled { background: var(--disabled-bg); color: var(--text); border-style: dashed; cursor: not-allowed; }
+
+  /* The photo box. */
+  .drop-zone { border: var(--border-width-strong) dashed var(--control-border); border-radius: var(--radius); padding: var(--space-5); text-align: center; }
+  .drop-zone p { margin: 0 0 var(--space-3); }
+  .drop-zone.dragging { background: var(--drag-bg); color: var(--text); border-style: solid; border-color: var(--brand); }
+  /* While a photo is over the box, its text and button don't take the pointer, so the
+     box doesn't flicker between dragging and not as the pointer crosses them. */
+  .drop-zone.dragging * { pointer-events: none; }
+  /* While a submission runs, Choose a photo looks like a disabled button. */
+  .drop-zone input:disabled + label { background: var(--disabled-bg); color: var(--text); border-color: var(--control-border); border-style: dashed; cursor: not-allowed; }
+  .visually-hidden { position: absolute; width: var(--visually-hidden-size); height: var(--visually-hidden-size); overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .preview { display: block; max-width: 100%; height: auto; max-height: var(--preview-max-height); margin: var(--space-3) auto 0; border-radius: var(--radius-control); }
+
+  /* Focus: a ring on everything that takes the keyboard. The file input is hidden, so
+     its label shows the ring. */
+  button:focus-visible, select:focus-visible, a:focus-visible, .drop-zone input:focus-visible + label, .drop-zone label:focus-visible {
+    outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset);
+  }
+  .brand-band button:focus-visible { outline-color: var(--focus-on-dark); }
+
+  /* The busy indicator: the browser's own indeterminate progress bar, in Asmbly Purple.
+     No animation of the page's own (README Decision 13). */
+  .busy { display: block; width: 100%; height: var(--progress-height); margin: var(--space-2) 0 0; accent-color: var(--progress-fill); }
+
+  /* Messages. Plain status text ("Signing in…", "Loading classes…", "Sending the photo…")
+     keeps the plain look. The four kinds each add a left edge and a glyph, so they
+     differ by more than colour. */
+  .message { margin: var(--space-2) 0 0; }
+  /* The class list's time and the seconds a submission has taken. */
+  .message.note { font-size: var(--font-size-small); }
+  .message.error, .message.ok, .warning, .banner {
+    display: grid; grid-template-columns: auto var(--track-fill); align-items: start; gap: var(--space-3);
+  }
+  .message.error::before, .message.ok::before, .warning::before, .banner::before {
+    width: var(--glyph-size); height: var(--glyph-size); margin-top: var(--glyph-offset);
+    border-radius: var(--radius-control); color: var(--on-dark);
+    font-family: var(--font-heading); font-size: var(--font-size-small); font-weight: var(--weight-heading);
+    line-height: var(--glyph-size); text-align: center;
+  }
+  .message.error { padding-left: var(--space-3); color: var(--error); font-weight: var(--weight-strong); border-left: var(--border-width-accent) solid var(--error); }
+  .message.error::before { content: var(--glyph-error); background: var(--error); }
+  .message.ok { padding-left: var(--space-3); color: var(--ok); border-left: var(--border-width-accent) solid var(--ok); }
+  .message.ok::before { content: var(--glyph-ok); background: var(--ok); }
+  .warning {
+    margin: var(--space-5) 0 var(--space-3); padding: var(--space-3) var(--space-4);
+    background: var(--warning-bg); color: var(--text); font-weight: var(--weight-strong);
+    border-left: var(--border-width-accent) solid var(--error); border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  }
+  .warning::before { content: var(--glyph-warning); background: var(--error); }
+  .banner {
+    margin: 0 0 var(--space-5); padding: var(--space-3) var(--space-4);
+    background: var(--banner-bg); color: var(--text);
+    border-left: var(--border-width-accent) solid var(--banner-edge); border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  }
+  /* A monospace "i" has the serifs that keep it from reading as a capital I. */
+  .banner::before { content: var(--glyph-banner); background: var(--banner-edge); font-family: var(--font-mono); }
+
+  /* The result card. */
+  .result { margin-top: var(--space-5); padding: var(--space-4) var(--space-5); background: var(--page-bg); border: var(--border-width) solid var(--line); border-top: var(--border-width-accent) solid var(--brand); border-radius: var(--radius); }
+  .result > :first-child { margin-top: 0; }
+  .result p, .result li, .result pre { overflow-wrap: anywhere; }
+  .result p { margin: var(--space-3) 0 0; }
+  .result ul { margin: var(--space-1) 0 0; padding-left: var(--space-5); }
+  .result pre {
+    margin: var(--space-2) 0 0; padding: var(--space-3); white-space: pre-wrap;
+    background: var(--code-bg); color: var(--text); border-radius: var(--radius-control);
+    font-family: var(--font-mono); font-size: var(--font-size-small);
+  }
+  /* "Opened pull request #N" is a link alone in a grid message: keep it (and its focus
+     ring) the width of its text, not of the card. */
+  .message > a { justify-self: start; }
+  .result a { text-decoration: underline; text-decoration-thickness: var(--border-width); text-underline-offset: var(--underline-offset); }
+
+  /* Hover, only where a pointer can hover (a tap on a phone would leave it on). */
+  @media (hover: hover) {
+    button:hover:not(:disabled), .button:hover { background: var(--hover-bg); border-color: var(--hover-bg); }
+    button[aria-disabled="true"]:hover { background: var(--disabled-bg); color: var(--text); border-color: var(--control-border); }
+    .brand-band button.secondary:hover { background: var(--on-dark); color: var(--brand); border-color: var(--on-dark); }
+    select:hover:not(:disabled), .drop-zone:hover { border-color: var(--brand); }
+    .result a:hover { text-decoration-thickness: var(--border-width-strong); }
+  }
+
+  /* Must match --breakpoint-wide. */
+  @media (min-width: 40rem) {
+    .brand-inner { padding: var(--space-5); grid-template-columns: auto var(--track-fill) auto; grid-template-areas: "logo title sign-out"; }
+    .brand-band h1 { padding-left: var(--space-5); border-left: var(--border-width) solid var(--line-on-dark); }
+    main { padding: var(--space-6) var(--space-5); }
+  }
+</style>
+</head>
+<body>
+<header class="brand-band">
+  <div class="brand-inner">
+    <svg class="logo" role="img" aria-label="Asmbly Makerspace" viewBox="0 0 443.61 122.16" focusable="false">
+      <path d="m183.67,64.46c0-3.96,2.59-7.96,8.14-7.96,3.55,0,5.32,1.14,6.32,2.73v-5.23h-12.15v-5.82h18.74v17.51h3.09v6.28h-9.69v-2.27c-1,1.59-2.78,2.73-6.32,2.73-5.55,0-8.14-4-8.14-7.96Zm14.47,0c0-1.41-.96-2.64-3.91-2.64s-3.96,1.23-3.96,2.64.96,2.64,3.96,2.64,3.91-1.23,3.91-2.64Z"/>
+      <path d="m211.92,69.51v-6.64c4.14,2.59,7.64,3.41,11.01,3.41,1.77,0,2.64-.64,2.64-1.68,0-1.14-.68-1.68-4-2.14-7.51-.87-9.64-4.05-9.64-7.69,0-5.14,4.28-7.05,9.14-7.05,3.05,0,7.05.82,9.28,2.37v6.14c-3.32-1.64-7.23-2.37-9.74-2.37-1.32,0-2.09.41-2.09,1.46s.59,1.55,4.14,2.18c6.87,1.18,9.51,2.68,9.51,7.32,0,5.1-4.59,7.6-9.92,7.6-3.55,0-7.01-.68-10.33-2.91Z"/>
+      <path d="m243.4,54.32v17.65h-6.6v-23.79h34.12v23.79h-6.6v-17.65h-7.14v17.65h-6.6v-17.65h-7.19Z"/>
+      <path d="m299.49,60.1c0,6.69-3.27,12.33-10.14,12.33-2.64,0-4.96-.91-6.6-3.37v2.91h-6.6v-31.84h6.6v10.96c1.64-2.46,3.96-3.37,6.6-3.37,6.87,0,10.14,5.69,10.14,12.37Zm-6.6,0c0-4.28-1.64-6.23-5.05-6.23s-5.1,1.96-5.1,6.23,1.64,6.19,5.1,6.19,5.05-1.96,5.05-6.19Z"/>
+      <path d="m309.82,40.12v31.84h-6.6v-31.84h6.6Z"/>
+      <path d="m338.02,48.18v31.07h-20.02v-6.14h13.42v-5.6c-1.36,1.5-3.59,2.41-6.32,2.41-7.23,0-10.19-4-10.19-10.46v-11.28h6.6v10.92c0,3.18,1.64,4.69,4.96,4.69s4.96-1.5,4.96-4.69v-10.92h6.6Z"/>
+      <path d="m191.18,95.26v17.65h-6.6v-23.79h34.12v23.79h-6.6v-17.65h-7.14v17.65h-6.6v-17.65h-7.19Z"/>
+      <path d="m222.88,105.4c0-3.96,2.59-7.96,8.14-7.96,3.55,0,5.32,1.14,6.32,2.73v-5.23h-12.15v-5.82h18.74v17.51h3.09v6.28h-9.69v-2.27c-1,1.59-2.77,2.73-6.32,2.73-5.55,0-8.14-4-8.14-7.96Zm14.47,0c0-1.41-.95-2.64-3.91-2.64s-3.96,1.23-3.96,2.64.96,2.64,3.96,2.64,3.91-1.23,3.91-2.64Z"/>
+      <path d="m257.82,104.13v8.78h-6.6v-31.85h6.6v16.92h3.23l6-8.87h7.92l-8.23,11.97,8.23,11.83h-7.92l-6-8.78h-3.23Z"/>
+      <path d="m275.74,101.08c0-6.87,2.82-12.42,10.6-12.42s10.42,5.19,10.42,11.92v2.64h-14.19c.45,2.68,1.91,4,6.1,4,1.14,0,3.32,0,6.55-.64v6.05c-3.55.73-5.51.73-7.23.73-10.6,0-12.24-7.42-12.24-12.28Zm14.38-2.27c-.18-2.82-1.32-4-3.87-4s-3.64,1.27-3.87,4h7.73Z"/>
+      <path d="m307.54,95.26v17.65h-6.6v-23.79h15.33v6.14h-8.73Z"/>
+      <path d="m319.91,110.45v-6.64c4.14,2.59,7.64,3.41,11.01,3.41,1.77,0,2.64-.64,2.64-1.68,0-1.14-.68-1.68-4-2.14-7.51-.86-9.64-4.05-9.64-7.69,0-5.14,4.28-7.05,9.14-7.05,3.05,0,7.05.82,9.28,2.37v6.14c-3.32-1.64-7.23-2.37-9.74-2.37-1.32,0-2.09.41-2.09,1.46s.59,1.55,4.14,2.18c6.87,1.18,9.51,2.68,9.51,7.32,0,5.1-4.59,7.6-9.92,7.6-3.55,0-7.01-.68-10.33-2.91Z"/>
+      <path d="m368.14,101.04c0,6.69-3.27,12.33-10.14,12.33-2.64,0-4.96-.91-6.6-3.37v10.19h-6.6v-31.07h6.6v2.91c1.64-2.46,3.96-3.37,6.6-3.37,6.87,0,10.14,5.69,10.14,12.37Zm-6.6,0c0-4.28-1.64-6.23-5.05-6.23s-5.1,1.96-5.1,6.23,1.64,6.19,5.1,6.19,5.05-1.96,5.05-6.19Z"/>
+      <path d="m371.09,105.4c0-3.96,2.59-7.96,8.14-7.96,3.55,0,5.32,1.14,6.32,2.73v-5.23h-12.15v-5.82h18.74v17.51h3.09v6.28h-9.69v-2.27c-1,1.59-2.77,2.73-6.32,2.73-5.55,0-8.14-4-8.14-7.96Zm14.47,0c0-1.41-.96-2.64-3.91-2.64s-3.96,1.23-3.96,2.64.96,2.64,3.96,2.64,3.91-1.23,3.91-2.64Z"/>
+      <path d="m397.61,101.04c0-7.14,3.5-12.37,11.06-12.37,7.14,0,10.65,5.05,10.65,10.46h-6.6c-.18-2.46-.77-4.32-4-4.32-3.87,0-4.5,2.37-4.5,6.23s.64,6.19,4.5,6.19c3.23,0,3.82-1.86,4-4.32h6.6c0,5.41-3.5,10.46-10.65,10.46-7.55,0-11.06-5.19-11.06-12.33Z"/>
+      <path d="m422.59,101.08c0-6.87,2.82-12.42,10.6-12.42s10.42,5.19,10.42,11.92v2.64h-14.19c.45,2.68,1.91,4,6.1,4,1.14,0,3.32,0,6.55-.64v6.05c-3.55.73-5.51.73-7.23.73-10.6,0-12.24-7.42-12.24-12.28Zm14.38-2.27c-.18-2.82-1.32-4-3.87-4s-3.64,1.27-3.87,4h7.73Z"/>
+      <path d="m122.16,77.71V0H0v44.44h20.85C9.16,51.21,1.05,63.5.1,77.71h-.1v5.59h.1c1.38,20.74,18.01,37.37,38.75,38.75v.1h5.59v-.1c14.22-.95,26.5-9.06,33.27-20.75v20.85h83.3v-44.44h-38.86Zm-5.59,0h-33.27v-33.27h33.27v33.27ZM44.44,44.44h33.27v33.27h-33.27v-33.27ZM83.3,5.59h33.27v33.27h-33.27V5.59Zm-38.86,0h33.27v33.27h-33.27V5.59Zm-38.86,0h33.27v33.27H5.59V5.59Zm33.27,38.96v33.16H5.69c1.36-17.66,15.5-31.81,33.16-33.16ZM5.69,83.3h33.16v33.16c-17.66-1.36-31.81-15.5-33.16-33.16Zm38.75,33.16v-33.16h33.16c-1.36,17.66-15.5,31.81-33.16,33.16Zm72.13.11h-33.27v-33.27h33.27v33.27Zm38.86,0h-33.27v-33.27h33.27v33.27Z"/>
+    </svg>
+    <h1>Class photo upload</h1>
+    <button type="button" id="sign-out" class="secondary" hidden>Sign out</button>
+  </div>
+  <svg class="pattern" aria-hidden="true" focusable="false" viewBox="0 0 5120 40" preserveAspectRatio="xMinYMid slice">
+    <defs><pattern id="brand-tiles" width="640" height="40" patternUnits="userSpaceOnUse">
+      <path class="printing-3d" d="M0 0h40v40H0zM280 0h40v40H280zM520 0h40L520 40z"/>
+      <path class="textiles" d="M40 0L80 40H40zM440 0h40v40H440zM560 0v40H520z"/>
+      <path class="metalwork" d="M80 0h20a20 20 0 0 1-20 20zM120 0v20a20 20 0 0 1-20-20zM120 40h-20a20 20 0 0 1 20-20zM80 40v-20a20 20 0 0 1 20 20z"/>
+      <path class="ceramics" d="M200 0h40v40H200zM480 40a20 20 0 0 1 40 0z"/>
+      <path class="lasers" d="M120 0h40L120 40zM280 40V8a32 32 0 0 1 32 32zM600 0h40L600 40z"/>
+      <path class="woodwork" d="M220 0a20 20 0 0 1 0 40zM240 0h40v40z"/>
+      <path class="electronics" d="M320 40L360 0v40z"/>
+      <path class="asmbly-white" d="M12 12h16a8 8 0 0 1 0 16h-16a8 8 0 0 1 0-16zM412 12h16a8 8 0 0 1 0 16h-16a8 8 0 0 1 0-16z"/>
+      <path class="brand" d="M446 6Q460 14 474 6Q466 20 474 34Q460 26 446 34Q454 20 446 6z"/>
+      <path class="electronics" d="M4 20a8 8 0 1 0 16 0a8 8 0 1 0 -16 0z"/>
+      <path class="woodwork" d="M420 20a8 8 0 1 0 16 0a8 8 0 1 0 -16 0z"/>
+    </pattern></defs>
+    <rect width="5120" height="40" fill="url(#brand-tiles)"/>
+  </svg>
+</header>
+<main>
+  <p id="dry-run-banner" class="banner" hidden>Stage: dry run. Submitting checks the photo and shows what would happen; nothing is opened on GitHub.</p>
+
+  <p id="signing-in" class="message">Signing in…</p>
+
+  <section id="sign-in-problem" hidden>
+    <p class="message error">Sign-in didn't finish. Sign in again.</p>
+    <button type="button" id="sign-in-again">Sign in again</button>
+  </section>
+
+  <section id="app" hidden>
+    <h2><label for="class-select">Class</label></h2>
+    <select id="class-select" disabled aria-describedby="class-status class-freshness">
+      <option value="">Choose a class…</option>
+    </select>
+    <progress id="class-progress" class="busy" aria-label="Loading classes" hidden></progress>
+    <p id="class-status" class="message" role="status" aria-live="polite"></p>
+    <button type="button" id="class-retry" hidden>Try again</button>
+    <p id="class-freshness" class="message note" hidden></p>
+    <button type="button" id="class-refresh" hidden>Refresh class list</button>
+
+    <h2 id="photo-heading">Photo</h2>
+    <div id="drop-zone" class="drop-zone" aria-labelledby="photo-heading">
+      <p>Drag a 3:2 landscape JPEG here (4 MB or less), or</p>
+      <input type="file" id="photo-input" class="visually-hidden" accept="image/jpeg">
+      <label for="photo-input" class="button">Choose a photo</label>
+    </div>
+    <p id="photo-status" class="message" role="status" aria-live="polite"></p>
+    <p id="photo-note" class="message ok" hidden></p>
+    <img id="preview" class="preview" alt="Preview of the chosen photo" hidden>
+
+    <p id="public-warning" class="warning">When you submit, this photo becomes public on GitHub right away, before anyone reviews it. It stays visible in the pull request even if the pull request is never merged.</p>
+    <button type="button" id="submit" disabled>Submit</button>
+    <progress id="submit-progress" class="busy" aria-label="Submitting" hidden></progress>
+    <p id="submit-status" class="message" role="status" aria-live="polite"></p>
+    <p id="submit-elapsed" class="message note" aria-hidden="true" hidden></p>
+
+    <section id="result" class="result" aria-live="polite" hidden></section>
+  </section>
+</main>
+
+<script type="application/json" id="page-config">__PAGE_CONFIG__</script>
+<script nonce="__CSP_NONCE__">
+"use strict";
+(function () {
+  // ---- Settings and messages (the photo messages are photo_checks.py's, word for word) ----
+  const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+  const MAX_READ_BYTES = 64 * 1024 * 1024; // larger files are refused without reading them
+  const MEBIBYTE = 1024 * 1024;
+  const TARGET_RATIO = [3, 2];
+  const RATIO_TOLERANCE_PERCENT = 1;
+  const RATIO_TERM_LIMIT = 32;
+  const EXAMPLE_SIZE = "1500×1000";
+  const MAX_HEADER_SEGMENTS = 1000;
+  const MAX_EMBEDDED_IMAGES = 16;
+
+  const TOO_BIG_MESSAGE = "This photo is {size} MB. Class photos must be 4 MB or less. Export it at a smaller size and try again.";
+  const NOT_JPEG_MESSAGE = "This file isn't a JPEG photo. Save or export it as a JPEG (.jpg) and try again.";
+  const UNREADABLE_JPEG_MESSAGE = "This JPEG couldn't be read. Export it again as a JPEG and try again.";
+  const WRONG_RATIO_MESSAGE = "This photo is {width}×{height}, which is {ratio}. Class photos must be 3:2, for example {example}. Crop it and try again.";
+  const NOT_LANDSCAPE_MESSAGE = "This photo is {width}×{height}, which is {ratio} and not landscape. Class photos must be 3:2 landscape, for example {example}. Crop it and try again.";
+  const LOCATION_MESSAGE = "This photo still has location data. Use the upload page, which removes it.";
+  // Shown by the page only: location it can't take out without re-encoding the photo.
+  const CANT_REMOVE_LOCATION_MESSAGE = "This photo has location data the page can't remove. Export it again as a JPEG without location and try again.";
+  const LOCATION_REMOVED_MESSAGE = "Location data was removed from this photo.";
+  const PHOTO_OK_MESSAGE = "This photo can be used.";
+
+  // The API's own messages, for answers that don't carry one.
+  const GENERIC_ERROR = "Something went wrong on our side. Try again later.";
+  const NEON_ERROR = "Couldn't load the class list. Try again in a minute.";
+  const FORBIDDEN_ERROR = "You're not allowed to use this page.";
+  const TOO_MANY_REQUESTS_MESSAGE = "Too many submissions at once. Wait a minute and try again.";
+  const NETWORK_MESSAGE = "Couldn't reach the server. Check your connection and try again.";
+
+  // Loading, refreshing and submitting (plan class-photo-loading, phase 3).
+  const CLASS_SLOW_MS = 5000; // "Still loading…" after this
+  const REQUEST_TIMEOUT_MS = 35000; // the page gives up (API Gateway answers 504 at 29 s)
+  const ELAPSED_TICK_MS = 1000;
+  const CLASS_LIST_TIME_OPTIONS = { hour: "2-digit", minute: "2-digit" };
+
+  const LOADING_CLASSES_MESSAGE = "Loading classes…";
+  const STILL_LOADING_CLASSES_MESSAGE = "Still loading classes from Neon…";
+  const CLASS_LIST_TIME_MESSAGE = "Class list from Neon at {time}.";
+  const STALE_LIST_MESSAGE = "Neon didn't answer the last refresh, so this list may be out of date.";
+  const REFRESHING_CLASSES_MESSAGE = "Refreshing the class list from Neon…";
+  const REFRESHED_MESSAGE = "Class list refreshed from Neon.";
+  const REFRESH_TOO_SOON_MESSAGE = "The class list was refreshed less than a minute ago, so this is that list. Try again in a minute.";
+  const REFRESH_FAILED_MESSAGE = "Neon didn't answer, so the class list wasn't refreshed. The list shown is the last one read.";
+  const PREPARING_MESSAGE = "Preparing the photo…";
+  const SENDING_MESSAGE = "Sending the photo…";
+  const WAITING_MESSAGE = "Waiting for the server to check it and open the pull request…";
+  const WAITING_DRY_RUN_MESSAGE = "Waiting for the server to check it and plan the pull request…";
+  const ELAPSED_MESSAGE = "{seconds} s";
+  const UNCONFIRMED_MESSAGE = "The server didn't confirm the result in time. A pull request may or may not have been opened on GitHub. Submitting the same class again is safe: it updates the same pull request instead of opening a second one.";
+  const DRY_RUN_TIMEOUT_MESSAGE = "The server didn't answer in time. This is a dry run, so nothing was opened on GitHub. Try again.";
+
+  // What each refresh outcome from GET /classes?refresh=1 says: [message, kind].
+  const REFRESH_OUTCOMES = new Map([
+    ["refreshed", [REFRESHED_MESSAGE]],
+    ["too_soon", [REFRESH_TOO_SOON_MESSAGE]],
+    ["failed", [REFRESH_FAILED_MESSAGE, "error"]],
+  ]);
+
+  const STORAGE = {
+    token: "classPhoto.idToken",
+    tokenExpiry: "classPhoto.idTokenExpiry",
+    verifier: "classPhoto.verifier",
+    state: "classPhoto.state",
+    reauthenticated: "classPhoto.reauthenticated",
+  };
+
+  // ---- JPEG reading: the same rules as photo_checks.py ----
+  const SOF_MARKERS = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+  const EXIF_ID = asciiBytes("Exif\0\0");
+  const XMP_ID = asciiBytes("http://ns.adobe.com/xap/1.0/\0");
+  const XMP_EXTENSION_ID = asciiBytes("http://ns.adobe.com/xmp/extension/\0");
+  const XMP_EXTENSION_HEADER_LENGTH = 40; // GUID (32), full length (4), offset (4)
+  const XMP_GPS_PATTERN = /GPS(Latitude|Longitude|Altitude|DestLatitude|DestLongitude)/;
+  const JPEG_START = [0xff, 0xd8, 0xff];
+  const TAG_ORIENTATION = 0x0112;
+  const TAG_GPS_IFD = 0x8825;
+  const TAG_EXIF_IFD = 0x8769;
+  const TYPE_SHORT = 3;
+  // Bytes per value of each TIFF field type, for a GPS entry's out-of-line value.
+  const TYPE_SIZES = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8 };
+  // One character per byte, so string positions are byte positions.
+  const BYTE_TEXT = new TextDecoder("windows-1252");
+
+  class NotJpegError extends Error {}
+  class UnreadableJpegError extends Error {}
+
+  function asciiBytes(text) {
+    return Uint8Array.from(text, (character) => character.charCodeAt(0));
+  }
+
+  function startsWith(bytes, prefix) {
+    if (bytes.length < prefix.length) return false;
+    return prefix.every((value, index) => bytes[index] === value);
+  }
+
+  function hasGpsPattern(bytes) {
+    return bytes.length > 0 && XMP_GPS_PATTERN.test(BYTE_TEXT.decode(bytes));
+  }
+
+  function indexOfJpegStart(bytes, from) {
+    let position = bytes.indexOf(0xff, from);
+    while (position >= 0 && position + 2 < bytes.length) {
+      if (bytes[position + 1] === JPEG_START[1] && bytes[position + 2] === JPEG_START[2]) return position;
+      position = bytes.indexOf(0xff, position + 1);
+    }
+    return -1;
+  }
+
+  function isJpegStart(bytes) {
+    return bytes.length >= 3 && startsWith(bytes, JPEG_START);
+  }
+
+  // A TIFF block (the EXIF payload after "Exif\0\0"), checked as the server checks it.
+  function parseTiff(bytes) {
+    if (bytes.length < 8) throw new UnreadableJpegError("EXIF header is truncated");
+    let little;
+    if (bytes[0] === 0x49 && bytes[1] === 0x49) little = true;
+    else if (bytes[0] === 0x4d && bytes[1] === 0x4d) little = false;
+    else throw new UnreadableJpegError("EXIF byte order is unknown");
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (view.getUint16(2, little) !== 42) throw new UnreadableJpegError("EXIF magic number is wrong");
+    const ifd0 = view.getUint32(4, little);
+    if (ifd0 < 8 || ifd0 + 2 > bytes.length) throw new UnreadableJpegError("EXIF IFD0 offset is out of range");
+    const entriesEnd = ifd0 + 2 + 12 * view.getUint16(ifd0, little);
+    if (entriesEnd > bytes.length) throw new UnreadableJpegError("EXIF IFD0 entries are truncated");
+    return { bytes, view, little, ifd0, entriesEnd };
+  }
+
+  // Each whole entry of the IFD at offset; none when the offset is out of range.
+  function ifdEntries(tiff, offset) {
+    const { bytes, view, little } = tiff;
+    if (offset < 8 || offset + 2 > bytes.length) return [];
+    const count = view.getUint16(offset, little);
+    const whole = Math.min(count, Math.floor((bytes.length - offset - 2) / 12));
+    const entries = [];
+    for (let index = 0; index < whole; index++) {
+      const entry = offset + 2 + 12 * index;
+      entries.push({
+        tag: view.getUint16(entry, little),
+        type: view.getUint16(entry + 2, little),
+        count: view.getUint32(entry + 4, little),
+        entry,
+      });
+    }
+    return entries;
+  }
+
+  // IFD1 and the Exif sub-IFD, where the server also looks for a GPS pointer.
+  function otherIfds(tiff) {
+    const offsets = [];
+    if (tiff.entriesEnd + 4 <= tiff.bytes.length) offsets.push(tiff.view.getUint32(tiff.entriesEnd, tiff.little));
+    for (const entry of ifdEntries(tiff, tiff.ifd0)) {
+      if (entry.tag === TAG_EXIF_IFD) offsets.push(tiff.view.getUint32(entry.entry + 8, tiff.little));
+    }
+    return [...new Set(offsets)].filter((offset) => offset !== tiff.ifd0);
+  }
+
+  function readExif(bytes) {
+    const tiff = parseTiff(bytes);
+    let orientation = 1;
+    let hasGps = false;
+    for (const entry of ifdEntries(tiff, tiff.ifd0)) {
+      if (entry.tag === TAG_ORIENTATION && entry.type === TYPE_SHORT && entry.count === 1) {
+        const value = tiff.view.getUint16(entry.entry + 8, tiff.little);
+        orientation = value >= 1 && value <= 8 ? value : 1;
+      } else if (entry.tag === TAG_GPS_IFD) {
+        hasGps = true;
+      }
+    }
+    for (const offset of otherIfds(tiff)) {
+      if (ifdEntries(tiff, offset).some((entry) => entry.tag === TAG_GPS_IFD)) hasGps = true;
+    }
+    return { orientation, hasGps };
+  }
+
+  function extendedXmpGroups(chunks) {
+    const byGuid = new Map();
+    for (const chunk of chunks) {
+      if (chunk.data.length < XMP_EXTENSION_HEADER_LENGTH) continue;
+      const guid = BYTE_TEXT.decode(chunk.data.subarray(0, 32));
+      const offset = new DataView(chunk.data.buffer, chunk.data.byteOffset + 36, 4).getUint32(0, false);
+      if (!byGuid.has(guid)) byGuid.set(guid, []);
+      byGuid.get(guid).push({ offset, chunk });
+    }
+    const groups = [];
+    for (const parts of byGuid.values()) {
+      parts.sort((a, b) => a.offset - b.offset);
+      const joined = parts.map((part) => BYTE_TEXT.decode(part.chunk.data.subarray(XMP_EXTENSION_HEADER_LENGTH))).join("");
+      groups.push({ chunks: parts.map((part) => part.chunk), hasGps: XMP_GPS_PATTERN.test(joined) });
+    }
+    return groups;
+  }
+
+  function newHeaders() {
+    return { size: null, orientation: null, hasExifGps: false, hasXmpGps: false, extendedXmp: [], segments: [], end: 0, endMarker: null, endMarkerStart: 0 };
+  }
+
+  function headersHaveGps(found) {
+    return found.hasExifGps || found.hasXmpGps || extendedXmpGroups(found.extendedXmp).some((group) => group.hasGps);
+  }
+
+  // Walks the marker segments of the image whose SOI is at start, up to its SOS or EOI.
+  function walkHeaders(bytes, start, found) {
+    const end = bytes.length;
+    let position = start + 2;
+    for (let count = 0; count < MAX_HEADER_SEGMENTS; count++) {
+      if (position >= end || bytes[position] !== 0xff) throw new UnreadableJpegError("expected a marker");
+      const segmentStart = position;
+      while (position < end && bytes[position] === 0xff) position++;
+      if (position >= end) throw new UnreadableJpegError("ended inside a marker");
+      const marker = bytes[position];
+      position++;
+      if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+        found.segments.push({ marker, start: segmentStart, payloadStart: position, end: position });
+        continue;
+      }
+      if (marker === 0xd9 || marker === 0xda) {
+        found.end = position;
+        found.endMarker = marker;
+        found.endMarkerStart = segmentStart;
+        return;
+      }
+      if (position + 2 > end) throw new UnreadableJpegError("segment length is truncated");
+      const length = (bytes[position] << 8) | bytes[position + 1];
+      if (length < 2 || position + length > end) throw new UnreadableJpegError("segment length is out of range");
+      const payload = bytes.subarray(position + 2, position + length);
+      found.segments.push({ marker, start: segmentStart, payloadStart: position + 2, end: position + length });
+      position += length;
+
+      if (SOF_MARKERS.has(marker)) {
+        if (found.size === null) {
+          if (payload.length < 5) throw new UnreadableJpegError("frame header is truncated");
+          const height = (payload[1] << 8) | payload[2];
+          const width = (payload[3] << 8) | payload[4];
+          if (width === 0 || height === 0) throw new UnreadableJpegError("frame size is zero");
+          found.size = [width, height];
+        }
+      } else if (marker === 0xe1) {
+        if (startsWith(payload, EXIF_ID)) {
+          const exif = readExif(payload.subarray(EXIF_ID.length));
+          if (found.orientation === null) found.orientation = exif.orientation;
+          found.hasExifGps = found.hasExifGps || exif.hasGps;
+        } else if (startsWith(payload, XMP_ID) || startsWith(payload, XMP_EXTENSION_ID)) {
+          found.hasXmpGps = found.hasXmpGps || hasGpsPattern(payload);
+          if (startsWith(payload, XMP_EXTENSION_ID)) {
+            found.extendedXmp.push({ data: payload.subarray(XMP_EXTENSION_ID.length), segment: found.segments[found.segments.length - 1] });
+          }
+        }
+      }
+    }
+    throw new UnreadableJpegError("too many header segments");
+  }
+
+  // Location in the other JPEGs inside the file (thumbnails, MPF images, gain maps).
+  function embeddedImagesHaveGps(bytes, from, limit) {
+    let hasGps = false;
+    let position = indexOfJpegStart(bytes, from);
+    for (let count = 0; count < limit; count++) {
+      if (position < 0) return hasGps;
+      const found = newHeaders();
+      try {
+        walkHeaders(bytes, position, found);
+      } catch (error) {
+        if (!(error instanceof UnreadableJpegError)) throw error;
+      }
+      hasGps = hasGps || headersHaveGps(found);
+      position = indexOfJpegStart(bytes, position + JPEG_START.length);
+    }
+    if (position >= 0) throw new UnreadableJpegError("too many embedded images");
+    return hasGps;
+  }
+
+  function parseJpeg(bytes) {
+    if (!isJpegStart(bytes)) throw new NotJpegError("missing the JPEG start marker");
+    const main = newHeaders();
+    walkHeaders(bytes, 0, main);
+    if (main.size === null) throw new UnreadableJpegError("no frame header before the image data");
+    const trailerXmpGps = hasGpsPattern(bytes.subarray(main.end));
+    const extendedGps = extendedXmpGroups(main.extendedXmp).some((group) => group.hasGps);
+    const orientation = main.orientation || 1;
+    const [width, height] = main.size;
+    return {
+      width,
+      height,
+      orientation,
+      displayed: orientation >= 5 ? [height, width] : [width, height],
+      hasLocation: main.hasExifGps || main.hasXmpGps || extendedGps || trailerXmpGps || embeddedImagesHaveGps(bytes, 1, MAX_EMBEDDED_IMAGES),
+    };
+  }
+
+  function format(template, values) {
+    return template.replace(/\{(\w+)\}/g, (match, name) => (name in values ? String(values[name]) : match));
+  }
+
+  function tooBigMessage(byteCount) {
+    const tenths = Math.ceil((byteCount * 10) / MEBIBYTE);
+    return format(TOO_BIG_MESSAGE, { size: (tenths / 10).toFixed(1) });
+  }
+
+  function gcd(a, b) {
+    while (b) [a, b] = [b, a % b];
+    return a;
+  }
+
+  // "4:3" when both reduced terms are small, else "1.33:1".
+  function ratioText(width, height) {
+    const divisor = gcd(width, height);
+    if (divisor && width / divisor <= RATIO_TERM_LIMIT && height / divisor <= RATIO_TERM_LIMIT) {
+      return width / divisor + ":" + height / divisor;
+    }
+    return twoDecimals(width / height) + ":1";
+  }
+
+  // Python's "{:.2f}": the double's exact value rounded, an exact tie to even. toFixed
+  // rounds the exact value too but sends a tie up; only multiples of 1/8 can tie.
+  function twoDecimals(value) {
+    const hundredths = value * 100;
+    if (Number.isInteger(value * 8) && hundredths % 1 === 0.5) {
+      const down = Math.floor(hundredths);
+      return ((down % 2 === 0 ? down : down + 1) / 100).toFixed(2);
+    }
+    return value.toFixed(2);
+  }
+
+  function isTargetRatio(width, height) {
+    const [targetWidth, targetHeight] = TARGET_RATIO;
+    const deviation = Math.abs(width * targetHeight - height * targetWidth);
+    return 100 * deviation <= RATIO_TOLERANCE_PERCENT * height * targetWidth;
+  }
+
+  // The first problem's message, or null: check_photo's rules, in its order.
+  function checkPhoto(bytes) {
+    if (bytes.length > MAX_PHOTO_BYTES) return tooBigMessage(bytes.length);
+    let info;
+    try {
+      info = parseJpeg(bytes);
+    } catch (error) {
+      return error instanceof NotJpegError ? NOT_JPEG_MESSAGE : UNREADABLE_JPEG_MESSAGE;
+    }
+    const [width, height] = info.displayed;
+    const values = { width, height, ratio: ratioText(width, height), example: EXAMPLE_SIZE };
+    if (width <= height) return format(NOT_LANDSCAPE_MESSAGE, values);
+    if (!isTargetRatio(width, height)) return format(WRONG_RATIO_MESSAGE, values);
+    if (info.hasLocation) return LOCATION_MESSAGE;
+    return null;
+  }
+
+  // ---- Location removal (README Decision 18): only header bytes change ----
+
+  // Where the main image ends: after its SOS, entropy-coded data (FF 00 and FF D0-D7 are
+  // data) and any further marker segments, up to EOI. The file's length when there's none.
+  function findImageEnd(bytes, afterSos) {
+    const end = bytes.length;
+    if (afterSos + 2 > end) return end;
+    let position = afterSos + ((bytes[afterSos] << 8) | bytes[afterSos + 1]);
+    while (position < end) {
+      const ff = bytes.indexOf(0xff, position);
+      if (ff < 0 || ff + 1 >= end) return end;
+      const next = bytes[ff + 1];
+      if (next === 0xff) {
+        position = ff + 1;
+      } else if (next === 0x00 || next === 0x01 || (next >= 0xd0 && next <= 0xd7)) {
+        position = ff + 2;
+      } else if (next === 0xd9) {
+        return ff + 2;
+      } else {
+        if (ff + 4 > end) return end;
+        const length = (bytes[ff + 2] << 8) | bytes[ff + 3];
+        if (length < 2) return end;
+        position = ff + 2 + length;
+      }
+    }
+    return end;
+  }
+
+  function ifdRegion(tiff, offset) {
+    if (offset < 8 || offset + 2 > tiff.bytes.length) return null;
+    return [offset, offset + 2 + 12 * tiff.view.getUint16(offset, tiff.little) + 4];
+  }
+
+  // Zeroes the GPS IFD: its entries, next-IFD field, and the values its entries point to.
+  // Bytes of the TIFF header and of the other IFDs' entry tables are never zeroed.
+  function zeroGpsIfd(tiff, gpsOffset, keep) {
+    const { bytes, view, little } = tiff;
+    const ranges = [];
+    for (const entry of ifdEntries(tiff, gpsOffset)) {
+      const size = (TYPE_SIZES[entry.type] || 0) * entry.count;
+      if (size > 4) {
+        const at = view.getUint32(entry.entry + 8, little);
+        ranges.push([at, at + size]);
+      }
+    }
+    const region = ifdRegion(tiff, gpsOffset);
+    if (region) ranges.push(region);
+    for (const [from, to] of ranges) {
+      const start = Math.max(from, 8);
+      const stop = Math.min(to, bytes.length);
+      if (start >= stop) continue;
+      if (keep.some(([keepFrom, keepTo]) => start < keepTo && keepFrom < stop)) continue;
+      bytes.fill(0, start, stop);
+    }
+  }
+
+  // Removes one entry from an IFD: later entries move up, the count drops by one, the
+  // next-IFD offset follows the new last entry, and the freed 12 bytes are zeroed. An IFD
+  // cut short by the end of the block has its entry zeroed instead.
+  function deleteEntry(tiff, ifdOffset, entryOffset) {
+    const { bytes, view, little } = tiff;
+    const count = view.getUint16(ifdOffset, little);
+    const regionEnd = ifdOffset + 2 + 12 * count + 4;
+    if (regionEnd > bytes.length) {
+      bytes.fill(0, entryOffset, entryOffset + 12);
+      return;
+    }
+    bytes.copyWithin(entryOffset, entryOffset + 12, regionEnd);
+    bytes.fill(0, regionEnd - 12, regionEnd);
+    view.setUint16(ifdOffset, count - 1, little);
+  }
+
+  // Takes every GPS IFD pointer out of IFD0, IFD1 and the Exif sub-IFD, in place.
+  // True when something changed. Throws UnreadableJpegError for a malformed block.
+  function removeExifGps(tiffBytes) {
+    const tiff = parseTiff(tiffBytes);
+    const ifds = [tiff.ifd0, ...otherIfds(tiff)];
+    const keep = [[0, 8], ...ifds.map((offset) => ifdRegion(tiff, offset)).filter(Boolean)];
+    let changed = false;
+    for (const offset of ifds) {
+      for (let guard = 0; guard < 64; guard++) {
+        const gps = ifdEntries(tiff, offset).find((entry) => entry.tag === TAG_GPS_IFD);
+        if (!gps) break;
+        zeroGpsIfd(tiff, tiff.view.getUint32(gps.entry + 8, tiff.little), keep);
+        deleteEntry(tiff, offset, gps.entry);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  function concatBytes(parts) {
+    const out = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+    let position = 0;
+    for (const part of parts) {
+      out.set(part, position);
+      position += part.length;
+    }
+    return out;
+  }
+
+  // The photo without its location data: { bytes, removed }. A photo with nothing to
+  // remove comes back as the same bytes; the image data is always copied unchanged.
+  function removeLocation(original) {
+    const unchanged = { bytes: original, removed: false };
+    if (!isJpegStart(original)) return unchanged;
+    const main = newHeaders();
+    try {
+      walkHeaders(original, 0, main);
+    } catch (error) {
+      return unchanged; // checkPhoto says it can't be read
+    }
+
+    const dropped = new Set();
+    for (const group of extendedXmpGroups(main.extendedXmp)) {
+      if (group.hasGps) group.chunks.forEach((chunk) => dropped.add(chunk.segment));
+    }
+    let removed = false;
+    const parts = [original.subarray(0, 2)];
+    for (const segment of main.segments) {
+      const whole = original.subarray(segment.start, segment.end);
+      const payload = original.subarray(segment.payloadStart, segment.end);
+      if (segment.marker === 0xe1 && startsWith(payload, EXIF_ID)) {
+        const copy = whole.slice();
+        try {
+          if (removeExifGps(copy.subarray(segment.payloadStart - segment.start + EXIF_ID.length))) {
+            removed = true;
+            parts.push(copy);
+            continue;
+          }
+        } catch (error) {
+          if (!(error instanceof UnreadableJpegError)) throw error;
+        }
+        parts.push(whole);
+      } else if (segment.marker === 0xe1 && (startsWith(payload, XMP_ID) || startsWith(payload, XMP_EXTENSION_ID)) && (dropped.has(segment) || hasGpsPattern(payload))) {
+        removed = true;
+      } else {
+        parts.push(whole);
+      }
+    }
+
+    const imageEnd = main.endMarker === 0xda ? findImageEnd(original, main.end) : main.end;
+    parts.push(original.subarray(main.endMarkerStart, imageEnd));
+    const trailer = original.subarray(imageEnd);
+    let trailerHasGps = false;
+    try {
+      trailerHasGps = hasGpsPattern(trailer) || embeddedImagesHaveGps(trailer, 0, MAX_EMBEDDED_IMAGES + 1);
+    } catch (error) {
+      if (!(error instanceof UnreadableJpegError)) throw error;
+      trailerHasGps = false; // too many embedded images: checkPhoto refuses the file
+    }
+    if (trailerHasGps) removed = true;
+    else parts.push(trailer);
+
+    return removed ? { bytes: concatBytes(parts), removed: true } : unchanged;
+  }
+
+  // ---- Page state and elements ----
+  const config = JSON.parse(document.getElementById("page-config").textContent);
+  const state = {
+    classes: new Map(),
+    photo: null, // { bytes, width, height }
+    photoRequest: 0,
+    previewUrl: null,
+    classesLoaded: false, // a list has arrived at least once
+    loadingClasses: false, // a load or a refresh is running
+    submitting: false,
+    elapsedTimer: null,
+  };
+  const elements = {};
+  for (const id of ["sign-out", "dry-run-banner", "signing-in", "sign-in-problem", "sign-in-again", "app", "class-select", "class-progress", "class-status", "class-retry", "class-freshness", "class-refresh", "drop-zone", "photo-input", "photo-status", "photo-note", "preview", "submit", "submit-progress", "submit-status", "submit-elapsed", "result"]) {
+    elements[id] = document.getElementById(id);
+  }
+  const classPlaceholder = elements["class-select"].firstElementChild;
+
+  function setMessage(element, text, kind) {
+    element.textContent = text || "";
+    element.classList.remove("error", "ok");
+    if (kind) element.classList.add(kind);
+  }
+
+  function setBusy(node, busy) {
+    if (busy) node.setAttribute("aria-busy", "true");
+    else node.removeAttribute("aria-busy");
+  }
+
+  // A busy button keeps its focus: aria-disabled, not disabled, which would drop focus to
+  // the page. Its click handler checks the state and does nothing.
+  function setUnavailable(button, unavailable) {
+    if (unavailable) button.setAttribute("aria-disabled", "true");
+    else button.removeAttribute("aria-disabled");
+  }
+
+  // One place decides what can be used, from the state.
+  function updateControls() {
+    const classBusy = state.loadingClasses;
+    const select = elements["class-select"];
+    select.disabled = classBusy || state.submitting || !state.classesLoaded;
+    setBusy(select, classBusy);
+    elements["class-progress"].hidden = !classBusy;
+    setUnavailable(elements["class-retry"], classBusy);
+    setUnavailable(elements["class-refresh"], classBusy || state.submitting);
+    elements["photo-input"].disabled = state.submitting;
+    const entry = chosenClass();
+    const classOk = Boolean(entry) && !(typeof entry.problem === "string" && entry.problem);
+    elements.submit.disabled = classBusy || !classOk || !state.photo;
+    setUnavailable(elements.submit, state.submitting);
+  }
+
+  function element(tag, text, attributes) {
+    const node = document.createElement(tag);
+    if (text !== undefined && text !== null) node.textContent = text;
+    for (const [name, value] of Object.entries(attributes || {})) node.setAttribute(name, value);
+    return node;
+  }
+
+  // ---- Sign-in: authorization code with PKCE on the staff pool's hosted sign-in ----
+  function base64Url(bytes) {
+    let binary = "";
+    bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function randomString() {
+    return base64Url(crypto.getRandomValues(new Uint8Array(32)));
+  }
+
+  function tokenExpiry(token) {
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 3) return null;
+      const json = atob(parts[1].replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(parts[1].length / 4) * 4, "="));
+      const exp = JSON.parse(json).exp;
+      return Number.isFinite(exp) ? exp * 1000 : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function currentToken() {
+    const token = sessionStorage.getItem(STORAGE.token);
+    const expiry = Number(sessionStorage.getItem(STORAGE.tokenExpiry));
+    if (token && expiry > Date.now() + 60 * 1000) return token;
+    sessionStorage.removeItem(STORAGE.token);
+    sessionStorage.removeItem(STORAGE.tokenExpiry);
+    return null;
+  }
+
+  async function signIn() {
+    const verifier = randomString();
+    const signInState = randomString();
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    sessionStorage.setItem(STORAGE.verifier, verifier);
+    sessionStorage.setItem(STORAGE.state, signInState);
+    const query = new URLSearchParams({
+      response_type: "code",
+      client_id: config.clientId,
+      redirect_uri: config.pageUrl,
+      scope: "openid",
+      state: signInState,
+      code_challenge: base64Url(new Uint8Array(digest)),
+      code_challenge_method: "S256",
+    });
+    window.location.assign("https://" + config.authDomain + "/oauth2/authorize?" + query.toString());
+  }
+
+  // Trades the code from the sign-in redirect for tokens. False when anything is off.
+  async function finishSignIn(params) {
+    const code = params.get("code");
+    const returnedState = params.get("state");
+    const expectedState = sessionStorage.getItem(STORAGE.state);
+    const verifier = sessionStorage.getItem(STORAGE.verifier);
+    sessionStorage.removeItem(STORAGE.state);
+    sessionStorage.removeItem(STORAGE.verifier);
+    try {
+      history.replaceState(null, "", config.pageUrl); // the code mustn't stay in the address bar
+    } catch (error) {
+      return false;
+    }
+    if (!code || !returnedState || !expectedState || !verifier || returnedState !== expectedState) return false;
+    try {
+      const response = await fetch("https://" + config.authDomain + "/oauth2/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: config.clientId,
+          code,
+          redirect_uri: config.pageUrl,
+          code_verifier: verifier,
+        }).toString(),
+        credentials: "omit",
+        cache: "no-store",
+      });
+      if (!response.ok) return false;
+      const tokens = await response.json();
+      const expiry = typeof tokens.id_token === "string" ? tokenExpiry(tokens.id_token) : null;
+      if (!expiry) return false;
+      sessionStorage.setItem(STORAGE.token, tokens.id_token);
+      sessionStorage.setItem(STORAGE.tokenExpiry, String(expiry));
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function showSignInProblem() {
+    sessionStorage.removeItem(STORAGE.token);
+    sessionStorage.removeItem(STORAGE.tokenExpiry);
+    elements["signing-in"].hidden = true;
+    elements.app.hidden = true;
+    elements["sign-in-problem"].hidden = false;
+  }
+
+  // A 401 signs in again once per tab; a second one stops, so the page never loops.
+  function reauthenticate() {
+    if (sessionStorage.getItem(STORAGE.reauthenticated)) {
+      showSignInProblem();
+      return;
+    }
+    sessionStorage.setItem(STORAGE.reauthenticated, "1");
+    sessionStorage.removeItem(STORAGE.token);
+    sessionStorage.removeItem(STORAGE.tokenExpiry);
+    signIn();
+  }
+
+  function signOut() {
+    sessionStorage.clear();
+    const query = new URLSearchParams({ client_id: config.clientId, logout_uri: config.pageUrl });
+    window.location.assign("https://" + config.authDomain + "/logout?" + query.toString());
+  }
+
+  // ---- API calls: every request to the page's API goes through here ----
+  class PageError extends Error {}
+  // The request may have reached the server, but its answer didn't come back: a 5xx or
+  // an OK answer with no JSON (API Gateway's 502 and 504), a dropped connection, or the
+  // page's own time limit. The message is the caller's fallback.
+  class UnconfirmedError extends PageError {}
+
+  // The answer's JSON body; null when the page is on its way to the sign-in. Throws a
+  // PageError carrying the message to show.
+  function readAnswer(status, text, fallbackMessage) {
+    if (status === 401) {
+      reauthenticate();
+      return null;
+    }
+    sessionStorage.removeItem(STORAGE.reauthenticated); // the token was accepted
+    let body = null;
+    try {
+      body = JSON.parse(text);
+    } catch (error) {
+      body = null;
+    }
+    const ok = status >= 200 && status < 300;
+    if (ok && body && typeof body === "object") return body;
+    if (status === 403) throw new PageError(FORBIDDEN_ERROR);
+    if (body && typeof body.error === "string" && body.error) throw new PageError(body.error);
+    if (status === 429) throw new PageError(TOO_MANY_REQUESTS_MESSAGE);
+    if (ok || status >= 500) throw new UnconfirmedError(fallbackMessage);
+    throw new PageError(fallbackMessage);
+  }
+
+  // The token to send, or null after starting a new sign-in.
+  function tokenOrSignIn() {
+    const token = currentToken();
+    if (!token) reauthenticate();
+    return token;
+  }
+
+  // GET one of the page's API routes. No answer within REQUEST_TIMEOUT_MS, or none at
+  // all, is NETWORK_MESSAGE.
+  async function apiGet(path, fallbackMessage) {
+    const token = tokenOrSignIn();
+    if (!token) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let status;
+    let text;
+    try {
+      const response = await fetch(config.pageUrl + path, {
+        method: "GET",
+        headers: { Authorization: token },
+        credentials: "omit",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      status = response.status;
+      text = await response.text();
+    } catch (error) {
+      throw new PageError(NETWORK_MESSAGE);
+    } finally {
+      clearTimeout(timer);
+    }
+    return readAnswer(status, text, fallbackMessage);
+  }
+
+  // POST JSON to one of the page's API routes with XMLHttpRequest, whose upload events
+  // say when the body has been sent (onSent); same origin, so the CSP's connect-src
+  // 'self' covers it. The time limit restarts on each upload progress event and counts
+  // REQUEST_TIMEOUT_MS from the end of the upload, so a slow uplink isn't cut short.
+  // Before the body is sent, a failure is NETWORK_MESSAGE (the API never ran); after,
+  // it is an UnconfirmedError.
+  function apiPost(path, json, fallbackMessage, onSent) {
+    const token = tokenOrSignIn();
+    if (!token) return Promise.resolve(null);
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      let sent = false;
+      let timer = null;
+      const restartTimer = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => xhr.abort(), REQUEST_TIMEOUT_MS);
+      };
+      xhr.open("POST", config.pageUrl + path);
+      xhr.setRequestHeader("Authorization", token);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.withCredentials = false;
+      xhr.upload.onprogress = restartTimer;
+      xhr.upload.onload = () => {
+        sent = true;
+        restartTimer();
+        onSent();
+      };
+      xhr.onload = () => {
+        clearTimeout(timer);
+        try {
+          resolve(readAnswer(xhr.status, xhr.responseText, fallbackMessage));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      xhr.onerror = xhr.onabort = () => {
+        clearTimeout(timer);
+        reject(sent ? new UnconfirmedError(fallbackMessage) : new PageError(NETWORK_MESSAGE));
+      };
+      restartTimer();
+      xhr.send(json);
+    });
+  }
+
+  // ---- Class ----
+
+  // Runs one class-list request with the busy state: the progress bar, aria-busy, the
+  // message, and "Still loading…" after CLASS_SLOW_MS. Resolves to the answer's body
+  // (null on the way to the sign-in); rejects with a PageError.
+  async function requestClassList(path, message) {
+    const status = elements["class-status"];
+    state.loadingClasses = true;
+    updateControls();
+    setMessage(status, message);
+    const slow = setTimeout(() => setMessage(status, STILL_LOADING_CLASSES_MESSAGE), CLASS_SLOW_MS);
+    try {
+      return await apiGet(path, NEON_ERROR);
+    } finally {
+      clearTimeout(slow);
+      state.loadingClasses = false;
+      updateControls();
+    }
+  }
+
+  // Lists the answer's classes, keeping the chosen one when it is still listed.
+  function showClassList(body) {
+    const select = elements["class-select"];
+    const chosen = select.value;
+    state.classes = new Map();
+    const options = [];
+    for (const entry of Array.isArray(body.classes) ? body.classes : []) {
+      if (!entry || typeof entry.name !== "string" || !entry.name || state.classes.has(entry.name)) continue;
+      state.classes.set(entry.name, entry);
+      options.push(element("option", entry.name, { value: entry.name }));
+    }
+    select.replaceChildren(classPlaceholder, ...options);
+    select.value = state.classes.has(chosen) ? chosen : "";
+    state.classesLoaded = true;
+    showClassListTime(body);
+    updateControls();
+  }
+
+  // "Class list from Neon at HH:MM.", and that it may be out of date when it is stale.
+  function showClassListTime(body) {
+    const note = elements["class-freshness"];
+    const time = typeof body.refreshed_at === "string" ? new Date(body.refreshed_at) : null;
+    if (!time || Number.isNaN(time.getTime())) {
+      note.textContent = ""; // aria-describedby would still read hidden text
+      note.hidden = true;
+      return;
+    }
+    const text = format(CLASS_LIST_TIME_MESSAGE, { time: time.toLocaleTimeString([], CLASS_LIST_TIME_OPTIONS) });
+    note.textContent = body.stale === true ? text + " " + STALE_LIST_MESSAGE : text;
+    note.hidden = false;
+  }
+
+  function hasClasses(body) {
+    return Array.isArray(body.classes) && body.classes.length > 0;
+  }
+
+  function errorMessage(error, fallbackMessage) {
+    return error instanceof PageError ? error.message : fallbackMessage;
+  }
+
+  // The first load, and Try again after it failed.
+  async function loadClasses() {
+    if (state.loadingClasses) return;
+    const retry = elements["class-retry"];
+    let body;
+    try {
+      body = await requestClassList("/classes", LOADING_CLASSES_MESSAGE);
+    } catch (error) {
+      setMessage(elements["class-status"], errorMessage(error, NEON_ERROR), "error");
+      retry.hidden = false;
+      return;
+    }
+    if (!body) return;
+    showClassList(body);
+    setMessage(elements["class-status"], "");
+    // Try again goes away with the problem; focus it held moves to the list.
+    if (document.activeElement === retry) elements["class-select"].focus();
+    retry.hidden = true;
+    elements["class-refresh"].hidden = false;
+  }
+
+  // Refresh class list: GET /classes?refresh=1. A failed refresh keeps the list shown.
+  async function refreshClasses() {
+    if (state.loadingClasses || state.submitting) return;
+    const status = elements["class-status"];
+    let body;
+    try {
+      body = await requestClassList("/classes?refresh=1", REFRESHING_CLASSES_MESSAGE);
+    } catch (error) {
+      setMessage(status, errorMessage(error, NEON_ERROR), "error");
+      return;
+    }
+    if (!body) return;
+    // A failed refresh with nothing to fall back on answers no classes: keep the list shown.
+    if (body.refresh !== "failed" || hasClasses(body)) showClassList(body);
+    const [message, kind] = REFRESH_OUTCOMES.get(body.refresh) || [""];
+    setMessage(status, message, kind);
+  }
+
+  function chosenClass() {
+    return state.classes.get(elements["class-select"].value) || null;
+  }
+
+  function onClassChange() {
+    const entry = chosenClass();
+    if (entry && typeof entry.problem === "string" && entry.problem) {
+      setMessage(elements["class-status"], entry.problem, "error");
+    } else if (entry && typeof entry.warning === "string" && entry.warning) {
+      setMessage(elements["class-status"], entry.warning);
+    } else {
+      setMessage(elements["class-status"], "");
+    }
+    updateControls();
+  }
+
+  // ---- Photo ----
+  function clearPhoto() {
+    state.photo = null;
+    if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+    state.previewUrl = null;
+    elements.preview.hidden = true;
+    elements.preview.removeAttribute("src");
+    elements["photo-note"].hidden = true;
+    setMessage(elements["photo-status"], "");
+  }
+
+  function sizeText(byteCount) {
+    if (byteCount < MEBIBYTE) return Math.ceil(byteCount / 1024) + " KB";
+    return (Math.ceil((byteCount * 10) / MEBIBYTE) / 10).toFixed(1) + " MB";
+  }
+
+  async function onFile(file) {
+    if (state.submitting) return; // the photo being sent stays
+    const request = ++state.photoRequest;
+    clearPhoto();
+    elements.result.hidden = true;
+    updateControls();
+    if (!file) return;
+    if (file.size > MAX_READ_BYTES) {
+      setMessage(elements["photo-status"], tooBigMessage(file.size), "error");
+      return;
+    }
+    let original;
+    try {
+      original = new Uint8Array(await file.arrayBuffer());
+    } catch (error) {
+      if (request === state.photoRequest) setMessage(elements["photo-status"], UNREADABLE_JPEG_MESSAGE, "error");
+      return;
+    }
+    if (request !== state.photoRequest) return;
+
+    let cleaned;
+    try {
+      cleaned = removeLocation(original);
+    } catch (error) {
+      cleaned = { bytes: original, removed: false };
+    }
+    let problem;
+    try {
+      problem = checkPhoto(cleaned.bytes);
+    } catch (error) {
+      problem = UNREADABLE_JPEG_MESSAGE;
+    }
+    if (problem === LOCATION_MESSAGE) problem = CANT_REMOVE_LOCATION_MESSAGE;
+    if (problem) {
+      setMessage(elements["photo-status"], problem, "error");
+      return;
+    }
+    const info = parseJpeg(cleaned.bytes);
+    state.photo = { bytes: cleaned.bytes, width: info.displayed[0], height: info.displayed[1] };
+    setMessage(elements["photo-status"], PHOTO_OK_MESSAGE + " " + info.displayed[0] + "×" + info.displayed[1] + ", " + sizeText(cleaned.bytes.length) + ".", "ok");
+    if (cleaned.removed) {
+      elements["photo-note"].textContent = LOCATION_REMOVED_MESSAGE;
+      elements["photo-note"].hidden = false;
+    }
+    state.previewUrl = URL.createObjectURL(new Blob([cleaned.bytes], { type: "image/jpeg" }));
+    elements.preview.src = state.previewUrl;
+    elements.preview.hidden = false;
+    updateControls();
+  }
+
+  // ---- Submit and result ----
+  function toBase64(bytes) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",", 2)[1] || "");
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(new Blob([bytes]));
+    });
+  }
+
+  function pullRequestLink(pullRequest, text) {
+    const url = pullRequest && typeof pullRequest.url === "string" ? pullRequest.url : "";
+    if (!url.startsWith("https://github.com/")) return element("span", text);
+    return element("a", text, { href: url, target: "_blank", rel: "noopener noreferrer" });
+  }
+
+  function pullRequestNumber(pullRequest) {
+    return pullRequest && Number.isInteger(pullRequest.number) ? pullRequest.number : "?";
+  }
+
+  function renderError(message) {
+    const result = elements.result;
+    result.replaceChildren(element("p", message, { class: "message error" }));
+    result.hidden = false;
+  }
+
+  function renderResult(body) {
+    const result = elements.result;
+    const children = [];
+    const pullRequest = body.pull_request;
+    const filePath = typeof body.file_path === "string" ? body.file_path : "";
+    if (body.action === "opened" || body.action === "updated") {
+      const verb = body.action === "opened" ? "Opened" : "Updated";
+      const line = element("p", null, { class: "message ok" });
+      line.appendChild(pullRequestLink(pullRequest, verb + " pull request #" + pullRequestNumber(pullRequest)));
+      children.push(line);
+    } else if (body.action === "would_open" || body.action === "would_update") {
+      children.push(element("p", "Dry run: nothing was opened", { class: "message ok" }));
+      children.push(element("p", (body.replaces_existing ? "Would replace " : "Would add ") + filePath));
+      const removedPaths = Array.isArray(body.removed_paths) ? body.removed_paths.filter((path) => typeof path === "string") : [];
+      children.push(element("p", "Files it would remove:" + (removedPaths.length ? "" : " none")));
+      if (removedPaths.length) {
+        const list = element("ul");
+        removedPaths.forEach((path) => list.appendChild(element("li", path)));
+        children.push(list);
+      }
+      if (body.action === "would_update") {
+        const line = element("p", "Would update open pull request ");
+        line.appendChild(pullRequestLink(pullRequest, "#" + pullRequestNumber(pullRequest)));
+        children.push(line);
+      } else {
+        children.push(element("p", "Would open a new pull request"));
+      }
+      children.push(element("p", "Title: " + (typeof body.title === "string" ? body.title : "")));
+      children.push(element("pre", typeof body.body === "string" ? body.body : ""));
+    } else {
+      renderError(GENERIC_ERROR);
+      return;
+    }
+    const warnings = Array.isArray(body.warnings) ? body.warnings.filter((warning) => typeof warning === "string") : [];
+    if (warnings.length) {
+      const list = element("ul");
+      warnings.forEach((warning) => list.appendChild(element("li", warning)));
+      children.push(element("p", "Warnings:"), list);
+    }
+    result.replaceChildren(...children);
+    result.hidden = false;
+  }
+
+  // The seconds since the submission started, beside the step; not a live region.
+  function startElapsed() {
+    const started = Date.now();
+    const line = elements["submit-elapsed"];
+    const show = () => {
+      line.textContent = format(ELAPSED_MESSAGE, { seconds: Math.floor((Date.now() - started) / 1000) });
+    };
+    show();
+    line.hidden = false;
+    state.elapsedTimer = setInterval(show, ELAPSED_TICK_MS);
+  }
+
+  function setSubmitting(submitting) {
+    state.submitting = submitting;
+    setBusy(elements.result, submitting);
+    elements["submit-progress"].hidden = !submitting;
+    if (submitting) {
+      elements.result.hidden = true;
+      startElapsed();
+    } else {
+      clearInterval(state.elapsedTimer);
+      state.elapsedTimer = null;
+      elements["submit-elapsed"].hidden = true;
+      elements["submit-elapsed"].textContent = "";
+      setMessage(elements["submit-status"], "");
+    }
+    updateControls();
+  }
+
+  function submitErrorMessage(error) {
+    if (error instanceof UnconfirmedError) return config.dryRun ? DRY_RUN_TIMEOUT_MESSAGE : UNCONFIRMED_MESSAGE;
+    return errorMessage(error, GENERIC_ERROR);
+  }
+
+  // The class and the photo are never cleared here, so after a failure one click
+  // submits them again.
+  async function submit() {
+    const entry = chosenClass();
+    const photo = state.photo;
+    if (!entry || !photo || state.submitting || state.loadingClasses) return;
+    const status = elements["submit-status"];
+    setSubmitting(true);
+    setMessage(status, PREPARING_MESSAGE);
+    let body = null;
+    let failure = null;
+    try {
+      const json = JSON.stringify({ class_name: entry.name, photo_base64: await toBase64(photo.bytes) });
+      setMessage(status, SENDING_MESSAGE);
+      body = await apiPost("/submit", json, GENERIC_ERROR, () => {
+        setMessage(status, config.dryRun ? WAITING_DRY_RUN_MESSAGE : WAITING_MESSAGE);
+      });
+    } catch (error) {
+      failure = submitErrorMessage(error);
+    }
+    // aria-busy comes off #result before it is filled: a screen reader skips changes
+    // to a busy live region.
+    setSubmitting(false);
+    if (failure) renderError(failure);
+    else if (body) renderResult(body);
+  }
+
+  // ---- Wiring ----
+  function wire() {
+    elements["sign-out"].addEventListener("click", signOut);
+    elements["sign-in-again"].addEventListener("click", () => {
+      sessionStorage.removeItem(STORAGE.reauthenticated);
+      signIn();
+    });
+    elements["class-select"].addEventListener("change", onClassChange);
+    elements["class-retry"].addEventListener("click", loadClasses);
+    elements["class-refresh"].addEventListener("click", refreshClasses);
+    elements["photo-input"].addEventListener("change", () => {
+      const file = elements["photo-input"].files[0];
+      elements["photo-input"].value = ""; // choosing the same file again still counts
+      onFile(file);
+    });
+    const zone = elements["drop-zone"];
+    zone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      if (!state.submitting) zone.classList.add("dragging");
+    });
+    zone.addEventListener("dragleave", () => zone.classList.remove("dragging"));
+    zone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      zone.classList.remove("dragging");
+      const files = event.dataTransfer ? event.dataTransfer.files : null;
+      if (files && files.length) onFile(files[0]);
+    });
+    // A file dropped beside the zone must not replace the page.
+    document.addEventListener("dragover", (event) => event.preventDefault());
+    document.addEventListener("drop", (event) => event.preventDefault());
+    elements.submit.addEventListener("click", submit);
+  }
+
+  async function start() {
+    elements["dry-run-banner"].hidden = !config.dryRun;
+    wire();
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("code") || params.has("error")) {
+      if (!(await finishSignIn(params))) {
+        showSignInProblem();
+        return;
+      }
+    }
+    if (!currentToken()) {
+      reauthenticate();
+      return;
+    }
+    elements["signing-in"].hidden = true;
+    elements["sign-out"].hidden = false;
+    elements.app.hidden = false;
+    loadClasses();
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>

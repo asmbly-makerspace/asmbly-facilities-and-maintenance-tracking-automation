@@ -26,8 +26,11 @@ pass the unit tests and break on the first real request.
 - Every SSM parameter the code reads is granted in the function's IAM statements by its
   exact ARN, and every config key it reads exists in the `configs/*.json` file behind it.
 - Every secret name in the code matches a `secretsmanager:GetSecretValue` grant.
-- Every new named resource is in both `GitHubDeployPolicystage` and
-  `GitHubDeployPolicyprod` in `template-cicd.yaml`.
+- Every new named resource is in `template-cicd.yaml` for both stages (one stage only if
+  it exists only there): functions, layers and log groups in `GitHubDeployPolicystage`
+  and `GitHubDeployPolicyprod`; tables, SSM parameters and rules in
+  `GitHubDeployPolicystageData` and `GitHubDeployPolicyprodData`. `tests/test_templates.py`
+  passes, so every policy is under IAM's 6,144-character limit.
 - Every new nested template parameter is passed from `template.yaml`; every new route has
   its `DefinitionBody` path, its `AWS::Lambda::Permission`, and its ARN output.
 - Every helper the code calls exists in `common/` with the arguments it's given. Open it.

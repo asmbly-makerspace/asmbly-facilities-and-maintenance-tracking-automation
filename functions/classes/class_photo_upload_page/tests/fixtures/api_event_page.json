@@ -1,0 +1,30 @@
+{
+  "resource": "/class-photo-upload",
+  "path": "/class-photo-upload",
+  "httpMethod": "GET",
+  "headers": {
+    "Accept": "text/html",
+    "Host": "facilities.asmbly.org",
+    "User-Agent": "Mozilla/5.0"
+  },
+  "multiValueHeaders": {
+    "Accept": ["text/html"],
+    "Host": ["facilities.asmbly.org"],
+    "User-Agent": ["Mozilla/5.0"]
+  },
+  "queryStringParameters": null,
+  "multiValueQueryStringParameters": null,
+  "pathParameters": null,
+  "stageVariables": null,
+  "requestContext": {
+    "resourcePath": "/class-photo-upload",
+    "httpMethod": "GET",
+    "path": "/class-photo-upload",
+    "domainName": "facilities.asmbly.org",
+    "stage": "prod",
+    "requestId": "c6af9ac6-7b61-11e6-9a41-93e8deadbeef",
+    "identity": {"sourceIp": "203.0.113.10"}
+  },
+  "body": null,
+  "isBase64Encoded": false
+}

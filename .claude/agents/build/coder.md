@@ -71,8 +71,11 @@ fails in production, not in tests.
 - Config: a `configs/<name>.json` file, an `AWS::SSM::Parameter` that includes it with
   `Fn::Transform` / `AWS::Include`, and the parameter name passed to the function as an
   environment variable.
-- Every named resource you add goes into both `GitHubDeployPolicystage` and
-  `GitHubDeployPolicyprod` in `template-cicd.yaml`, in the same step.
+- Every named resource you add goes into `template-cicd.yaml` for both stages, in the
+  same step: a function, layer or log group into `GitHubDeployPolicystage` and
+  `GitHubDeployPolicyprod`; a table, SSM parameter or rule into
+  `GitHubDeployPolicystageData` and `GitHubDeployPolicyprodData`. `tests/test_templates.py`
+  fails a policy that nears IAM's 6,144-character limit (`docs/Deploying.md`).
 
 ### Tests
 
