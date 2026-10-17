@@ -261,3 +261,45 @@ def test_secret_arns_end_with_hyphen_star(template: pathlib.Path) -> None:
             elif not resource.endswith("-*"):
                 problems.append(f"{template.name}: {name} grants {resource}")
     assert problems == []
+
+
+CLASS_PHOTO_DATA_ROUTES = [("/class-photo-upload/classes", "get"), ("/class-photo-upload/submit", "post")]
+
+
+def test_class_photo_data_routes_require_the_staff_authorizer() -> None:
+    # API Gateway answers 401 before the function runs when the staff pool's ID token is
+    # missing or invalid; the function then checks the token's app client itself.
+    body = _load(ROOT / "template.yaml")["Resources"]["FacilitiesApi"]["Properties"]["DefinitionBody"]
+    scheme = body["components"]["securitySchemes"]["StaffCognitoAuthorizer"]
+    assert scheme["x-amazon-apigateway-authtype"] == "cognito_user_pools"
+    assert scheme["x-amazon-apigateway-authorizer"]["type"] == "cognito_user_pools"
+    assert scheme["x-amazon-apigateway-authorizer"]["providerARNs"] == [
+        {"Fn::Sub": "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${StaffUserPoolId}"}
+    ]
+    for path, method in CLASS_PHOTO_DATA_ROUTES:
+        assert body["paths"][path][method]["security"] == [{"StaffCognitoAuthorizer": []}], path
+
+
+def test_class_photo_page_route_is_the_only_unauthorized_class_photo_route() -> None:
+    # The page is the sign-in entry point (a browser navigation can't carry a token) and
+    # serves fixed HTML; every other class photo route must use the staff authorizer.
+    paths = _load(ROOT / "template.yaml")["Resources"]["FacilitiesApi"]["Properties"]["DefinitionBody"]["paths"]
+    unauthorized = [
+        (path, method)
+        for path, methods in paths.items()
+        if path == "/class-photo-upload" or path.startswith("/class-photo-upload/")
+        for method, operation in methods.items()
+        if not operation.get("security")
+    ]
+    assert unauthorized == [("/class-photo-upload", "get")]
+
+
+def test_class_photo_page_function_reads_nothing() -> None:
+    # The page function holds no secrets and calls nothing, so it gets no policies or layers.
+    function = _load(ROOT / "templates" / "classes.yaml")["Resources"]["ClassPhotoUploadPageFunction"]["Properties"]
+    assert "Policies" not in function and "Layers" not in function
+    assert set(function["Environment"]["Variables"]) == {
+        "STAFF_AUTH_DOMAIN",
+        "CLASS_PHOTO_APP_CLIENT_ID",
+        "CLASS_PHOTO_DRY_RUN",
+    }

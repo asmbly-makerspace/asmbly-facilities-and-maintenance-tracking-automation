@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform:
+  - AWS::LanguageExtensions
+  - AWS::Serverless-2016-10-31
+Description: Class photo upload page and its API.
+
+Parameters:
+  Stage:
+    Type: String
+    Description: The deployment stage (e.g., dev, stage, prod).
+  CommonLayerARN:
+    Type: String
+    Description: The ARN of the shared Common Utilities Lambda Layer.
+  RequestsLayerARN:
+    Type: String
+    Description: The ARN of the shared requests Lambda Layer.
+  NeonSecretName:
+    Type: String
+    Description: The name of the Secrets Manager secret with NEON_ORG_ID and NEON_API_KEY.
+  ClassPhotoGitHubAppSecretName:
+    Type: String
+    Description: The name of the Secrets Manager secret with the class photo GitHub App's app_id, installation_id and private_key.
+  ClassPhotoAppClientId:
+    Type: String
+    Description: The staff pool's app client ID for the class photo upload page (the ID token's aud).
+  StaffAuthDomain:
+    Type: String
+    AllowedPattern: '^[A-Za-z0-9.-]+$'
+    Description: Host name of the staff pool's hosted sign-in (no scheme), for the page's sign-in.
+
+Conditions:
+  IsProd: !Equals [!Ref Stage, 'prod']
+
+Resources:
+  ClassPhotoUploadConfigParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${Stage}/config/class-photo-upload"
+      Type: String
+      Description: "asmbly-classes coordinates for the class photo upload. Managed by templates/classes.yaml."
+      Value:
+        Fn::ToJsonString:
+          Fn::Transform:
+            Name: 'AWS::Include'
+            Parameters:
+              Location: ../configs/class_photo_upload.json
+      Tags:
+        Application: facilities-automation-hub
+        Project: classes:class-photo-upload
+        Workspace: classes
+        Stage: !Ref Stage
+
+  ClassPhotoUploadApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/asmbly/lambda/ClassPhotoUploadApiFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: classes:class-photo-upload
+
+  ClassPhotoUploadApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "ClassPhotoUploadApiFunction-${Stage}"
+      Description: "Lists classes from Neon and turns a checked class photo into a pull request on asmbly-classes (dry run outside prod)."
+      CodeUri: ../functions/classes/class_photo_upload_api/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      # Under API Gateway's 29 s, so the caller always gets this function's answer.
+      Timeout: 25
+      MemorySize: 256
+      ReservedConcurrentExecutions: 3
+      LoggingConfig:
+        LogGroup: !Ref ClassPhotoUploadApiLogGroup
+      Layers:
+        - !Ref CommonLayerARN
+        - !Ref RequestsLayerARN
+      Environment:
+        Variables:
+          NEON_SECRET_NAME: !Ref NeonSecretName
+          GITHUB_APP_SECRET_NAME: !Ref ClassPhotoGitHubAppSecretName
+          CLASS_PHOTO_CONFIG_PARAM_NAME: !Ref ClassPhotoUploadConfigParameter
+          CLASS_PHOTO_APP_CLIENT_ID: !Ref ClassPhotoAppClientId
+          # Only prod writes to asmbly-classes; every other stage is a dry run.
+          CLASS_PHOTO_DRY_RUN: !If [IsProd, 'false', 'true']
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ClassPhotoUploadConfigParameter}'
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource:
+                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${NeonSecretName}-*'
+                - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ClassPhotoGitHubAppSecretName}-*'
+      Tags:
+        Project: classes:class-photo-upload
+
+  ClassPhotoUploadPageLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/asmbly/lambda/ClassPhotoUploadPageFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: classes:class-photo-upload
+
+  # Serves fixed HTML and reads nothing, so it has no layers and no policies.
+  ClassPhotoUploadPageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "ClassPhotoUploadPageFunction-${Stage}"
+      Description: "Serves the class photo upload page (static sign-in shell; data comes from the authorized API routes)."
+      CodeUri: ../functions/classes/class_photo_upload_page/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Timeout: 5
+      LoggingConfig:
+        LogGroup: !Ref ClassPhotoUploadPageLogGroup
+      Environment:
+        Variables:
+          STAFF_AUTH_DOMAIN: !Ref StaffAuthDomain
+          CLASS_PHOTO_APP_CLIENT_ID: !Ref ClassPhotoAppClientId
+          # Only for the page's dry-run banner; the API function decides what a submit does.
+          CLASS_PHOTO_DRY_RUN: !If [IsProd, 'false', 'true']
+      Tags:
+        Project: classes:class-photo-upload
+
+Outputs:
+  ClassPhotoUploadApiFunctionArn:
+    Description: "ARN of the class photo upload API function"
+    Value: !GetAtt ClassPhotoUploadApiFunction.Arn
+  ClassPhotoUploadPageFunctionArn:
+    Description: "ARN of the class photo upload page function"
+    Value: !GetAtt ClassPhotoUploadPageFunction.Arn

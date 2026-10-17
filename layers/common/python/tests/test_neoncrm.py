@@ -1,8 +1,14 @@
 import unittest
 from unittest.mock import patch, Mock
 import base64
+import json
+import logging
+from typing import Any
+
+import pytest
+import requests_mock as requests_mock_lib
 import requests
-from common.neoncrm import NeonCRM
+from common.neoncrm import MAX_SEARCH_PAGES, NeonCRM, NeonCRMError
 
 class TestNeonCRM(unittest.TestCase):
 
@@ -149,3 +155,150 @@ class TestNeonCRM(unittest.TestCase):
             self.client.update_account_custom_field(account_id, field_id, field_value)
         except Exception as e:
             self.fail(f"update_account_custom_field raised an unexpected exception: {e}")
+
+
+# --- NeonCRM.search_events (pytest style, requests-mock: no network) ---
+
+SEARCH_URL = "https://api.neoncrm.com/v2/events/search"
+SEARCH_FIELDS = [{"field": "Event End Date", "operator": "GREATER_AND_EQUAL", "value": "2026-06-16"}]
+OUTPUT_FIELDS = ["Event ID", "Event Name"]
+BODY_MARKER = "SECRET-BODY-MARKER-7f3a"
+
+
+@pytest.fixture
+def neon() -> NeonCRM:
+    return NeonCRM("test_org", "test_key")
+
+
+def _page(results: list[dict], current: int, total: int) -> dict:
+    return {"searchResults": results, "pagination": {"currentPage": current, "totalPages": total}}
+
+
+def test_search_events_posts_fields_and_pagination(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker) -> None:
+    requests_mock.post(SEARCH_URL, json=_page([{"Event ID": "1", "Event Name": "A"}], 0, 1))
+
+    results = neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS)
+
+    assert results == [{"Event ID": "1", "Event Name": "A"}]
+    assert requests_mock.call_count == 1
+    request = requests_mock.request_history[0]
+    assert request.json() == {
+        "searchFields": SEARCH_FIELDS,
+        "outputFields": OUTPUT_FIELDS,
+        "pagination": {"currentPage": 0, "pageSize": 200},
+    }
+    expected = base64.b64encode(b"test_org:test_key").decode("utf-8")
+    assert request.headers["Authorization"] == f"Basic {expected}"
+    assert request.timeout == 10.0
+
+
+def test_search_events_reads_every_page(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker) -> None:
+    requests_mock.post(
+        SEARCH_URL,
+        [
+            {"json": _page([{"Event ID": "1"}, {"Event ID": "2"}], 0, 2)},
+            {"json": _page([{"Event ID": "3"}], 1, 2)},
+        ],
+    )
+
+    results = neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS)
+
+    assert [r["Event ID"] for r in results] == ["1", "2", "3"]
+    assert [r.json()["pagination"]["currentPage"] for r in requests_mock.request_history] == [0, 1]
+
+
+def test_search_events_stops_at_page_guard(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker, caplog: pytest.LogCaptureFixture) -> None:
+    requests_mock.post(SEARCH_URL, json=_page([{"Event ID": "x"}], 0, 10_000))
+
+    with caplog.at_level(logging.WARNING):
+        results = neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS)
+
+    assert requests_mock.call_count == MAX_SEARCH_PAGES
+    assert len(results) == MAX_SEARCH_PAGES
+    assert "stopped at" in caplog.text
+
+
+def test_search_events_stops_at_the_callers_page_cap(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker, caplog: pytest.LogCaptureFixture) -> None:
+    requests_mock.post(SEARCH_URL, json=_page([{"Event ID": "x"}], 0, 10_000))
+
+    with caplog.at_level(logging.WARNING):
+        results = neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS, max_pages=3)
+
+    assert requests_mock.call_count == 3
+    assert len(results) == 3
+    assert "stopped at 3 of 10000 pages" in caplog.text
+
+
+def test_search_events_passes_the_timeout_to_each_request(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker) -> None:
+    requests_mock.post(SEARCH_URL, [{"json": _page([{"Event ID": "1"}], 0, 2)}, {"json": _page([{"Event ID": "2"}], 1, 2)}])
+
+    neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS, timeout=4.0)
+
+    assert [r.timeout for r in requests_mock.request_history] == [4.0, 4.0]
+
+
+def test_search_events_without_pagination_reads_one_page(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker) -> None:
+    requests_mock.post(SEARCH_URL, json={"searchResults": [{"Event ID": "1"}]})
+
+    assert neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS) == [{"Event ID": "1"}]
+    assert requests_mock.call_count == 1
+
+
+def test_search_events_raises_on_http_error(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker, caplog: pytest.LogCaptureFixture) -> None:
+    requests_mock.post(SEARCH_URL, status_code=500, text=f"internal error {BODY_MARKER}")
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(NeonCRMError) as excinfo:
+        neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS)
+
+    assert str(excinfo.value) == "events/search failed (status 500)"
+    assert BODY_MARKER not in str(excinfo.value)
+    assert BODY_MARKER not in caplog.text
+    assert "Basic " not in caplog.text
+    assert "test_key" not in caplog.text
+
+
+def test_search_events_raises_on_timeout(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker) -> None:
+    requests_mock.post(SEARCH_URL, exc=requests.exceptions.ConnectTimeout)
+
+    with pytest.raises(NeonCRMError) as excinfo:
+        neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS)
+
+    assert str(excinfo.value) == "events/search failed (no response)"
+
+
+def test_search_events_raises_on_non_json(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker, caplog: pytest.LogCaptureFixture) -> None:
+    requests_mock.post(SEARCH_URL, status_code=200, text=f"<html>{BODY_MARKER}</html>")
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(NeonCRMError) as excinfo:
+        neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS)
+
+    assert str(excinfo.value) == "events/search failed (status 200)"
+    assert BODY_MARKER not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"error": BODY_MARKER}, {"searchResults": None}, [BODY_MARKER]],
+)
+def test_search_events_raises_without_search_results(
+    neon: NeonCRM,
+    requests_mock: requests_mock_lib.Mocker,
+    caplog: pytest.LogCaptureFixture,
+    body: Any,
+) -> None:
+    requests_mock.post(SEARCH_URL, status_code=200, text=json.dumps(body))
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(NeonCRMError):
+        neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS)
+
+    assert BODY_MARKER not in caplog.text
+
+
+def test_search_events_raises_when_a_later_page_fails(neon: NeonCRM, requests_mock: requests_mock_lib.Mocker) -> None:
+    requests_mock.post(
+        SEARCH_URL,
+        [{"json": _page([{"Event ID": "1"}], 0, 2)}, {"status_code": 503, "text": "busy"}],
+    )
+
+    with pytest.raises(NeonCRMError, match="status 503"):
+        neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS)

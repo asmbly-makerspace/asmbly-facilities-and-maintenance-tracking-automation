@@ -1,0 +1,75 @@
+{
+  "resource": "/class-photo-upload/classes",
+  "path": "/class-photo-upload/classes",
+  "httpMethod": "GET",
+  "headers": {
+    "Accept": "application/json",
+    "Authorization": "fake-id-token-AUTHMARKER",
+    "Content-Type": "application/json",
+    "Host": "facilities.asmbly.org",
+    "User-Agent": "Mozilla/5.0",
+    "X-Forwarded-For": "203.0.113.10",
+    "X-Forwarded-Proto": "https"
+  },
+  "multiValueHeaders": {
+    "Accept": [
+      "application/json"
+    ],
+    "Authorization": [
+      "fake-id-token-AUTHMARKER"
+    ],
+    "Content-Type": [
+      "application/json"
+    ],
+    "Host": [
+      "facilities.asmbly.org"
+    ],
+    "User-Agent": [
+      "Mozilla/5.0"
+    ],
+    "X-Forwarded-For": [
+      "203.0.113.10"
+    ],
+    "X-Forwarded-Proto": [
+      "https"
+    ]
+  },
+  "queryStringParameters": null,
+  "multiValueQueryStringParameters": null,
+  "pathParameters": null,
+  "stageVariables": null,
+  "requestContext": {
+    "resourceId": "abc123",
+    "resourcePath": "/class-photo-upload/classes",
+    "httpMethod": "GET",
+    "extendedRequestId": "fakeExtendedId=",
+    "requestTime": "16/Oct/2026:23:00:00 +0000",
+    "path": "/class-photo-upload/classes",
+    "accountId": "000000000000",
+    "protocol": "HTTP/1.1",
+    "stage": "stage",
+    "domainPrefix": "facilities",
+    "requestTimeEpoch": 1792191600000,
+    "requestId": "00000000-0000-0000-0000-000000000000",
+    "identity": {
+      "sourceIp": "203.0.113.10",
+      "userAgent": "Mozilla/5.0"
+    },
+    "domainName": "facilities.asmbly.org",
+    "apiId": "fakeapi123",
+    "authorizer": {
+      "claims": {
+        "sub": "11111111-2222-3333-4444-555555555555",
+        "aud": "fake-app-client-id",
+        "token_use": "id",
+        "cognito:username": "staff-user-USERMARKER",
+        "iss": "https://cognito-idp.us-east-2.amazonaws.com/us-east-2_FAKEPOOL",
+        "auth_time": "1792191500",
+        "exp": "Fri Oct 16 23:59:59 UTC 2026",
+        "iat": "Fri Oct 16 23:00:00 UTC 2026"
+      }
+    }
+  },
+  "body": null,
+  "isBase64Encoded": false
+}

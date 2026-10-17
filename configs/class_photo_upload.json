@@ -1,0 +1,8 @@
+{
+  "repo_owner": "asmbly-makerspace",
+  "repo_name": "asmbly-classes",
+  "base_branch": "main",
+  "images_dir": "app/src/lib/images",
+  "branch_prefix": "class-photo/",
+  "image_extensions": ["avif", "gif", "heif", "jpeg", "jpg", "png", "tiff", "webp"]
+}

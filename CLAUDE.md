@@ -8,7 +8,7 @@ wrong instead of quietly following either.
 | Area | Path | Read first |
 | --- | --- | --- |
 | A Lambda function | `functions/<area>/<name>/` | Its `README.md`, its tests, and "Rules" below |
-| Shared helpers (AWS, ClickUp, Slack, Neon, Discourse, Google Forms) | `layers/common/python/common/` | The module you call, and its tests in `layers/common/` |
+| Shared helpers (AWS, ClickUp, Slack, Neon, Discourse, Google Forms, GitHub) | `layers/common/python/common/` | The module you call, and its tests in `layers/common/` |
 | Application templates | `template.yaml`, `templates/*.yaml`, `configs/*.json`, `samconfig.toml` | "Rules" below, [docs/Deploying.md](docs/Deploying.md) |
 | The deploy role | `template-cicd.yaml` | [docs/Deploying.md](docs/Deploying.md), "CI/CD Infrastructure" |
 | CI and deploy | `.github/workflows/` | [docs/Deploying.md](docs/Deploying.md) |
