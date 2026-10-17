@@ -219,6 +219,7 @@ Each workflow has one job, **Deploy to AWS**:
 * It builds the SAM application inside a Docker container that mimics the Lambda environment.
 * It deploys all the AWS resources defined in the templates to its environment.
 * It reads the API's URL from the stack outputs and attaches it to the deployment, so the repository's **Deployments** page and the run's summary link to it: `https://facilities.asmbly.org` for prod, and the `execute-api` address for stage. It is the API's base address; opened on its own it answers `Missing Authentication Token`, because every route is a path under it.
+* It writes every route's full URL to the run's summary (`scripts/list_api_routes.py`, which reads the routes from `template.yaml`). The README's [API Routes](README.md#api-routes) table lists the same routes with what calls each one. A problem in this step doesn't fail the deploy.
 
 Slack, ClickUp and the other services call the permanent `https://facilities.asmbly.org` address, so nothing has to be updated after a prod deploy. (`scripts/update_slack_manifest.py` is no longer run by a workflow.)
 
