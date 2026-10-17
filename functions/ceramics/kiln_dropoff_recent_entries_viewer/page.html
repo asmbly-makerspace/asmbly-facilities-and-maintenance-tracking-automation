@@ -104,7 +104,9 @@
   /* The list, three columns even on a 320px phone. A long name wraps anywhere inside its
      cell, never widening the page. The ID never splits (members copy it onto a slip). The
      headers wrap only between words, so "Submitted" keeps the time column wide enough for
-     a date in the small size; the time wraps only at its space. */
+     a date in the small size. The time wraps only between the date and the time: the zone
+     is attached with a non-breaking space, so "18:00:00 CST" is the widest unbreakable
+     piece of the column. */
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: var(--space-3) var(--space-1); text-align: left; vertical-align: top; border-bottom: var(--border-width) solid var(--line); }
   td { overflow-wrap: anywhere; }

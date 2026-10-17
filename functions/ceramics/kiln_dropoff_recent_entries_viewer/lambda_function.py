@@ -6,6 +6,7 @@ import os
 import pathlib
 import re
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from common.aws import get_secret, get_json_parameter
 from common.clickup import get_all_clickup_tasks
@@ -20,6 +21,11 @@ logger.setLevel(logging.INFO)
 SECRET_NAME = os.environ.get("SECRET_NAME")
 # Name of the SSM Parameter containing the ClickUp config (e.g., list ID)
 CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME = os.environ.get("CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME")
+
+# The makerspace's local zone. Whether a time is CST or CDT comes from the zone data, not
+# from this code. The zone is looked up when a page is built, not at import, so missing
+# zone data is logged and shows the error page instead of failing every request.
+CENTRAL_TIME_ZONE = "America/Chicago"
 
 # The page shell (styles, header band, Refresh button, footer logo), read once per container.
 PAGE_PATH = pathlib.Path(__file__).with_name("page.html")
@@ -65,15 +71,20 @@ def _render_page(main_content: str, reload_text: str) -> str:
 
 
 def generate_html_page(tasks: list[dict]) -> str:
-    """Generates the HTML page to display the recent tasks."""
-    
+    """Generates the HTML page to display the recent tasks.
+
+    Each time is shown in US Central with its zone, e.g. "2023-12-31 18:00:00&nbsp;CST".
+    The non-breaking space keeps the zone on the same line as the time.
+    """
+    central = ZoneInfo(CENTRAL_TIME_ZONE)
     task_rows = ""
     if not tasks:
         task_rows = '<tr><td colspan="3" class="no-tasks">No submissions found in the last 24 hours. Please try refreshing.</td></tr>'
     else:
         for task in tasks:
-            # ClickUp API returns date created as a Unix timestamp in milliseconds
-            created_date = datetime.fromtimestamp(int(task['date_created']) / 1000, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+            # ClickUp API returns date created as a Unix timestamp in milliseconds (UTC)
+            created_utc = datetime.fromtimestamp(int(task['date_created']) / 1000, timezone.utc)
+            created_date = created_utc.astimezone(central).strftime('%Y-%m-%d %H:%M:%S&nbsp;%Z')
             
             # Use the custom_id if it exists, otherwise fall back to the standard id
             # (ClickUp sends "custom_id": null when a list has no custom IDs)
