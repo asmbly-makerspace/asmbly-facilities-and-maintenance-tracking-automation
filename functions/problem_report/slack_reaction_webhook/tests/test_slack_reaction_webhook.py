@@ -267,10 +267,12 @@ class TestProblemReportReactionWebhook(TestCase):
         with patch.dict(os.environ, {}, clear=True):
             # The lambda now receives the raw body, not the full API Gateway event
             event = json.loads(self.base_event['body'])
-            response = lambda_function.lambda_handler(event, None)
+            with self.assertLogs(level="ERROR") as logs:
+                response = lambda_function.lambda_handler(event, None)
 
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", "\n".join(logs.output))
 
     @patch.dict(os.environ, {
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param",
@@ -292,11 +294,18 @@ class TestProblemReportReactionWebhook(TestCase):
 
         # --- Execute ---
         event = json.loads(self.base_event['body'])
-        response = lambda_function.lambda_handler(event, None)
+        event["event_id"] = "Ev500ERR"
+        with self.assertLogs(level="ERROR") as logs:
+            response = lambda_function.lambda_handler(event, None)
 
         # --- Assertions ---
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("Internal server error: Something broke!", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertNotIn("Something broke!", response["body"])
+        errors = [r for r in logs.records if r.levelname == "ERROR"]
+        self.assertEqual(len(errors), 1)
+        self.assertIsNotNone(errors[0].exc_info)
+        self.assertIn("Ev500ERR", errors[0].getMessage())
 
     @patch.dict(os.environ, {
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param",

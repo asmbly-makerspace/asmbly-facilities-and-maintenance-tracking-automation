@@ -88,7 +88,7 @@ def send_slack_message(
         return response_data
     except Exception as e:
         logger.error("Slack chat.postMessage to %s failed: %s", final_target_channel, type(e).__name__)
-        return {"ok": False, "error": "script_error", "error_message": str(e)}
+        return {"ok": False, "error": "script_error"}
 
 
 def get_slack_post_url(slack_workspace_url: str | None, channel_id: str, message_ts: str) -> str | None:

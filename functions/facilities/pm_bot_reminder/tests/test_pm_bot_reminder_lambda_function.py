@@ -197,7 +197,8 @@ def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, cap
 
     # --- Assertions ---
     assert result['statusCode'] == 500
-    assert "Something went terribly wrong" in result['body']
+    assert result['body'] == json.dumps("Error: the PM reminder run failed.")
+    assert "Something went terribly wrong" not in result['body']
     captured = capsys.readouterr()
     assert "--- FATAL ERROR in handler:" in captured.out
     assert "Traceback (most recent call last):" in captured.err

@@ -1,6 +1,12 @@
 import json
+import logging
 import os
+from typing import Any
+
 from common import clickup, slack, aws
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 def get_slack_post_url(channel_id, message_ts):
@@ -14,7 +20,7 @@ def get_slack_post_url(channel_id, message_ts):
     return f"{slack_workspace_url}/archives/{channel_id}/p{ts_for_url}"
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Handles a webhook from ClickUp for a new purchase request.
 
@@ -46,6 +52,7 @@ def lambda_handler(event, context):
     workspace_field_id_param_name = os.environ['CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME']
     purchase_requests_config_param_name = os.environ['CLICKUP_PURCHASE_REQUESTS_CONFIG_PARAM_NAME']
 
+    task_id: str | None = None
     try:
         body = json.loads(event.get('body', '{}'))
 
@@ -123,6 +130,6 @@ def lambda_handler(event, context):
 
         return {'statusCode': 200, 'body': json.dumps('Successfully processed purchase request.')}
 
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return {'statusCode': 500, 'body': json.dumps(f'An error occurred: {str(e)}')}
+    except Exception:
+        logger.exception("Failed to process purchase request for task %r", task_id)
+        return {'statusCode': 500, 'body': json.dumps('An error occurred while processing the purchase request.')}

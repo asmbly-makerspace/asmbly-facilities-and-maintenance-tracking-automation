@@ -23,7 +23,7 @@ def _log_received_event(event: Any) -> None:
     )
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: Any, context: Any) -> dict[str, Any]:
     """Handles problem report reactions, including Discourse integration."""
     _log_received_event(event)
     try:
@@ -129,6 +129,7 @@ def lambda_handler(event, context):
 
         return {"statusCode": 200, "body": json.dumps("Request processed successfully.")}
 
-    except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}")
-        return {"statusCode": 500, "body": json.dumps(f"Internal server error: {e}")}
+    except Exception:
+        event_id = event.get("event_id") if isinstance(event, dict) else None
+        logger.exception("Unexpected error processing reaction for event %r", event_id)
+        return {"statusCode": 500, "body": json.dumps("Internal server error.")}

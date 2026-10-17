@@ -60,7 +60,7 @@ that lands phase 3 says `Closes #141` and `Closes #95`, and phase 2's says `Clos
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
 | 1 | [ClickUp exception text and payload log lines](phase-1-clickup-exception-text.md) | layer, lambda | M | [x] Complete |
-| 2 | [Plain error replies and /reorder error modal](phase-2-plain-error-replies.md) | lambda, layer, docs | M | [ ] Pending |
+| 2 | [Plain error replies and /reorder error modal](phase-2-plain-error-replies.md) | lambda, layer, docs | M | [x] Complete |
 | 3 | [Logging cleanup and request timeouts](phase-3-logging-cleanup-and-timeouts.md) | layer, lambda, docs | L | [ ] Pending |
 
 ## Dependencies

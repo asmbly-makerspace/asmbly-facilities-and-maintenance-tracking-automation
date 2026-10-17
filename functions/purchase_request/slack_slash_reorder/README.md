@@ -8,6 +8,7 @@
 - [Testing](#testing)
 - [Deployment](#deployment)
 - [Usage](#usage)
+- [If something goes wrong](#if-something-goes-wrong)
 
 ## Purpose
 
@@ -151,3 +152,16 @@ The deployment process is managed and specified in the [Deployment Instructions]
 The URL for this function's API Gateway endpoint is used in two places in the "Maintenance Bot" App configuration in Slack:
 1.  **Slash Commands:** For the `/reorder` command.
 2.  **Interactivity & Shortcuts:** To handle all modal interactions.
+
+## If something goes wrong
+
+The modal never shows the error's details. It shows one of two fixed messages:
+
+- **Loading the items failed:** "Couldn't load the items to reorder. Please try `/reorder` again in a few minutes."
+- **Submitting failed before the task was created:** "Your purchase request was not created. Please try again in a few minutes."
+
+If the task was created but the "Success!" modal couldn't be shown (for example, the
+user closed the modal while the task was being created), no error modal appears, so the
+user isn't told to submit it again. Every failure, including Slack refusing the
+"Success!" modal, is logged with the modal's view ID in the
+`/asmbly/lambda/SlackSlashReorderFunction-<stage>` log group.

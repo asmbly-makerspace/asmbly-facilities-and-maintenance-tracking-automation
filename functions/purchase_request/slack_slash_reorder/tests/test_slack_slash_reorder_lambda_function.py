@@ -3,6 +3,7 @@ import os
 import unittest
 from unittest.mock import patch, MagicMock
 import urllib.parse
+from typing import Any
 import boto3
 from moto import mock_aws
 
@@ -252,6 +253,142 @@ class TestSlackReorderWithDynamoDB(unittest.TestCase):
         self.assertIn("views.update", call_args[0][0])
         sent_view = call_args[1]['json']['view']
         self.assertEqual(sent_view['title']['text'], 'Success!')
+
+    def _submission_payload(self) -> dict[str, Any]:
+        selected_item_id = self.clickup_master_items['tasks'][0]["id"]
+        return {
+            "view": {
+                "id": "V_SUBMIT",
+                "state": {
+                    "values": {
+                        "item_selection": {"selected_item": {"selected_option": {"value": selected_item_id}}},
+                        f"description_block_{selected_item_id}": {"description_action": {"value": "Custom description"}}
+                    }
+                }
+            },
+            "user": {"id": "fake_user_id"}
+        }
+
+    def _purchase_param(self, param_name: str, expected_key: str | None = None) -> Any:
+        if param_name == "/test/param/workspace_field_id": return 'clickup_workspace_field_id'
+        if param_name == "/test/param/purchase_requests": return self.purchase_requests_config
+        return None
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_json_parameter")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_secret")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.requests.Session")
+    def test_load_data_failure_shows_plain_error_modal(self, mock_session_cls, mock_get_all_clickup_tasks, mock_get_secret, mock_get_json_param):
+        mock_session_cls.return_value = self.mock_http_session
+        mock_get_secret.return_value = "fake_token"
+        mock_get_json_param.return_value = "fake_config_value"
+        mock_get_all_clickup_tasks.side_effect = ValueError(
+            "ClickUp API HTTP Error: 401 Unauthorized - GET list/pk_LIST_MARKER/task (ECODE=OAUTH_025)"
+        )
+
+        with self.assertLogs(level="ERROR") as logs:
+            lambda_function.handle_load_data_and_update_view("V_LOAD_FAIL")
+
+        self.mock_http_session.post.assert_called_once()
+        call_args = self.mock_http_session.post.call_args
+        self.assertIn("views.update", call_args[0][0])
+        self.assertEqual(call_args[1]['json']['view_id'], "V_LOAD_FAIL")
+        view = call_args[1]['json']['view']
+        self.assertEqual(view['title']['text'], 'Error')
+        self.assertEqual(view['close']['text'], 'Close')
+        self.assertEqual(
+            view['blocks'][0]['text']['text'],
+            "Couldn't load the items to reorder. Please try `/reorder` again in a few minutes.",
+        )
+        view_json = json.dumps(view)
+        for leaked in ("pk_LIST_MARKER", "401", "ClickUp"):
+            self.assertNotIn(leaked, view_json)
+        errors = [r for r in logs.records if r.levelname == "ERROR"]
+        self.assertTrue(any("V_LOAD_FAIL" in r.getMessage() for r in errors))
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_json_parameter")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_secret")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_slack_user_info")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_task")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.create_task")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.requests.Session")
+    def test_process_submission_failure_shows_plain_error_modal(self, mock_session_cls, mock_create_task, mock_get_task, mock_get_slack_user_info, mock_get_secret, mock_get_json_param):
+        mock_session_cls.return_value = self.mock_http_session
+        mock_get_json_param.side_effect = self._purchase_param
+        mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
+        mock_get_slack_user_info.return_value = {"user": {"real_name": "Test User"}}
+        mock_get_task.return_value = self.clickup_master_items['tasks'][0]
+        mock_create_task.side_effect = ValueError("ClickUp API HTTP Error: 400 Bad Request - POST list/pk_SUBMIT_MARKER/task")
+
+        with self.assertLogs(level="ERROR") as logs:
+            lambda_function.handle_process_submission(self._submission_payload())
+
+        self.mock_http_session.post.assert_called_once()
+        view = self.mock_http_session.post.call_args[1]['json']['view']
+        self.assertEqual(view['title']['text'], 'Error')
+        self.assertEqual(
+            view['blocks'][0]['text']['text'],
+            "Your purchase request was not created. Please try again in a few minutes.",
+        )
+        self.assertNotIn("pk_SUBMIT_MARKER", json.dumps(view))
+        errors = [r for r in logs.records if r.levelname == "ERROR"]
+        self.assertTrue(any("V_SUBMIT" in r.getMessage() for r in errors))
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_json_parameter")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_secret")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_slack_user_info")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_task")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.create_task")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.requests.Session")
+    def test_success_view_post_failure_shows_no_error_modal(self, mock_session_cls, mock_create_task, mock_get_task, mock_get_slack_user_info, mock_get_secret, mock_get_json_param):
+        """Once the task exists, a failed success-view post must not tell the user it wasn't created."""
+        mock_session_cls.return_value = self.mock_http_session
+        self.mock_http_session.post.side_effect = ConnectionError("pk_POST_MARKER")
+        mock_get_json_param.side_effect = self._purchase_param
+        mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
+        mock_get_slack_user_info.return_value = {"user": {"real_name": "Test User"}}
+        mock_get_task.return_value = self.clickup_master_items['tasks'][0]
+        mock_create_task.return_value = {"id": "new_task_id"}
+
+        with self.assertLogs(level="ERROR") as logs:
+            lambda_function.handle_process_submission(self._submission_payload())
+
+        mock_create_task.assert_called_once()
+        self.mock_http_session.post.assert_called_once()
+        posted_view = self.mock_http_session.post.call_args[1]['json']['view']
+        self.assertEqual(posted_view['title']['text'], 'Success!')
+        errors = [r for r in logs.records if r.levelname == "ERROR"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("V_SUBMIT", errors[0].getMessage())
+        self.assertIsNotNone(errors[0].exc_info)
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_json_parameter")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_secret")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_slack_user_info")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.get_task")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.create_task")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.requests.Session")
+    def test_success_view_not_ok_logs_status_and_shows_no_error_modal(self, mock_session_cls, mock_create_task, mock_get_task, mock_get_slack_user_info, mock_get_secret, mock_get_json_param):
+        """Slack refusing the success view (the user closed the modal) is logged with the view ID, not Slack's body."""
+        mock_session_cls.return_value = self.mock_http_session
+        refused = self.mock_http_session.post.return_value
+        refused.ok = True
+        refused.status_code = 200
+        refused.json.return_value = {"ok": False, "error": "not_found", "response_metadata": {"messages": ["pk_SLACK_MARKER"]}}
+        mock_get_json_param.side_effect = self._purchase_param
+        mock_get_secret.side_effect = ['fake_clickup_token', 'fake_slack_token']
+        mock_get_slack_user_info.return_value = {"user": {"real_name": "Test User"}}
+        mock_get_task.return_value = self.clickup_master_items['tasks'][0]
+        mock_create_task.return_value = {"id": "new_task_id"}
+
+        with self.assertLogs(level="ERROR") as logs:
+            lambda_function.handle_process_submission(self._submission_payload())
+
+        self.mock_http_session.post.assert_called_once()
+        self.assertEqual(self.mock_http_session.post.call_args[1]['json']['view']['title']['text'], 'Success!')
+        errors = [r.getMessage() for r in logs.records if r.levelname == "ERROR"]
+        self.assertEqual(errors, ["Failed to post success view for view_id V_SUBMIT: HTTP 200, ok=False"])
+        self.assertNotIn("pk_SLACK_MARKER", "\n".join(logs.output))
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,7 +1,7 @@
 import json
 import os
-import requests # type: ignore
 import time
+from typing import Any
 from datetime import datetime, timezone, timedelta
 
 from common.aws import get_secret, get_json_parameter
@@ -70,7 +70,7 @@ def format_slack_message(task: ClickUpTask) -> str:
 
 # --- AWS Lambda Handler ---
 
-def lambda_handler(event, context):
+def lambda_handler(event: Any, context: Any) -> dict[str, Any]:
     """
     Main function executed by AWS Lambda.
     """
@@ -174,7 +174,7 @@ def lambda_handler(event, context):
         print(f"--- FATAL ERROR in handler: {str(e)} ---")
         import traceback
         traceback.print_exc()
-        return {"statusCode": 500, "body": json.dumps(f"Error: {str(e)}")}
+        return {"statusCode": 500, "body": json.dumps("Error: the PM reminder run failed.")}
 
     print("--- HANDLER FINISHED SUCCESSFULLY ---")
     return {

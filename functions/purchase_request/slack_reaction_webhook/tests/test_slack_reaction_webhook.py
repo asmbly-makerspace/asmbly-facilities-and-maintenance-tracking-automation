@@ -1,7 +1,7 @@
 import json
 import os
 from unittest import TestCase
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 # The lambda_function import remains the same
 from functions.purchase_request.slack_reaction_webhook import lambda_function
@@ -238,11 +238,18 @@ class TestSlackReactionWebhook(TestCase):
 
         # Execute
         event_body = json.loads(event['body'])
-        response = lambda_function.lambda_handler(event_body, None)
+        event_body["event_id"] = "Ev500ERR"
+        with self.assertLogs(level="ERROR") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
 
-        # Assert that the handler caught the exception and returned a 500 error
+        # Assert that the handler caught the exception and returned a plain 500 error
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("Internal server error", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertNotIn("Something went wrong", response["body"])
+        errors = [r for r in logs.records if r.levelname == "ERROR"]
+        self.assertEqual(len(errors), 1)
+        self.assertIsNotNone(errors[0].exc_info)
+        self.assertIn("Ev500ERR", errors[0].getMessage())
 
     # Test cases for missing environment variables
     @patch.dict(os.environ, {
@@ -255,9 +262,11 @@ class TestSlackReactionWebhook(TestCase):
         Tests that the handler fails gracefully if REACTION_MAP_PARAMETER_NAME is missing.
         """
         event_body = {"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}}
-        response = lambda_function.lambda_handler(event_body, None) # noqa
+        with self.assertLogs(level="ERROR") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", "\n".join(logs.output))
 
     @patch.dict(os.environ, {
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
@@ -269,9 +278,11 @@ class TestSlackReactionWebhook(TestCase):
         Tests that the handler fails gracefully if SLACK_MAINTENANCE_BOT_SECRET_NAME is missing.
         """
         event_body = {"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}}
-        response = lambda_function.lambda_handler(event_body, None)
+        with self.assertLogs(level="ERROR") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("SLACK_MAINTENANCE_BOT_SECRET_NAME environment variable not set", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertIn("SLACK_MAINTENANCE_BOT_SECRET_NAME environment variable not set", "\n".join(logs.output))
 
     @patch.dict(os.environ, {
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
@@ -283,6 +294,8 @@ class TestSlackReactionWebhook(TestCase):
         Tests that the handler fails gracefully if CLICKUP_SECRET_NAME is missing.
         """
         event_body = {"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}}
-        response = lambda_function.lambda_handler(event_body, None)
+        with self.assertLogs(level="ERROR") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("CLICKUP_SECRET_NAME environment variable not set", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertIn("CLICKUP_SECRET_NAME environment variable not set", "\n".join(logs.output))

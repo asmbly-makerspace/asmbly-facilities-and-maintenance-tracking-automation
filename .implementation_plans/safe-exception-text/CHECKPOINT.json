@@ -17,13 +17,22 @@
         "cfn_lint": "skip (no template change)",
         "sam_validate": "skip (no template change)",
         "sam_build": "pass"
-      }
+      },
+      "squashed_sha": "9832047"
     },
     {
       "id": 2,
       "title": "Plain error replies and /reorder error modal",
       "file": ".implementation_plans/safe-exception-text/phase-2-plain-error-replies.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "9832047",
+      "review_rounds": 2,
+      "checks": {
+        "pytest": "1808 passed",
+        "cfn_lint": "4 W3005 warnings in template.yaml:582/592/605, pre-existing (no template changed)",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      }
     },
     {
       "id": 3,
@@ -106,6 +115,55 @@
         "'Network error during ClickUp API request' also labels a 2xx with a non-JSON body (pre-existing label, now pinned by a test)",
         "pm_bot_reminder/lambda_function.py:3 unused requests import (phase 3 touches the file)"
       ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 1,
+      "sha": "9832047"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 2,
+      "review_rounds": 2,
+      "pytest": "1808 passed"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 2,
+      "items": [
+        "/reorder: only failures up to and including create_task show 'was not created'; the success-view post logs only, so users aren't invited to file a duplicate",
+        "Reaction functions log the Slack event_id on unexpected errors (#143 AC7)",
+        "/purchase-request/new logs the task ID with %r (it comes from an unauthenticated body)",
+        "Four reaction missing-variable tests changed to assert the fixed body and find the variable name in the logged traceback (updated, not deleted)",
+        "Dropped pm_bot_reminder's unused requests import; type hints on changed handlers",
+        "Prep NEEDS_REVISION (0 HIGH, 2 MED, 4 LOW): amendments applied in the phase doc"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 2,
+      "items": [
+        "new_purchase_request_received:42-45 missing-variable 500 body names the variables (config names, not secrets; plan Out of scope)",
+        "common.clickup.create_task doesn't check that ClickUp's 200 body has an id; /reorder could show Success! with no task (pre-existing)",
+        "/reorder error-modal posts inside the except blocks are unchecked; a failed post leaves the user on Loading (pre-existing)",
+        "new_purchase_request_received: Slack post ok then set_custom_field_value fails -> 500 -> ClickUp retries -> duplicate Slack post (pre-existing; plan keeps status codes)",
+        "docs/README.md:117 names the reorder function FacilitiesSlackPurchaseReorderFunction; template says SlackSlashReorderFunction-${Stage} (pre-existing doc drift)"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "preexisting",
+      "check": "cfn-lint",
+      "detail": "4 W3005 warnings in template.yaml:582/592/605 on the base templates"
     }
   ],
   "stories": [

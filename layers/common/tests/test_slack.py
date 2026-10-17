@@ -158,13 +158,14 @@ def test_send_slack_message_api_error_logs_error_code_only(mock_requests_post, c
 
 @patch('common.slack.requests.post')
 def test_send_slack_message_exception_logs_type_only(mock_requests_post, caplog, capsys):
-    """A request failure logs the exception type, while the return value is unchanged."""
+    """A request failure logs the exception type and returns no exception text."""
     caplog.set_level(logging.DEBUG, logger="common.slack")
     mock_requests_post.side_effect = requests.exceptions.ConnectionError("pk_EXC_MARKER")
 
     response = slack.send_slack_message('xoxb-TOKEN-MARKER', '#general', 'Hello', 'Bot', ':emoji:')
 
-    assert response == {"ok": False, "error": "script_error", "error_message": "pk_EXC_MARKER"}
+    assert response == {"ok": False, "error": "script_error"}
+    assert "pk_EXC_MARKER" not in str(response)
     assert capsys.readouterr().out == ""
     errors = _slack_errors(caplog)
     assert len(errors) == 1
