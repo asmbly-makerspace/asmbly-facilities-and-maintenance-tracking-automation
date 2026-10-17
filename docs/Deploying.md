@@ -214,12 +214,13 @@ You should not need to deploy to `prod` manually.
 
 ### The Deployment Pipeline
 
-Each workflow has one job, **Deploy to AWS**:
+Each workflow has two jobs. The first, **Deploy to AWS**:
 
 * It builds the SAM application inside a Docker container that mimics the Lambda environment.
 * It deploys all the AWS resources defined in the templates to its environment.
 * It reads the API's URL from the stack outputs and attaches it to the deployment, so the repository's **Deployments** page and the run's summary link to it: `https://facilities.asmbly.org` for prod, and the `execute-api` address for stage. It is the API's base address; opened on its own it answers `Missing Authentication Token`, because every route is a path under it.
-* It writes every route's full URL to the run's summary (`scripts/list_api_routes.py`, which reads the routes from `template.yaml`). The README's [API Routes](README.md#api-routes) table lists the same routes with what calls each one. A problem in this step doesn't fail the deploy.
+
+The second, **List API routes**, runs after it and writes every route's full URL to the run's summary (`scripts/list_api_routes.py`, which reads the routes from `template.yaml`). The README's [API Routes](README.md#api-routes) table lists the same routes with what calls each one. It is a separate job because it installs a package from PyPI (PyYAML, pinned to an exact version): it gets only read access to the repository, no AWS credentials, and no permission to request the OIDC token the deploy role trusts. A failure in it doesn't fail the run.
 
 Slack, ClickUp and the other services call the permanent `https://facilities.asmbly.org` address, so nothing has to be updated after a prod deploy. (`scripts/update_slack_manifest.py` is no longer run by a workflow.)
 
