@@ -10,7 +10,7 @@ estimated_size: L
 
 # Phase 3: Page busy state, progress, retry and timeout messages
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-17 on branch feature/class-photo-loading
 
 ## Required reading
 
@@ -39,6 +39,59 @@ estimated_size: L
   as given).
 - `functions/classes/class_photo_upload_api/tests/jpeg_builder.py` (`make_jpeg`), reused
   for a valid photo in the script tests.
+
+## Prep amendments (2026-10-16, `/prep` inside `/offshore`)
+
+These override the text below where they disagree.
+
+1. **Focus fixup confirmed** (headless Chrome 155: a focused `<button>` that becomes
+   `disabled` loses focus to `<body>` at the next rendering update; re-enabling doesn't
+   restore it). So **Try again**, **Refresh class list** and, while a submission runs,
+   **Submit** take `aria-disabled="true"` instead of `disabled` while busy, and their
+   handlers ignore clicks by state (`state.loadingClasses`, `state.submitting`). The
+   disabled look covers them: the `button:disabled` rule's selector list gains
+   `button[aria-disabled="true"]`, and `(hover: hover)` gains
+   `button[aria-disabled="true"]:hover` with the disabled colours (and `color:
+   var(--text)`, for `test_light_tints_carry_dark_text`). Submit keeps native `disabled`
+   when there's no class or photo, and is also disabled while the class list loads or
+   refreshes. Scenarios assert "unavailable" (`disabled` or `aria-disabled="true"`), that
+   focus stays, and that a click sends nothing.
+2. **No `.busy[hidden]` rule**: `page.html` already has `[hidden] { display: none
+   !important; }`. `test_busy_indicator_uses_tokens` checks that global rule instead.
+3. **One place decides what can be used**: `updateSubmit()` becomes `updateControls()`,
+   which sets the select, the progress bar, `aria-busy`, both class buttons, the photo
+   input and Submit from `state` (`classesLoaded`, `loadingClasses`, `submitting`). The
+   select stays disabled until a list has loaded (a failed first load leaves it disabled).
+   Focus moves to the select before **Try again** is hidden.
+4. **Submit timing** (audit HIGH): the 35 s limit counts from the moment the photo has
+   been sent (`upload.onload`), not from `send()`; while uploading, it restarts on each
+   `upload.onprogress`, so only a stalled upload is given up. No `xhr.timeout`; the page
+   calls `xhr.abort()`. A failure **before** the photo was sent (offline, stalled upload)
+   is `PageError(NETWORK_MESSAGE)`: the API never ran. After it was sent: `onerror`,
+   abort, 5xx without `error`, or an OK answer without JSON → `UnconfirmedError`.
+   `submit()` checks `UnconfirmedError` before `PageError`. `UnconfirmedError` carries the
+   caller's fallback message, so `/classes` still shows `NEON_ERROR`. New scenarios:
+   `submit_failure_before_sending_is_network_error` (offline, and a stalled upload) and
+   `submit_slow_upload_keeps_waiting` (progress every 10 s for 60 s, then an answer).
+5. **A failed refresh never empties the list** (audit MED): with `refresh: "failed"` and
+   no classes (Neon empty, nothing cached), the shown options and time stay; with a stale
+   copy, the copy is listed and the stale sentence shows.
+6. **Names**: `apiFetch` → `apiGet(path, fallbackMessage)`, `apiUpload` →
+   `apiPost(path, json, fallbackMessage, onSent)`, sharing `readAnswer` and a
+   `tokenOrSignIn()` helper. `STALE_HINT_TIME_OPTIONS` → `CLASS_LIST_TIME_OPTIONS` (used
+   for every list time).
+7. **Elapsed seconds** come from `Date.now() - start` and show "0 s" at once.
+   `class-freshness` is emptied whenever it is hidden (`aria-describedby` reads hidden
+   text).
+8. **`class-status` is shared**: a load or refresh message replaces a chosen class's
+   warning or problem text; Submit still follows the problem (accepted).
+9. **Docs**: the API README already mentions "the page's refresh button" (line 41); its
+   `?refresh=1` passages (lines 146-148) and `docs/README.md` lines 69-72 are renamed to
+   **Refresh class list**. A throttled API call (reserved concurrency 3) answers 429 or a
+   5xx without a message; the page README says what each shows.
+10. **Size**: about 1,000 lines, most of them the harness and its scenarios. Not split:
+    both stories share `readAnswer`, `updateControls` and the harness, so a split by story
+    would rewrite them twice; phase 1 of this plan (2.4k lines) set the precedent.
 
 ## Goal
 
@@ -118,7 +171,7 @@ refer to existing tokens):
 ```
 
 `[hidden]` must still hide `.busy` (`display: block` would override the user-agent
-`hidden` style): add `.busy[hidden] { display: none; }`. The `**Try again**` button uses the
+`hidden` style): the global `[hidden] { display: none !important; }` already wins (prep amendment 2). The `**Try again**` button uses the
 existing `button` rules (44px, focus ring, hover, disabled look). The `.drop-zone.dragging`
 look is not applied while submitting. Check `test_every_token_is_used` and
 `test_tokens_are_defined_once` pass with the two tokens; if `accent-color` changes the
@@ -338,7 +391,7 @@ allowlist word, so focus is never lost (Decision 17).
 - `test_class_field_has_refresh_button`: `<button type="button" id="class-refresh"` with
   the text "Refresh class list", `hidden`, and no `aria-label`.
 - `test_busy_indicator_uses_tokens`: `.busy` uses `var(--progress-height)` and
-  `accent-color: var(--progress-fill)`; `.busy[hidden]` has `display: none`.
+  `accent-color: var(--progress-fill)`; the global `[hidden]` rule has `display: none !important`.
 - `test_disabled_photo_button_differs_beyond_colour`: `.drop-zone input:disabled + label`
   has `border-style: dashed` and `cursor: not-allowed`.
 - `test_page_sends_submission_to_its_own_origin`: the script's `XMLHttpRequest` URL is
@@ -364,7 +417,7 @@ Page `README.md`:
   Node; skipped without Node locally, required in CI), and what they cover. Replace #73's
   statement that the page's JavaScript has no automated tests.
 
-Once the button exists (phase 1's review kept the docs from naming it early):
+Once the button exists (the docs name it only as `?refresh=1` today; prep amendment 9):
 
 - `docs/README.md`, Class Photo Upload entry: "when staff ask for a refresh
   (`GET /class-photo-upload/classes?refresh=1` …)" and "ask for a refresh with
@@ -429,6 +482,31 @@ None.
 
 ## Hand-off
 
-_Filled in when the phase is done._ The page's loading, progress, retry and timeout
-behaviour is complete; `/offshore`'s manual QA doc can use the stage checks above by
-story (#117: the first two and the Refresh check; #118: the last three).
+Done. The page's loading, progress, retry and timeout behaviour is complete; `/offshore`'s
+manual QA doc can use the stage checks above by story (#117: the first two and the
+Refresh check; #118: the last three). No template, deploy-role or admin change.
+
+As built (with the prep amendments): the script's API calls are `apiGet(path,
+fallbackMessage)` (fetch with an `AbortController` at 35 s) and `apiPost(path, json,
+fallbackMessage, onSent)` (XMLHttpRequest; the 35 s limit restarts on each upload
+progress event and counts from the end of the upload), both reading answers through
+`readAnswer`. `UnconfirmedError extends PageError` covers an answer that can't confirm
+the result (a 5xx without `error`, an OK answer without JSON) and, on the XHR, an error,
+abort or timeout after the photo was sent; one before it is `NETWORK_MESSAGE`. A 200
+with no classes (Neon empty, nothing cached) shows an empty list without a message, as
+before this phase (review cycle 3, deferred). `updateControls()` (replacing `updateSubmit()`)
+sets every control from `state` (`classesLoaded`, `loadingClasses`, `submitting`); **Try
+again**, **Refresh class list** and **Submit** use `aria-disabled` while busy so they keep
+focus (Chrome 155 drops focus from a focused button that becomes disabled). Submit is also
+disabled while the class list loads or refreshes. `REFRESH_OUTCOMES` is a `Map`, so an
+unknown `refresh` value shows nothing. The harness has 26 scenarios (the table's 22 plus
+`submit_failure_before_sending_is_network_error`, `submit_slow_upload_keeps_waiting`,
+`classes_401_signs_in_again` and `submit_401_signs_in_again`); the submission's result
+is rendered after `aria-busy` comes off `#result`;
+its fake DOM applies the focus fixup rule and ignores clicks on `disabled` controls only.
+
+**Manual QA notes:** besides the stage checks above, keyboard-only: Enter on **Refresh
+class list** and on **Submit** keeps the focus on the button through the busy state; a
+refresh leaves a chosen class's warning replaced by the refresh message (prep amendment
+8, expected). Verified in headless Chrome with the real CSP at 1280px, 320px and 640px
+at 2x (200% zoom): no sideways scroll, no CSP or script errors.

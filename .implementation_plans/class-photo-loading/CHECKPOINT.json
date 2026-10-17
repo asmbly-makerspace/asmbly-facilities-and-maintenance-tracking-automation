@@ -19,13 +19,16 @@
       "file": "phase-2-submit-against-cache.md",
       "status": "done",
       "pre_sha": "80d9a7f",
-      "review_rounds": "build review + 2 cold review-lead rounds (all APPROVED; WARNs fixed)"
+      "review_rounds": "build review + 2 cold review-lead rounds (all APPROVED; WARNs fixed)",
+      "squashed_sha": "3922b18"
     },
     {
       "id": 3,
       "title": "Page busy state, progress, retry and timeout messages",
       "file": "phase-3-page-loading-and-progress.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "3922b18",
+      "review_rounds": "build review + 3 cold review-lead rounds (all APPROVED, no BLOCK; WARNs fixed or answered)"
     }
   ],
   "integration": null,
@@ -111,6 +114,28 @@
       "type": "decision",
       "phase": 2,
       "detail": "Accepted: blob/tree/commit failure moves no ref but says 'submit again' (safe). Neon down -> submit uses a cached copy of any age."
+    },
+    {
+      "type": "phase_start",
+      "phase": 3
+    },
+    {
+      "type": "phase_done",
+      "phase": 3,
+      "checks": {
+        "pytest": "1701 passed",
+        "node_tests": "26 scenarios pass under Node 24; skip locally without node, fail in CI without it; mutation-checked"
+      }
+    },
+    {
+      "type": "decision",
+      "phase": 3,
+      "detail": "aria-disabled (not disabled) for Try again, Refresh and Submit-while-submitting: Chrome moves focus to body when a focused button is disabled. Submit 35 s limit from end of upload; pre-upload failure -> network message, post-upload -> unconfirmed (prod) or dry-run timeout. Script organized: apiGet/apiPost/readAnswer, updateControls single state->controls place, REFRESH_OUTCOMES Map."
+    },
+    {
+      "type": "deferred",
+      "phase": 3,
+      "detail": "Empty class list (Neon empty, nothing cached) shows no message (pre-existing); 429 on /classes shows submit wording (pre-existing); Sign out usable during submit (pre-existing); 401 after a minutes-long upload with ~60 s token left (covered by re-sign-in). Recommend a follow-up issue for the empty-list message."
     }
   ],
   "stories": [

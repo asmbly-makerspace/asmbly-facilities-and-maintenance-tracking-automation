@@ -134,8 +134,30 @@ In order:
 2. **Class**: a list filled from `GET /class-photo-upload/classes`, by the name the site
    shows. A class with a `problem` (a character that can't be in a file name) is listed;
    choosing it shows the problem and keeps Submit disabled. A `warning` (another class
-   shares its photo) shows under the list. If the list can't be loaded, the page shows
-   the API's message, or "Couldn't load the class list. Try again in a minute."
+   shares its photo) shows under the list.
+   - **While it loads**, the list is disabled and marked busy (`aria-busy`), a progress
+     bar shows under it, and the page says "Loading classes…"; after 5 seconds without an
+     answer, "Still loading classes from Neon…". Each is announced once.
+   - **If it can't be loaded**, the page shows the API's message, or "Couldn't load the
+     class list. Try again in a minute." (no answer at all, or none within 35 seconds:
+     "Couldn't reach the server. Check your connection and try again."), and a **Try
+     again** button that loads the list again in place, without reloading the page or
+     signing in again. While it loads, the button stays (unavailable) and keeps the
+     focus; when the list arrives, the button goes and the focus moves to the list.
+   - **Once loaded**, a note under the list says when it was read from Neon ("Class list
+     from Neon at 10:42 AM.", in the browser's time), adding "Neon didn't answer the
+     last refresh, so this list may be out of date." when the API marks it `stale`.
+   - **Refresh class list** (shown once a list has loaded) reads the list from Neon
+     again (`GET /class-photo-upload/classes?refresh=1`), with the same busy state and
+     "Refreshing the class list from Neon…". The chosen class stays chosen when it is
+     still listed. It then says one of: "Class list refreshed from Neon."; "The class
+     list was refreshed less than a minute ago, so this is that list. Try again in a
+     minute." (the API refreshes at most once a minute); or, as an error, "Neon didn't
+     answer, so the class list wasn't refreshed. The list shown is the last one read."
+     A failed refresh never empties the list. The button can't be used while a
+     submission runs. The outcome takes the place of a chosen class's problem or
+     warning text under the list (choosing the class again shows it); Submit still
+     stays disabled for a class with a problem.
 3. **Photo**: drag it onto the box or choose it. The page removes location data (below),
    then runs the server's checks in the server's order with the server's messages, word
    for word (`photo_checks.py`): 4 MB or less, a JPEG by its content, 3:2 landscape
@@ -145,16 +167,37 @@ In order:
 4. The warning, directly above Submit: "When you submit, this photo becomes public on
    GitHub right away, before anyone reviews it. It stays visible in the pull request even
    if the pull request is never merged."
-5. **Submit**, enabled only for a class without a problem and an acceptable photo. It
-   posts `{"class_name", "photo_base64"}` (the cleaned bytes) and shows "Submitting…".
+5. **Submit**, enabled only for a class without a problem and an acceptable photo (and
+   not while the class list loads). It posts `{"class_name", "photo_base64"}` (the
+   cleaned bytes) with `XMLHttpRequest`, whose upload events tell the page when the
+   photo has been sent. While it runs, the class list, **Choose a photo** (and dropping
+   a photo), **Refresh class list** and **Submit** can't be used, a progress bar shows,
+   and the page names the step it is on, each announced once: "Preparing the photo…",
+   "Sending the photo…", then "Waiting for the server to check it and open the pull
+   request…" (on stage: "…check it and plan the pull request…"). The seconds since it
+   started ("12 s") show beside it and aren't announced. After any failure the class
+   and the photo stay, so one click submits again.
 6. The result: "Opened pull request #N" or "Updated pull request #N" with a link; on
    stage, "Dry run: nothing was opened", the file it would add or replace, the files it
    would remove (or none), whether it would open a new pull request or update #N, and the
-   title and description; any warnings. Errors show the API's message as given. When the
-   answer has none (API Gateway's own 429, 502 or 504), the page says "Too many
-   submissions at once. Wait a minute and try again." for 429 and "Something went wrong on
-   our side. Try again later." otherwise; with no answer at all, "Couldn't reach the
-   server. Check your connection and try again."
+   title and description; any warnings. Errors show the API's message as given,
+   including its two GitHub failures ("Couldn't open the pull request. Nothing was
+   changed on GitHub. Try again in a minute." and "Couldn't finish the pull request on
+   GitHub. Submit the same class again: …"). When the answer has none:
+   - 429 (API Gateway's throttle): "Too many submissions at once. Wait a minute and try
+     again."
+   - The photo was sent but the result is unknown (a 502 or 504 without a message, an
+     OK answer that isn't JSON, a dropped connection, or no answer within 35 seconds of
+     the photo being sent): on prod, "The server didn't confirm the result in time. A
+     pull request may or may not have been opened on GitHub. Submitting the same class
+     again is safe: it updates the same pull request instead of opening a second one.";
+     on stage, "The server didn't answer in time. This is a dry run, so nothing was
+     opened on GitHub. Try again." A throttled call (the API runs at most 3 at once)
+     can also answer a 5xx without a message, and shows the same.
+   - The photo never left the browser (offline, or an upload that made no progress for
+     35 seconds): "Couldn't reach the server. Check your connection and try again."
+   - Any other answer without a message: "Something went wrong on our side. Try again
+     later."
 
 ### How It Looks
 
@@ -167,7 +210,10 @@ here.
   button turns the 80% purple tint while the pointer is over it; on a phone, where a
   tap would leave that look on, it doesn't change. **Submit** while disabled is the 20% purple tint with a dashed border, dark
   text and a "not allowed" cursor, so it differs from the enabled button by more than
-  colour. Every control shows a 3px focus ring from the keyboard (woodwork yellow on
+  colour. **Try again**, **Refresh class list** and **Submit** look the same while they
+  are busy; they use `aria-disabled` then instead of `disabled`, because a browser moves
+  the focus off a focused button that becomes disabled. **Choose a photo** takes the
+  same look while a submission runs. Every control shows a 3px focus ring from the keyboard (woodwork yellow on
   the band, Asmbly Purple elsewhere); the hidden file input shows its ring on **Choose a
   photo**.
 - **The class list and the photo box** have a 60% purple border that turns Asmbly
@@ -186,8 +232,13 @@ here.
     edge and "!";
   - the stage banner: dark text on the light woodwork tint, a purple edge and "i".
 
-  "Signing in…", "Loading classes…", "Submitting…" and a class `warning` keep the plain
-  text style (loading behaviour belongs to #114). The glyphs are decorative: their
+  "Signing in…", the loading and submitting steps and a class `warning` keep the plain
+  text style. The class list's time and the seconds a submission has taken are smaller
+  (the small text size).
+- **Progress.** The busy indicator is the browser's own progress bar without a value
+  (it moves on its own), filled with Asmbly Purple (`accent-color`), as wide as the
+  column and 8px high, under the class list or under **Submit**. The page adds no
+  animation of its own. The glyphs are decorative: their
   alternative text is empty, so screen readers read only the message. Browsers that
   don't know that syntax (Safari before 17.4, Firefox before 128) show no glyph; the
   edge, the background and the weight still tell the kinds apart.
@@ -372,22 +423,47 @@ that light tints carry dark text, that the four message kinds each have a left e
 their own glyph while plain status text has neither, a focus ring on every control, 44px
 tap targets, a hover look on every control (only inside `@media (hover: hover)`), a
 disabled look that is dashed and not only coloured, that the result's text wraps and its
-link is underlined, and that nothing hides a horizontal overflow.
+link is underlined, and that nothing hides a horizontal overflow. And the loading
+states: the progress bars (labelled, hidden, coloured from tokens, no animation), **Try
+again** and **Refresh class list** (named by their text), the elapsed seconds kept out of
+the live regions, every loading and progress message, the disabled look of busy buttons
+and of **Choose a photo**, and that the submission goes to the page's own origin.
 
 Some things the tests can't see; check them by hand when you change the styles:
 
 - Render the page (`lambda_function.render_page` with a test config) in Chrome or
   Firefox at 320px wide and at 1280px with 200% zoom, with the longest class name chosen
   and a dry-run result with long file names: nothing scrolls sideways.
-- Walk it with the keyboard: **Sign out**, the class list, **Choose a photo**,
-  **Submit**, the result's link, each with a visible ring. (Safari skips buttons and
+- Walk it with the keyboard: **Sign out**, the class list, **Try again** or **Refresh
+  class list**, **Choose a photo**, **Submit**, the result's link, each with a visible
+  ring; pressing **Refresh class list** or **Submit** with Enter keeps the focus on it.
+  (Safari doesn't focus a button on a mouse click, so after picking a class from the
+  keyboard and clicking **Submit**, the focus is on the list, which is disabled while
+  the submission runs, and moves to the page; that is expected.) (Safari skips buttons and
   links on Tab unless "Press Tab to highlight each item" is on.)
 - Check any colour pair the tests don't list with the WebAIM contrast checker.
 - Safari may draw a native `select` at its own height rather than 44px.
 
-The page's JavaScript has no automated test in CI (plan README, Decision 19): the
-repository has no JavaScript test runner, and the server re-checks every photo. When you
-change the script, run it in a browser against the server's checks: load the page's JPEG
+`test_page_script.py` runs the page's own script with Node (no npm package):
+`tests/page_script_harness.mjs` runs it in `node:vm` with a small fake DOM, a fake clock
+and scripted server answers, one scenario per test. The scenarios cover the class list's
+busy state, "Still loading…" after 5 seconds, a failed or unanswered load and **Try
+again** (focus included), the time and stale notes, **Refresh class list** and its three
+outcomes (keeping the chosen class, and never emptying the list), and the submission:
+controls unavailable, the three steps and the elapsed seconds, one request for a double
+click, the class and photo kept after a failure, the unconfirmed and dry-run messages
+(502, 504, dropped connection, the 35-second limit), a slow upload that keeps moving,
+and a failure before the photo was sent. The fake DOM moves focus to the page when a
+focused control is hidden or disabled, as browsers do. Without `node` the tests are
+skipped on your machine; in CI (where `CI` is set) a missing `node` fails them.
+GitHub's `ubuntu-latest` runner has Node.
+
+```bash
+node functions/classes/class_photo_upload_page/tests/page_script_harness.mjs --list
+```
+
+The JPEG code has no test of its own in Node, and the server re-checks every photo. When
+you change it, run it in a browser against the server's checks: load the page's JPEG
 code (the part of the script between "Settings and messages" and "Page state") in
 headless Chromium, run `checkPhoto` and `removeLocation` over JPEGs from
 `functions/classes/class_photo_upload_api/tests/jpeg_builder.py` and real photos, and

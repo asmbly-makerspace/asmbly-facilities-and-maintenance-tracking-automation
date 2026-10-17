@@ -57,7 +57,7 @@ see Admin actions 3).
 | --- | --- | --- | --- | --- |
 | 1 | [Class-list cache, scheduled refresh and Neon timing](phase-1-class-list-cache.md) | lambda, infra, docs | L | [x] Complete |
 | 2 | [Submit against the cache, time left and what was written](phase-2-submit-against-cache.md) | lambda, docs | M | [x] Complete |
-| 3 | [Page busy state, progress, retry and timeout messages](phase-3-page-loading-and-progress.md) | lambda, docs | L | [ ] Pending |
+| 3 | [Page busy state, progress, retry and timeout messages](phase-3-page-loading-and-progress.md) | lambda, docs | L | [x] Complete |
 
 ## Dependencies
 
@@ -291,8 +291,8 @@ Made without asking, inside `/offshore` (2026-10-16).
     time. This is a dry run, so nothing was opened on GitHub. Try again." The page's
     existing messages stay word for word, and `GENERIC_ERROR` stays in the page (pinned by
     `test_page_messages_match_server_messages`) for other answers without a message.
-17. **Focus.** Pressing **Try again** keeps focus on it (it is disabled, not hidden, while
-    loading); when the list arrives it is hidden and focus moves to the class list, so
+17. **Focus.** Pressing **Try again** keeps focus on it (it is `aria-disabled`, not hidden or
+    `disabled`, while loading; phase 3 prep amendment 1); when the list arrives it is hidden and focus moves to the class list, so
     focus is never lost. On a first load focus isn't moved.
 18. **Phase 2 and 3 run in order inside `/offshore`** although they are parallel-safe, so
     the page's tests see phase 2's server messages when they are written.

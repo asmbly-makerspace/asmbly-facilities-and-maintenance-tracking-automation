@@ -106,6 +106,8 @@
     --glyph-offset: 0.125rem;
     --underline-offset: 0.1875rem;
     --track-fill: 1fr;
+    --progress-height: var(--space-2);
+    --progress-fill: var(--brand);
     /* The @media rule below repeats this value (CSS can't use var() there); a test
        checks they match. */
     --breakpoint-wide: 40rem;
@@ -147,9 +149,11 @@
     border: var(--border-width-strong) solid var(--brand); border-radius: var(--radius-control);
     background: var(--brand); color: var(--on-dark); cursor: pointer; text-align: center;
   }
-  button:disabled { background: var(--disabled-bg); color: var(--text); border-color: var(--control-border); border-style: dashed; cursor: not-allowed; }
+  /* aria-disabled: Try again, Refresh class list and Submit while they're busy. A focused
+     button that turns disabled drops focus to the page; aria-disabled keeps it there. */
+  button:disabled, button[aria-disabled="true"] { background: var(--disabled-bg); color: var(--text); border-color: var(--control-border); border-style: dashed; cursor: not-allowed; }
   .brand-band button.secondary { background: transparent; color: var(--on-dark); border-color: var(--on-dark); padding: var(--space-2) var(--space-4); }
-  #sign-in-again { margin-top: var(--space-3); }
+  #sign-in-again, #class-retry, #class-refresh { margin-top: var(--space-3); }
 
   /* The class list. A long class name is cut inside the list, never widening the page. */
   select {
@@ -166,6 +170,8 @@
   /* While a photo is over the box, its text and button don't take the pointer, so the
      box doesn't flicker between dragging and not as the pointer crosses them. */
   .drop-zone.dragging * { pointer-events: none; }
+  /* While a submission runs, Choose a photo looks like a disabled button. */
+  .drop-zone input:disabled + label { background: var(--disabled-bg); color: var(--text); border-color: var(--control-border); border-style: dashed; cursor: not-allowed; }
   .visually-hidden { position: absolute; width: var(--visually-hidden-size); height: var(--visually-hidden-size); overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .preview { display: block; max-width: 100%; height: auto; max-height: var(--preview-max-height); margin: var(--space-3) auto 0; border-radius: var(--radius-control); }
 
@@ -176,10 +182,16 @@
   }
   .brand-band button:focus-visible { outline-color: var(--focus-on-dark); }
 
-  /* Messages. Plain status text ("Signing in…", "Loading classes…", "Submitting…")
+  /* The busy indicator: the browser's own indeterminate progress bar, in Asmbly Purple.
+     No animation of the page's own (README Decision 13). */
+  .busy { display: block; width: 100%; height: var(--progress-height); margin: var(--space-2) 0 0; accent-color: var(--progress-fill); }
+
+  /* Messages. Plain status text ("Signing in…", "Loading classes…", "Sending the photo…")
      keeps the plain look. The four kinds each add a left edge and a glyph, so they
      differ by more than colour. */
   .message { margin: var(--space-2) 0 0; }
+  /* The class list's time and the seconds a submission has taken. */
+  .message.note { font-size: var(--font-size-small); }
   .message.error, .message.ok, .warning, .banner {
     display: grid; grid-template-columns: auto var(--track-fill); align-items: start; gap: var(--space-3);
   }
@@ -226,6 +238,7 @@
   /* Hover, only where a pointer can hover (a tap on a phone would leave it on). */
   @media (hover: hover) {
     button:hover:not(:disabled), .button:hover { background: var(--hover-bg); border-color: var(--hover-bg); }
+    button[aria-disabled="true"]:hover { background: var(--disabled-bg); color: var(--text); border-color: var(--control-border); }
     .brand-band button.secondary:hover { background: var(--on-dark); color: var(--brand); border-color: var(--on-dark); }
     select:hover:not(:disabled), .drop-zone:hover { border-color: var(--brand); }
     .result a:hover { text-decoration-thickness: var(--border-width-strong); }
@@ -293,10 +306,14 @@
 
   <section id="app" hidden>
     <h2><label for="class-select">Class</label></h2>
-    <select id="class-select" disabled>
+    <select id="class-select" disabled aria-describedby="class-status class-freshness">
       <option value="">Choose a class…</option>
     </select>
+    <progress id="class-progress" class="busy" aria-label="Loading classes" hidden></progress>
     <p id="class-status" class="message" role="status" aria-live="polite"></p>
+    <button type="button" id="class-retry" hidden>Try again</button>
+    <p id="class-freshness" class="message note" hidden></p>
+    <button type="button" id="class-refresh" hidden>Refresh class list</button>
 
     <h2 id="photo-heading">Photo</h2>
     <div id="drop-zone" class="drop-zone" aria-labelledby="photo-heading">
@@ -310,7 +327,9 @@
 
     <p id="public-warning" class="warning">When you submit, this photo becomes public on GitHub right away, before anyone reviews it. It stays visible in the pull request even if the pull request is never merged.</p>
     <button type="button" id="submit" disabled>Submit</button>
+    <progress id="submit-progress" class="busy" aria-label="Submitting" hidden></progress>
     <p id="submit-status" class="message" role="status" aria-live="polite"></p>
+    <p id="submit-elapsed" class="message note" aria-hidden="true" hidden></p>
 
     <section id="result" class="result" aria-live="polite" hidden></section>
   </section>
@@ -348,6 +367,35 @@
   const FORBIDDEN_ERROR = "You're not allowed to use this page.";
   const TOO_MANY_REQUESTS_MESSAGE = "Too many submissions at once. Wait a minute and try again.";
   const NETWORK_MESSAGE = "Couldn't reach the server. Check your connection and try again.";
+
+  // Loading, refreshing and submitting (plan class-photo-loading, phase 3).
+  const CLASS_SLOW_MS = 5000; // "Still loading…" after this
+  const REQUEST_TIMEOUT_MS = 35000; // the page gives up (API Gateway answers 504 at 29 s)
+  const ELAPSED_TICK_MS = 1000;
+  const CLASS_LIST_TIME_OPTIONS = { hour: "2-digit", minute: "2-digit" };
+
+  const LOADING_CLASSES_MESSAGE = "Loading classes…";
+  const STILL_LOADING_CLASSES_MESSAGE = "Still loading classes from Neon…";
+  const CLASS_LIST_TIME_MESSAGE = "Class list from Neon at {time}.";
+  const STALE_LIST_MESSAGE = "Neon didn't answer the last refresh, so this list may be out of date.";
+  const REFRESHING_CLASSES_MESSAGE = "Refreshing the class list from Neon…";
+  const REFRESHED_MESSAGE = "Class list refreshed from Neon.";
+  const REFRESH_TOO_SOON_MESSAGE = "The class list was refreshed less than a minute ago, so this is that list. Try again in a minute.";
+  const REFRESH_FAILED_MESSAGE = "Neon didn't answer, so the class list wasn't refreshed. The list shown is the last one read.";
+  const PREPARING_MESSAGE = "Preparing the photo…";
+  const SENDING_MESSAGE = "Sending the photo…";
+  const WAITING_MESSAGE = "Waiting for the server to check it and open the pull request…";
+  const WAITING_DRY_RUN_MESSAGE = "Waiting for the server to check it and plan the pull request…";
+  const ELAPSED_MESSAGE = "{seconds} s";
+  const UNCONFIRMED_MESSAGE = "The server didn't confirm the result in time. A pull request may or may not have been opened on GitHub. Submitting the same class again is safe: it updates the same pull request instead of opening a second one.";
+  const DRY_RUN_TIMEOUT_MESSAGE = "The server didn't answer in time. This is a dry run, so nothing was opened on GitHub. Try again.";
+
+  // What each refresh outcome from GET /classes?refresh=1 says: [message, kind].
+  const REFRESH_OUTCOMES = new Map([
+    ["refreshed", [REFRESHED_MESSAGE]],
+    ["too_soon", [REFRESH_TOO_SOON_MESSAGE]],
+    ["failed", [REFRESH_FAILED_MESSAGE, "error"]],
+  ]);
 
   const STORAGE = {
     token: "classPhoto.idToken",
@@ -802,17 +850,49 @@
     photo: null, // { bytes, width, height }
     photoRequest: 0,
     previewUrl: null,
+    classesLoaded: false, // a list has arrived at least once
+    loadingClasses: false, // a load or a refresh is running
     submitting: false,
+    elapsedTimer: null,
   };
   const elements = {};
-  for (const id of ["sign-out", "dry-run-banner", "signing-in", "sign-in-problem", "sign-in-again", "app", "class-select", "class-status", "drop-zone", "photo-input", "photo-status", "photo-note", "preview", "submit", "submit-status", "result"]) {
+  for (const id of ["sign-out", "dry-run-banner", "signing-in", "sign-in-problem", "sign-in-again", "app", "class-select", "class-progress", "class-status", "class-retry", "class-freshness", "class-refresh", "drop-zone", "photo-input", "photo-status", "photo-note", "preview", "submit", "submit-progress", "submit-status", "submit-elapsed", "result"]) {
     elements[id] = document.getElementById(id);
   }
+  const classPlaceholder = elements["class-select"].firstElementChild;
 
   function setMessage(element, text, kind) {
     element.textContent = text || "";
     element.classList.remove("error", "ok");
     if (kind) element.classList.add(kind);
+  }
+
+  function setBusy(node, busy) {
+    if (busy) node.setAttribute("aria-busy", "true");
+    else node.removeAttribute("aria-busy");
+  }
+
+  // A busy button keeps its focus: aria-disabled, not disabled, which would drop focus to
+  // the page. Its click handler checks the state and does nothing.
+  function setUnavailable(button, unavailable) {
+    if (unavailable) button.setAttribute("aria-disabled", "true");
+    else button.removeAttribute("aria-disabled");
+  }
+
+  // One place decides what can be used, from the state.
+  function updateControls() {
+    const classBusy = state.loadingClasses;
+    const select = elements["class-select"];
+    select.disabled = classBusy || state.submitting || !state.classesLoaded;
+    setBusy(select, classBusy);
+    elements["class-progress"].hidden = !classBusy;
+    setUnavailable(elements["class-retry"], classBusy);
+    setUnavailable(elements["class-refresh"], classBusy || state.submitting);
+    elements["photo-input"].disabled = state.submitting;
+    const entry = chosenClass();
+    const classOk = Boolean(entry) && !(typeof entry.problem === "string" && entry.problem);
+    elements.submit.disabled = classBusy || !classOk || !state.photo;
+    setUnavailable(elements.submit, state.submitting);
   }
 
   function element(tag, text, attributes) {
@@ -938,69 +1018,211 @@
     window.location.assign("https://" + config.authDomain + "/logout?" + query.toString());
   }
 
+  // ---- API calls: every request to the page's API goes through here ----
   class PageError extends Error {}
+  // The request may have reached the server, but its answer didn't come back: a 5xx or
+  // an OK answer with no JSON (API Gateway's 502 and 504), a dropped connection, or the
+  // page's own time limit. The message is the caller's fallback.
+  class UnconfirmedError extends PageError {}
 
-  // Calls one of the page's API routes. Resolves to the JSON body, or to null when the
-  // page is on its way to the sign-in; rejects with a PageError carrying the message.
-  async function apiFetch(path, options, fallbackMessage) {
-    const token = currentToken();
-    if (!token) {
-      reauthenticate();
-      return null;
-    }
-    let response;
-    try {
-      response = await fetch(config.pageUrl + path, {
-        method: options.method,
-        headers: Object.assign({ Authorization: token }, options.headers || {}),
-        body: options.body,
-        credentials: "omit",
-        cache: "no-store",
-      });
-    } catch (error) {
-      throw new PageError(NETWORK_MESSAGE);
-    }
-    if (response.status === 401) {
+  // The answer's JSON body; null when the page is on its way to the sign-in. Throws a
+  // PageError carrying the message to show.
+  function readAnswer(status, text, fallbackMessage) {
+    if (status === 401) {
       reauthenticate();
       return null;
     }
     sessionStorage.removeItem(STORAGE.reauthenticated); // the token was accepted
     let body = null;
     try {
-      body = await response.json();
+      body = JSON.parse(text);
     } catch (error) {
       body = null;
     }
-    if (response.ok && body && typeof body === "object") return body;
-    if (response.status === 403) throw new PageError(FORBIDDEN_ERROR);
+    const ok = status >= 200 && status < 300;
+    if (ok && body && typeof body === "object") return body;
+    if (status === 403) throw new PageError(FORBIDDEN_ERROR);
     if (body && typeof body.error === "string" && body.error) throw new PageError(body.error);
-    if (response.status === 429) throw new PageError(TOO_MANY_REQUESTS_MESSAGE);
+    if (status === 429) throw new PageError(TOO_MANY_REQUESTS_MESSAGE);
+    if (ok || status >= 500) throw new UnconfirmedError(fallbackMessage);
     throw new PageError(fallbackMessage);
   }
 
+  // The token to send, or null after starting a new sign-in.
+  function tokenOrSignIn() {
+    const token = currentToken();
+    if (!token) reauthenticate();
+    return token;
+  }
+
+  // GET one of the page's API routes. No answer within REQUEST_TIMEOUT_MS, or none at
+  // all, is NETWORK_MESSAGE.
+  async function apiGet(path, fallbackMessage) {
+    const token = tokenOrSignIn();
+    if (!token) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let status;
+    let text;
+    try {
+      const response = await fetch(config.pageUrl + path, {
+        method: "GET",
+        headers: { Authorization: token },
+        credentials: "omit",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      status = response.status;
+      text = await response.text();
+    } catch (error) {
+      throw new PageError(NETWORK_MESSAGE);
+    } finally {
+      clearTimeout(timer);
+    }
+    return readAnswer(status, text, fallbackMessage);
+  }
+
+  // POST JSON to one of the page's API routes with XMLHttpRequest, whose upload events
+  // say when the body has been sent (onSent); same origin, so the CSP's connect-src
+  // 'self' covers it. The time limit restarts on each upload progress event and counts
+  // REQUEST_TIMEOUT_MS from the end of the upload, so a slow uplink isn't cut short.
+  // Before the body is sent, a failure is NETWORK_MESSAGE (the API never ran); after,
+  // it is an UnconfirmedError.
+  function apiPost(path, json, fallbackMessage, onSent) {
+    const token = tokenOrSignIn();
+    if (!token) return Promise.resolve(null);
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      let sent = false;
+      let timer = null;
+      const restartTimer = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => xhr.abort(), REQUEST_TIMEOUT_MS);
+      };
+      xhr.open("POST", config.pageUrl + path);
+      xhr.setRequestHeader("Authorization", token);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.withCredentials = false;
+      xhr.upload.onprogress = restartTimer;
+      xhr.upload.onload = () => {
+        sent = true;
+        restartTimer();
+        onSent();
+      };
+      xhr.onload = () => {
+        clearTimeout(timer);
+        try {
+          resolve(readAnswer(xhr.status, xhr.responseText, fallbackMessage));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      xhr.onerror = xhr.onabort = () => {
+        clearTimeout(timer);
+        reject(sent ? new UnconfirmedError(fallbackMessage) : new PageError(NETWORK_MESSAGE));
+      };
+      restartTimer();
+      xhr.send(json);
+    });
+  }
+
   // ---- Class ----
-  async function loadClasses() {
+
+  // Runs one class-list request with the busy state: the progress bar, aria-busy, the
+  // message, and "Still loading…" after CLASS_SLOW_MS. Resolves to the answer's body
+  // (null on the way to the sign-in); rejects with a PageError.
+  async function requestClassList(path, message) {
+    const status = elements["class-status"];
+    state.loadingClasses = true;
+    updateControls();
+    setMessage(status, message);
+    const slow = setTimeout(() => setMessage(status, STILL_LOADING_CLASSES_MESSAGE), CLASS_SLOW_MS);
+    try {
+      return await apiGet(path, NEON_ERROR);
+    } finally {
+      clearTimeout(slow);
+      state.loadingClasses = false;
+      updateControls();
+    }
+  }
+
+  // Lists the answer's classes, keeping the chosen one when it is still listed.
+  function showClassList(body) {
     const select = elements["class-select"];
-    setMessage(elements["class-status"], "Loading classes…");
+    const chosen = select.value;
+    state.classes = new Map();
+    const options = [];
+    for (const entry of Array.isArray(body.classes) ? body.classes : []) {
+      if (!entry || typeof entry.name !== "string" || !entry.name || state.classes.has(entry.name)) continue;
+      state.classes.set(entry.name, entry);
+      options.push(element("option", entry.name, { value: entry.name }));
+    }
+    select.replaceChildren(classPlaceholder, ...options);
+    select.value = state.classes.has(chosen) ? chosen : "";
+    state.classesLoaded = true;
+    showClassListTime(body);
+    updateControls();
+  }
+
+  // "Class list from Neon at HH:MM.", and that it may be out of date when it is stale.
+  function showClassListTime(body) {
+    const note = elements["class-freshness"];
+    const time = typeof body.refreshed_at === "string" ? new Date(body.refreshed_at) : null;
+    if (!time || Number.isNaN(time.getTime())) {
+      note.textContent = ""; // aria-describedby would still read hidden text
+      note.hidden = true;
+      return;
+    }
+    const text = format(CLASS_LIST_TIME_MESSAGE, { time: time.toLocaleTimeString([], CLASS_LIST_TIME_OPTIONS) });
+    note.textContent = body.stale === true ? text + " " + STALE_LIST_MESSAGE : text;
+    note.hidden = false;
+  }
+
+  function hasClasses(body) {
+    return Array.isArray(body.classes) && body.classes.length > 0;
+  }
+
+  function errorMessage(error, fallbackMessage) {
+    return error instanceof PageError ? error.message : fallbackMessage;
+  }
+
+  // The first load, and Try again after it failed.
+  async function loadClasses() {
+    if (state.loadingClasses) return;
+    const retry = elements["class-retry"];
     let body;
     try {
-      body = await apiFetch("/classes", { method: "GET" }, NEON_ERROR);
+      body = await requestClassList("/classes", LOADING_CLASSES_MESSAGE);
     } catch (error) {
-      setMessage(elements["class-status"], error instanceof PageError ? error.message : NEON_ERROR, "error");
+      setMessage(elements["class-status"], errorMessage(error, NEON_ERROR), "error");
+      retry.hidden = false;
       return;
     }
     if (!body) return;
-    const classes = Array.isArray(body.classes) ? body.classes : [];
-    for (const entry of classes) {
-      if (!entry || typeof entry.name !== "string" || !entry.name || state.classes.has(entry.name)) continue;
-      state.classes.set(entry.name, entry);
-      const option = document.createElement("option");
-      option.value = entry.name;
-      option.textContent = entry.name;
-      select.appendChild(option);
-    }
-    select.disabled = false;
+    showClassList(body);
     setMessage(elements["class-status"], "");
+    // Try again goes away with the problem; focus it held moves to the list.
+    if (document.activeElement === retry) elements["class-select"].focus();
+    retry.hidden = true;
+    elements["class-refresh"].hidden = false;
+  }
+
+  // Refresh class list: GET /classes?refresh=1. A failed refresh keeps the list shown.
+  async function refreshClasses() {
+    if (state.loadingClasses || state.submitting) return;
+    const status = elements["class-status"];
+    let body;
+    try {
+      body = await requestClassList("/classes?refresh=1", REFRESHING_CLASSES_MESSAGE);
+    } catch (error) {
+      setMessage(status, errorMessage(error, NEON_ERROR), "error");
+      return;
+    }
+    if (!body) return;
+    // A failed refresh with nothing to fall back on answers no classes: keep the list shown.
+    if (body.refresh !== "failed" || hasClasses(body)) showClassList(body);
+    const [message, kind] = REFRESH_OUTCOMES.get(body.refresh) || [""];
+    setMessage(status, message, kind);
   }
 
   function chosenClass() {
@@ -1016,7 +1238,7 @@
     } else {
       setMessage(elements["class-status"], "");
     }
-    updateSubmit();
+    updateControls();
   }
 
   // ---- Photo ----
@@ -1036,10 +1258,11 @@
   }
 
   async function onFile(file) {
+    if (state.submitting) return; // the photo being sent stays
     const request = ++state.photoRequest;
     clearPhoto();
     elements.result.hidden = true;
-    updateSubmit();
+    updateControls();
     if (!file) return;
     if (file.size > MAX_READ_BYTES) {
       setMessage(elements["photo-status"], tooBigMessage(file.size), "error");
@@ -1081,16 +1304,10 @@
     state.previewUrl = URL.createObjectURL(new Blob([cleaned.bytes], { type: "image/jpeg" }));
     elements.preview.src = state.previewUrl;
     elements.preview.hidden = false;
-    updateSubmit();
+    updateControls();
   }
 
   // ---- Submit and result ----
-  function updateSubmit() {
-    const entry = chosenClass();
-    const classOk = Boolean(entry) && !(typeof entry.problem === "string" && entry.problem);
-    elements.submit.disabled = state.submitting || !classOk || !state.photo;
-  }
-
   function toBase64(bytes) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -1159,32 +1376,65 @@
     result.hidden = false;
   }
 
+  // The seconds since the submission started, beside the step; not a live region.
+  function startElapsed() {
+    const started = Date.now();
+    const line = elements["submit-elapsed"];
+    const show = () => {
+      line.textContent = format(ELAPSED_MESSAGE, { seconds: Math.floor((Date.now() - started) / 1000) });
+    };
+    show();
+    line.hidden = false;
+    state.elapsedTimer = setInterval(show, ELAPSED_TICK_MS);
+  }
+
+  function setSubmitting(submitting) {
+    state.submitting = submitting;
+    setBusy(elements.result, submitting);
+    elements["submit-progress"].hidden = !submitting;
+    if (submitting) {
+      elements.result.hidden = true;
+      startElapsed();
+    } else {
+      clearInterval(state.elapsedTimer);
+      state.elapsedTimer = null;
+      elements["submit-elapsed"].hidden = true;
+      elements["submit-elapsed"].textContent = "";
+      setMessage(elements["submit-status"], "");
+    }
+    updateControls();
+  }
+
+  function submitErrorMessage(error) {
+    if (error instanceof UnconfirmedError) return config.dryRun ? DRY_RUN_TIMEOUT_MESSAGE : UNCONFIRMED_MESSAGE;
+    return errorMessage(error, GENERIC_ERROR);
+  }
+
+  // The class and the photo are never cleared here, so after a failure one click
+  // submits them again.
   async function submit() {
     const entry = chosenClass();
     const photo = state.photo;
-    if (!entry || !photo || state.submitting) return;
-    state.submitting = true;
-    updateSubmit();
-    elements.result.hidden = true;
-    setMessage(elements["submit-status"], "Submitting…");
+    if (!entry || !photo || state.submitting || state.loadingClasses) return;
+    const status = elements["submit-status"];
+    setSubmitting(true);
+    setMessage(status, PREPARING_MESSAGE);
+    let body = null;
+    let failure = null;
     try {
-      const body = await apiFetch(
-        "/submit",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ class_name: entry.name, photo_base64: await toBase64(photo.bytes) }),
-        },
-        GENERIC_ERROR,
-      );
-      if (body) renderResult(body);
+      const json = JSON.stringify({ class_name: entry.name, photo_base64: await toBase64(photo.bytes) });
+      setMessage(status, SENDING_MESSAGE);
+      body = await apiPost("/submit", json, GENERIC_ERROR, () => {
+        setMessage(status, config.dryRun ? WAITING_DRY_RUN_MESSAGE : WAITING_MESSAGE);
+      });
     } catch (error) {
-      renderError(error instanceof PageError ? error.message : GENERIC_ERROR);
-    } finally {
-      state.submitting = false;
-      setMessage(elements["submit-status"], "");
-      updateSubmit();
+      failure = submitErrorMessage(error);
     }
+    // aria-busy comes off #result before it is filled: a screen reader skips changes
+    // to a busy live region.
+    setSubmitting(false);
+    if (failure) renderError(failure);
+    else if (body) renderResult(body);
   }
 
   // ---- Wiring ----
@@ -1195,6 +1445,8 @@
       signIn();
     });
     elements["class-select"].addEventListener("change", onClassChange);
+    elements["class-retry"].addEventListener("click", loadClasses);
+    elements["class-refresh"].addEventListener("click", refreshClasses);
     elements["photo-input"].addEventListener("change", () => {
       const file = elements["photo-input"].files[0];
       elements["photo-input"].value = ""; // choosing the same file again still counts
@@ -1203,7 +1455,7 @@
     const zone = elements["drop-zone"];
     zone.addEventListener("dragover", (event) => {
       event.preventDefault();
-      zone.classList.add("dragging");
+      if (!state.submitting) zone.classList.add("dragging");
     });
     zone.addEventListener("dragleave", () => zone.classList.remove("dragging"));
     zone.addEventListener("drop", (event) => {

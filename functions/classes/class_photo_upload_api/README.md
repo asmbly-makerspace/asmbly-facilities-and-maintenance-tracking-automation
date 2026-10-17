@@ -38,7 +38,7 @@ header, as it is (no `Bearer ` prefix).
 | Method and path | What it does |
 | --- | --- |
 | `GET /class-photo-upload/classes` | The class list (from the cache, or Neon), with each class's file name, file-name problem and shared-photo warning |
-| `GET /class-photo-upload/classes?refresh=1` | The same, read from Neon again now (at most once a minute), for the page's refresh button (epic #114, phase 3) |
+| `GET /class-photo-upload/classes?refresh=1` | The same, read from Neon again now (at most once a minute), for the page's **Refresh class list** button |
 | `POST /class-photo-upload/submit` | `{"class_name": "...", "photo_base64": "..."}`: checks, then opens or updates the pull request (prod) or reports what it would do (stage) |
 
 Who can call:
@@ -144,8 +144,8 @@ function uses the class list. If another function needs it, the interface and th
 DynamoDB implementation can move to the layer unchanged.
 
 **Emptying it by hand.** Delete the item (`cache_key = class-list`) in
-`ClassPhotoClassListCache-<stage>`; the next request reads Neon. Or ask for a refresh
-(`?refresh=1`).
+`ClassPhotoClassListCache-<stage>`; the next request reads Neon. Or press **Refresh class list** on the
+page (`?refresh=1`).
 
 ## Responses
 

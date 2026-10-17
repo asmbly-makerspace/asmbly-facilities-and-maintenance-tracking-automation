@@ -681,7 +681,7 @@ def test_message_kinds_differ_beyond_colour() -> None:
         assert GLYPH_TOKEN.fullmatch(tokens[glyph]), glyph
         glyphs.append(tokens[glyph])
     assert len(set(glyphs)) == len(glyphs)
-    # Plain status text ("Signing in…", "Loading classes…", "Submitting…") has no edge or glyph.
+    # Plain status text ("Signing in…", "Loading classes…", "Sending the photo…") has no edge or glyph.
     assert "border" not in _rule(".message") and "content" not in _rule(".message")
     # Error and warning text is heavier than success and banner text.
     for selector in (".message.error", ".warning"):
@@ -746,3 +746,101 @@ def test_no_hidden_horizontal_overflow() -> None:
                 assert not re.search(r"overflow(-x)?:\s*hidden", body), selector
     assert "tabindex" not in PAGE_HTML
     assert "max-width: 100%" in _rule("select") and "max-width: 100%" in _rule(".preview")
+
+
+# ---- Loading, progress and retry (plan class-photo-loading, phase 3) ----
+
+LOADING_MESSAGES = [
+    "Loading classes…",
+    "Still loading classes from Neon…",
+    "Class list from Neon at {time}.",
+    "Neon didn't answer the last refresh, so this list may be out of date.",
+    "Refreshing the class list from Neon…",
+    "Class list refreshed from Neon.",
+    "The class list was refreshed less than a minute ago, so this is that list. Try again in a minute.",
+    "Neon didn't answer, so the class list wasn't refreshed. The list shown is the last one read.",
+    "Preparing the photo…",
+    "Sending the photo…",
+    "Waiting for the server to check it and open the pull request…",
+    "Waiting for the server to check it and plan the pull request…",
+    "{seconds} s",
+    "The server didn't confirm the result in time. A pull request may or may not have been opened on GitHub. "
+    "Submitting the same class again is safe: it updates the same pull request instead of opening a second one.",
+    "The server didn't answer in time. This is a dry run, so nothing was opened on GitHub. Try again.",
+]
+
+
+def _tag(element_id: str) -> str:
+    """The opening tag of the element with this id."""
+    match = re.search(rf'<[a-z]+\b[^>]*\bid="{element_id}"[^>]*>', _markup())
+    assert match is not None, element_id
+    return match.group(0)
+
+
+def _script() -> str:
+    match = re.search(r'<script nonce="__CSP_NONCE__">(.*?)</script>', PAGE_HTML, re.S)
+    assert match is not None
+    return match.group(1)
+
+
+def test_class_field_has_busy_indicator_and_retry() -> None:
+    progress = _tag("class-progress")
+    assert progress.startswith("<progress ") and 'aria-label="Loading classes"' in progress and " hidden" in progress
+    assert "value=" not in progress  # no value: the browser's indeterminate bar
+    assert '<button type="button" id="class-retry" hidden>Try again</button>' in _markup()
+    freshness = _tag("class-freshness")
+    assert "role=" not in freshness and "aria-live" not in freshness
+    assert 'aria-describedby="class-status class-freshness"' in _tag("class-select")
+    assert 'role="status" aria-live="polite"' in _tag("class-status")
+
+
+def test_submit_has_progress_and_silent_elapsed() -> None:
+    progress = _tag("submit-progress")
+    assert progress.startswith("<progress ") and 'aria-label="Submitting"' in progress and " hidden" in progress
+    elapsed = _tag("submit-elapsed")
+    assert 'aria-hidden="true"' in elapsed and "role=" not in elapsed and "aria-live" not in elapsed
+    assert 'role="status" aria-live="polite"' in _tag("submit-status")
+
+
+@pytest.mark.parametrize("message", LOADING_MESSAGES)
+def test_loading_and_progress_messages_are_in_the_page(message: str) -> None:
+    assert f'"{message}"' in _script()
+
+
+def test_class_field_has_refresh_button() -> None:
+    assert '<button type="button" id="class-refresh" hidden>Refresh class list</button>' in _markup()
+    assert "aria-label" not in _tag("class-refresh")  # its name is its text
+    assert '"/classes?refresh=1"' in _script()
+
+
+def test_busy_indicator_uses_tokens() -> None:
+    busy = _rule(".busy")
+    assert "height: var(--progress-height)" in busy
+    assert "accent-color: var(--progress-fill)" in busy
+    assert "width: 100%" in busy
+    # .busy's display: block can't show a hidden bar: the global rule wins.
+    assert "display: none !important" in _rule("[hidden]")
+    assert "@keyframes" not in _css() and "animation" not in _css()
+
+
+def test_disabled_photo_button_differs_beyond_colour() -> None:
+    rule = _rule(".drop-zone input:disabled + label")
+    assert "border-style: dashed" in rule and "cursor: not-allowed" in rule
+    assert "background: var(--disabled-bg)" in rule and "color: var(--text)" in rule
+
+
+def test_busy_buttons_keep_the_disabled_look() -> None:
+    # Busy buttons use aria-disabled so they keep focus; they look like disabled ones.
+    assert _rule('button[aria-disabled="true"]') == _rule("button:disabled")
+    hover = _rule('button[aria-disabled="true"]:hover', HOVER_MEDIA)
+    assert "background: var(--disabled-bg)" in hover and "border-color: var(--control-border)" in hover
+    assert "margin-top: var(--space-3)" in _rule("#class-retry") and "margin-top: var(--space-3)" in _rule("#class-refresh")
+
+
+def test_page_sends_submission_to_its_own_origin() -> None:
+    script = _script()
+    assert script.count("new XMLHttpRequest()") == 1
+    assert re.findall(r"\.open\(([^)]*)\)", script) == ['"POST", config.pageUrl + path']
+    assert "xhr.withCredentials = false;" in script
+    # The only other request the page makes is the sign-in's token exchange.
+    assert re.findall(r"\bfetch\(([^,]*),", script) == ['"https://" + config.authDomain + "/oauth2/token"', "config.pageUrl + path"]
