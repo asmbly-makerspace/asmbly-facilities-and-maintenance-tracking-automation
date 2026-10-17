@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+from typing import Any
+
 import boto3
 from common import reaction_processing, aws, clickup, discourse
 
@@ -8,9 +10,22 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
+def _log_received_event(event: Any) -> None:
+    """Logs the Slack event's IDs, never the whole event (it carries Slack's verification token)."""
+    if not isinstance(event, dict):
+        logger.info("Received event: not a dict")
+        return
+    inner = event.get("event") if isinstance(event.get("event"), dict) else {}
+    item = inner.get("item") if isinstance(inner.get("item"), dict) else {}
+    logger.info(
+        "Received event: type=%s reaction=%s channel=%s ts=%s event_id=%s",
+        inner.get("type"), inner.get("reaction"), item.get("channel"), item.get("ts"), event.get("event_id"),
+    )
+
+
 def lambda_handler(event, context):
     """Handles problem report reactions, including Discourse integration."""
-    logger.info(f"Received event: {event}")
+    _log_received_event(event)
     try:
         # The router function passes the body of the original request directly.
         body = event
@@ -96,7 +111,10 @@ def lambda_handler(event, context):
                     api_key=discourse_api_key,
                     api_username=discourse_api_user
                 )
-                logger.info(f"Discourse reply response: {reply_response}")
+                logger.info(
+                    "Discourse reply posted: post_id=%s",
+                    reply_response.get("id") if isinstance(reply_response, dict) else None,
+                )
 
                 # Mark as solution if configured and the reply was successful
                 if config.get("discourse_mark_solution") and reply_response.get("id"):

@@ -118,8 +118,7 @@ def lambda_handler(event, context):
 
         slack_post_field_id = purchase_requests_config['slack_post_field_id']
         print(f"Attempting to set custom field '{slack_post_field_id}' on task {task_id}.")
-        update_response = clickup.set_custom_field_value(clickup_api_token, task_id, slack_post_field_id, slack_post_url)
-        print(f"Received response from ClickUp update API: {json.dumps(update_response)}")
+        clickup.set_custom_field_value(clickup_api_token, task_id, slack_post_field_id, slack_post_url)
         print(f"Successfully updated task {task_id} with Slack post URL.")
 
         return {'statusCode': 200, 'body': json.dumps('Successfully processed purchase request.')}

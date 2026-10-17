@@ -10,7 +10,7 @@ estimated_size: M
 
 # Phase 1: ClickUp exception text and payload log lines
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-17 on branch feature/safe-exception-text
 
 ## Required reading
 
@@ -40,7 +40,7 @@ None.
 
 | Path | Change |
 | --- | --- |
-| `layers/common/python/common/clickup.py` | Build both `ValueError` messages in `_make_clickup_request` and the one in `update_task` from safe fields; raise the two in `_make_clickup_request` `from None`. |
+| `layers/common/python/common/clickup.py` | Build both `ValueError` messages in `_make_clickup_request` and the one in `update_task` from safe fields; raise the two in `_make_clickup_request` `from None`; add `_endpoint_for_log` and use it in both messages and both log lines; drop the unused `json` import. |
 | `layers/common/tests/test_clickup.py` | Update the seven assertions that pin the old text; add tests that no body, task field, URL or query string reaches `str(exc)` or the formatted traceback. |
 | `functions/purchase_request/slack_reaction_webhook/lambda_function.py` | Line 14: log the event's type, reaction, channel, message ts and event ID instead of the whole event. |
 | `functions/purchase_request/slack_reaction_webhook/tests/test_slack_reaction_webhook.py` | Test for the new log line. |
@@ -59,7 +59,18 @@ Not modified: `functions/ceramics/kiln_dropoff_recent_entries_viewer/tests/test_
 ### layer: `common/clickup.py`
 
 `_make_clickup_request(api_token: str, method: str, endpoint: str, **kwargs: Any) -> Any`
-keeps its signature and its log lines. Only the raised messages change:
+keeps its signature. The raised messages change, and both log lines and both messages
+use a validated endpoint (prep amendment):
+
+- **New private helper** `_endpoint_for_log(endpoint: Any) -> str`, next to
+  `_task_id_for_log`: returns `endpoint` when it fully matches
+  `[A-Za-z0-9_/-]{1,256}` (a module-level compiled pattern, `fullmatch`, like the other
+  two), else `<invalid>`. Reason: `new_purchase_request_received` builds
+  `task/{task_id}/field/…` from `task.id` in an unauthenticated webhook body, so a crafted
+  ID could put `?x=…` or a newline into the message and the log line. Every endpoint the
+  module builds today (`task/<id>`, `list/<id>/task`, `list/<id>/field`,
+  `task/<id>/field/<id>`) passes. Compute `safe_endpoint = _endpoint_for_log(endpoint)`
+  once in the `except` branch and use it in the log line and the message.
 
 - **HTTP error.** Remove the `error_message += " - Details: …"` and
   `" - Response body: …"` lines. Keep parsing `e.response.json()` into `error_details`
@@ -68,20 +79,24 @@ keeps its signature and its log lines. Only the raised messages change:
   ```python
   raise ValueError(
       f"ClickUp API HTTP Error: {e.response.status_code} {e.response.reason} - "
-      f"{method} {endpoint} (ECODE={_ecode_for_log(error_details)})"
+      f"{method} {safe_endpoint} (ECODE={_ecode_for_log(error_details)})"
   ) from None
   ```
 
-  `endpoint` holds IDs only (query parameters go through `params=`, PR #96). ECODE is
-  `None`, the validated code, or `<invalid>`.
+  Query parameters go through `params=` (PR #96), so a valid endpoint holds IDs only.
+  ECODE is `None`, the validated code, or `<invalid>`.
 
-- **Network error** (`requests.exceptions.RequestException`, which includes timeouts):
+- **Network error** (`requests.exceptions.RequestException`, which includes timeouts,
+  and also `requests.exceptions.JSONDecodeError` from a 2xx with a non-JSON body; the
+  "Network error" label for that case is pre-existing and stays):
 
   ```python
   raise ValueError(
-      f"Network error during ClickUp API request: {method} {endpoint} ({type(e).__name__})"
+      f"Network error during ClickUp API request: {method} {safe_endpoint} ({type(e).__name__})"
   ) from None
   ```
+
+- `json` is no longer used in `clickup.py` after this change: remove the import.
 
 `update_task(api_token: str, task_id: str, payload: dict[str, Any]) -> Any`: replace the
 message built from `json.dumps(response_data)` and `response_data['err']` with one built
@@ -93,7 +108,10 @@ from the IDs the log line already uses:
   `f"ClickUp task update for {task_id} returned 200 OK but task ID {_task_id_for_log(returned_id)} (ECODE={ecode})"`
 
 where `ecode = _ecode_for_log(response_data)`. Build the message and the log line from
-the same values, so they can't drift. Drop the `'err'` suffix (vendor text). The
+the same values, so they can't drift. Check `isinstance(response_data, dict)` before
+reading `'id'` (today's `'id' not in response_data` raises `TypeError` on `None` and does
+a substring test on a `str`): a non-dict response is "no task ID", and a dict whose
+`id` equals `task_id` returns it unchanged. Drop the `'err'` suffix (vendor text). The
 `update_task` raise isn't inside an `except`, so it needs no `from None`. `task_id` is
 the caller's own ID, not vendor content.
 
@@ -128,11 +146,16 @@ No other function in `clickup.py` changes. No logging setup, no `exc_info`.
   `logger.error("Error updating Slack view: %s", api_response.text)` with
   `logger.error("Error updating Slack view %s: HTTP %s, ok=%s", view_id, api_response.status_code, ok)`,
   where `ok` is `api_response.json().get("ok")` when the body parses as a dict, else
-  `None`. Compute it once and reuse it in the `if` (today's `if` calls `.json()` without a
-  guard; keep the same branch outcome). Don't log Slack's error code (README Decision 8).
+  `None` (catch `ValueError` from `.json()`). Compute it once and reuse it in the `if`:
+  the error branch runs when `not api_response.ok or not ok`, as today. One case changes
+  on purpose: a non-JSON body, which today raises out of `handle_block_actions`, now
+  takes the error branch and the function still returns `{"statusCode": 200, "body": ""}`.
+  Don't log Slack's error code (README Decision 8).
 
-- **New purchase request** (`:122`): delete the `print` of the update response. Line 123
-  (`Successfully updated task {task_id} …`) stays; phase 3 converts it to `logger`.
+- **New purchase request** (`:122`): delete the `print` of the update response, and drop
+  the now-unused `update_response =` assignment (keep the `set_custom_field_value`
+  call). Line 123 (`Successfully updated task {task_id} …`) stays; phase 3 converts it
+  to `logger`.
 
 Leave every other line in these handlers alone; phase 2 changes their error replies and
 phase 3 their `print`s.
@@ -172,8 +195,22 @@ New:
 - `test_update_task_message_has_no_task_fields`: a returned task with `assignees`
   (name, email), `creator`, and a `description` holding a phone number; the message
   holds none of them and names both IDs.
+- `test_make_clickup_request_invalid_endpoint_not_in_message_or_log` (prep amendment):
+  `clickup.set_custom_field_value("token", "t1?x=pk_QUERY_MARKER\n", "f1", "v")` with an
+  HTTP 400; `str(exc)` and `caplog.text` say `<invalid>` and contain neither
+  `pk_QUERY_MARKER` nor a newline in the message.
+- `test_make_clickup_request_200_non_json_body_not_in_message` (prep amendment): a 200
+  whose `.json()` raises `requests.exceptions.JSONDecodeError` built from a body holding
+  `pk_BODY_MARKER`; the message is `… GET task/t1 (JSONDecodeError)` and neither it nor
+  the formatted traceback contains `pk_BODY_MARKER`.
+- `test_endpoint_for_log_rejects_query_and_newline`: `task/t1` passes; `task/t1?x=1`,
+  `task/t1\n` and a non-string give `<invalid>`.
 
-Handler tests:
+Handler tests. Every handler test file here is a `unittest.TestCase` class, so pytest's
+`caplog` and `capsys` fixtures don't reach its methods: assert logs with
+`self.assertLogs(level="INFO")` (the existing pattern in
+`test_result_log_omits_message_text`) and stdout with
+`contextlib.redirect_stdout(io.StringIO())` (prep amendment).
 
 - `purchase_request/.../test_received_event_log_omits_token_and_body`: an event with
   `"token": "pk_VERIFY_MARKER"` and an `event.item` with channel `C123`, ts `123.456`;
@@ -223,13 +260,15 @@ sam build
 `cfn-lint` and `sam validate` aren't needed (no template change). `sam build` is (layer
 change).
 
-On the stage stack after deploy: run `/reorder`, pick an item, and in the
-`SlackSlashReorderFunction-stage` log group see the normal lines. To see the new error
-text without breaking anything, react with a configured emoji to a message in the
-problem-report channel whose ClickUp task was deleted: the
-`ProblemReport-ReactionFunction-stage` log shows `ClickUp API HTTP Error: 404 Not Found -
-PUT task/<id> (ECODE=…)` and no task or body text, and the `Received event` line shows
-type, reaction, channel, ts and event ID only.
+On the stage stack after deploy (prep amendment: Slack's Event Subscriptions, `/reorder`
+and Interactivity all point at prod, so reacting in Slack or running `/reorder` exercises
+prod's code and can change real tasks; don't use them for this check): POST a hand-made
+Slack `event_callback` envelope (`reaction_added`, a configured reaction, the
+problem-report channel, and the `ts` of a test message whose ClickUp link is a made-up
+task ID) to the stage router, `<FacilitiesApiUrl>/slack/events`. The
+`ProblemReport-ReactionFunction-stage` log then shows `ClickUp API HTTP Error: 404 …` or
+`401 …` `- PUT task/<id> (ECODE=…)` and no task or body text, and the `Received event`
+line shows type, reaction, channel, ts and event ID only.
 
 ## Admin actions
 
@@ -237,7 +276,32 @@ None.
 
 ## Hand-off
 
-- `common.clickup` raises `ValueError` with the messages above, `from None`. Phase 2 can
-  log any caught ClickUp exception with `logger.exception` safely.
-- The reaction functions, `/reorder` and new purchase request log IDs, not payloads.
-- No change to responses yet: phase 2 changes them.
+- `common.clickup` raises `ValueError` with these messages, `from None` (no
+  `__cause__`, `__suppress_context__` set), so phase 2 can log any caught ClickUp
+  exception with `logger.exception` safely:
+  - `ClickUp API HTTP Error: <status> <reason> - <METHOD> <endpoint> (ECODE=<code|None|<invalid>>)`
+  - `Network error during ClickUp API request: <METHOD> <endpoint> (<ExceptionClass>)`
+    (a 2xx with a non-JSON body also lands here, as `JSONDecodeError`)
+  - `ClickUp task update for <task_id|<invalid>> returned 200 OK but no task ID (ECODE=…)` /
+    `… but task ID <id|<invalid>> (ECODE=…)` (both IDs go through `_task_id_for_log`)
+- New private helper `common.clickup._endpoint_for_log(endpoint: Any) -> str`: the
+  endpoint when it matches `[A-Za-z0-9_/-]{1,256}`, else `<invalid>`. Both
+  `_make_clickup_request` log lines and both messages use it. Phase 3's timeout change
+  (`kwargs.setdefault("timeout", …)`) doesn't touch it.
+- `update_task` treats any non-dict response (including `None`) as "no task ID" and
+  raises `ValueError`; a dict whose `id` equals the requested ID is returned unchanged.
+- `clickup.py` no longer imports `json`.
+- Both reaction functions log through a private `_log_received_event(event: Any) -> None`
+  (one copy in each handler, as this phase asked). The problem-report function logs
+  `Discourse reply posted: post_id=<id>`. `/reorder` logs
+  `Error updating Slack view <view_id>: HTTP <status>, ok=<ok>`, and a non-JSON
+  `views.update` answer takes that branch. New purchase request no longer prints the
+  update response; its other `print`s are phase 3's.
+- No change to responses yet: phase 2 changes them. Until phase 2 lands,
+  `/purchase-request/new`'s 500 body and the `/reorder` error modal show the new text
+  (method and endpoint IDs, no body). If phase 1 ever ships without phase 2, its pull
+  request's **Risk** section says so.
+- Deferred: moving `_log_received_event` into `layers/common/` (the handler tests patch
+  `reaction_processing` wholesale, so it can't live there without going silent under
+  those mocks; a candidate for phase 3's logging cleanup). The pre-existing unguarded
+  `reply_response.get("id")` after the new Discourse log line is unchanged.

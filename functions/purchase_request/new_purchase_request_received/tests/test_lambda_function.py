@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import os
 import unittest
@@ -93,17 +95,22 @@ class TestNewPurchaseRequestLambda(unittest.TestCase):
             'channel': 'C12345',
             'ts': '1234567890.123456'
         }
-        mock_clickup.set_custom_field_value.return_value = {'id': '86ad43ft6'} # Mock a successful response
+        # A successful response is the whole task; none of it may reach stdout.
+        mock_clickup.set_custom_field_value.return_value = {'id': '86ad43ft6', 'name': 'pk_TASK_MARKER'}
 
         # --- Create the event ---
         event = {'body': json.dumps(self.clickup_webhook_payload)}
 
         # --- Execute the handler ---
-        result = lambda_handler(event, None)
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            result = lambda_handler(event, None)
 
         # --- Assertions ---
         self.assertEqual(result['statusCode'], 200)
         self.assertEqual(json.loads(result['body']), 'Successfully processed purchase request.')
+        self.assertNotIn('pk_TASK_MARKER', stdout.getvalue())
+        self.assertIn('Successfully updated task 86ad43ft6', stdout.getvalue())
 
         # Verify secrets were fetched
         mock_aws.get_secret.assert_any_call('test_clickup_secret', 'CLICKUP_API_TOKEN')

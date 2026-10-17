@@ -144,6 +144,61 @@ class TestSlackReactionWebhook(TestCase):
         self.assertIn("ignored", results[0])
         self.assertIn("No ClickUp task URL found in the message.", results[0])
 
+    @patch.dict(os.environ, {
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "slack-maintenancebot-token",
+        "CLICKUP_SECRET_NAME": "clickup/api/token",
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
+    })
+    @patch(f"{LAMBDA_FUNCTION_PATH}.clickup")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_received_event_log_omits_token_and_body(self, mock_boto3_client, mock_reaction_processing, mock_aws, mock_clickup):
+        """The 'Received event' line carries the event's IDs, never Slack's token or the whole event."""
+        mock_ssm = MagicMock()
+        mock_boto3_client.return_value = mock_ssm
+        mock_ssm.get_parameter.return_value = {'Parameter': {'Value': json.dumps({"truck": "purchased"})}}
+        mock_aws.get_secret.return_value = 'fake-clickup-token'
+        mock_reaction_processing.process_base_reaction.return_value = {
+            "status": "ignored", "reason": "No ClickUp task URL found in the message.",
+        }
+        event_body = {
+            "token": "pk_VERIFY_MARKER",
+            "team_id": "T999",
+            "event_id": "Ev123ABC",
+            "type": "event_callback",
+            "event": {
+                "type": "reaction_added", "reaction": "truck", "user": "U555",
+                "item": {"type": "message", "channel": "C123", "ts": "123.456"},
+            },
+        }
+
+        with self.assertLogs(level="INFO") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
+
+        self.assertEqual(response["statusCode"], 200)
+        output = "\n".join(logs.output)
+        self.assertNotIn("pk_VERIFY_MARKER", output)
+        self.assertNotIn("T999", output)
+        received = [r.getMessage() for r in logs.records if r.getMessage().startswith("Received event")]
+        self.assertEqual(received, [
+            "Received event: type=reaction_added reaction=truck channel=C123 ts=123.456 event_id=Ev123ABC"
+        ])
+
+    def test_received_event_log_handles_non_dict_shapes(self):
+        """The log line never raises before the handler's try, whatever shape the event has."""
+        with self.assertLogs(level="INFO") as logs:
+            lambda_function._log_received_event("pk_STRING_MARKER")
+            lambda_function._log_received_event({"event": "not-a-dict", "token": "pk_VERIFY_MARKER"})
+            lambda_function._log_received_event({"event": {"type": "reaction_added", "item": ["x"]}})
+
+        self.assertEqual([r.getMessage() for r in logs.records], [
+            "Received event: not a dict",
+            "Received event: type=None reaction=None channel=None ts=None event_id=None",
+            "Received event: type=reaction_added reaction=None channel=None ts=None event_id=None",
+        ])
+        self.assertNotIn("pk_", "\n".join(logs.output))
+
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     def test_lambda_handler_challenge(self, mock_boto3_client):
         # The router passes the body directly

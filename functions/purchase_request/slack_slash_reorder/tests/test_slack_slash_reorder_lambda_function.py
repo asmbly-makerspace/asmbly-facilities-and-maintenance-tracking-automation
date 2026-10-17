@@ -124,6 +124,66 @@ class TestSlackReorderWithDynamoDB(unittest.TestCase):
         self.assertIn(task_id_selected, description_block['block_id'])
         self.assertEqual(description_block['element']['initial_value'], self.clickup_master_items['tasks'][0]['description'])
 
+    def _block_actions_payload(self, view_id):
+        task_id_selected = self.clickup_master_items['tasks'][0]['id']
+        tasks_state = lambda_function.prepare_tasks_for_state(self.clickup_master_items['tasks'], "clickup_workspace_field_id")
+        self.table.put_item(Item={'view_id': view_id, 'tasks_data': json.dumps(tasks_state)})
+        return {
+            "type": "block_actions",
+            "view": {"id": view_id, "state": {"values": {}}},
+            "actions": [{"action_id": "selected_item", "selected_option": {"value": task_id_selected}}]
+        }
+
+    def test_block_actions_failed_update_logs_status_not_body(self):
+        """A failed views.update logs the view ID, HTTP status and ok flag, not Slack's response text."""
+        view_id = "V67890"
+        payload = self._block_actions_payload(view_id)
+        failed = self.mock_http_session.post.return_value
+        failed.ok = False
+        failed.status_code = 400
+        failed.text = "pk_SLACK_MARKER"
+        failed.json.return_value = {
+            "ok": False, "error": "invalid_blocks", "response_metadata": {"messages": ["pk_SLACK_MARKER"]}
+        }
+
+        with self.assertLogs(level="INFO") as logs:
+            response = lambda_function.handle_block_actions(payload, self.mock_http_session, "fake_token")
+
+        self.assertEqual(response, {"statusCode": 200, "body": ""})
+        self.assertNotIn("pk_SLACK_MARKER", "\n".join(logs.output))
+        self.assertNotIn("invalid_blocks", "\n".join(logs.output))
+        errors = [r.getMessage() for r in logs.records if r.levelname == "ERROR"]
+        self.assertEqual(errors, ["Error updating Slack view V67890: HTTP 400, ok=False"])
+
+    def test_block_actions_non_json_update_response_logs_error(self):
+        """A views.update answer that isn't JSON takes the error branch instead of raising."""
+        view_id = "V67891"
+        payload = self._block_actions_payload(view_id)
+        bad = self.mock_http_session.post.return_value
+        bad.ok = True
+        bad.status_code = 200
+        bad.text = "<html>pk_SLACK_MARKER</html>"
+        bad.json.side_effect = ValueError("not json")
+
+        with self.assertLogs(level="INFO") as logs:
+            response = lambda_function.handle_block_actions(payload, self.mock_http_session, "fake_token")
+
+        self.assertEqual(response, {"statusCode": 200, "body": ""})
+        self.assertNotIn("pk_SLACK_MARKER", "\n".join(logs.output))
+        errors = [r.getMessage() for r in logs.records if r.levelname == "ERROR"]
+        self.assertEqual(errors, ["Error updating Slack view V67891: HTTP 200, ok=None"])
+
+    def test_block_actions_successful_update_logs_no_error(self):
+        """A successful views.update still logs success and no error."""
+        payload = self._block_actions_payload("V67892")
+
+        with self.assertLogs(level="INFO") as logs:
+            response = lambda_function.handle_block_actions(payload, self.mock_http_session, "fake_token")
+
+        self.assertEqual(response, {"statusCode": 200, "body": ""})
+        self.assertIn("Successfully updated view via API", [r.getMessage() for r in logs.records])
+        self.assertEqual([r for r in logs.records if r.levelname == "ERROR"], [])
+
     @patch("boto3.client")
     def test_view_submission_acknowledges_and_invokes_async(self, mock_boto_client):
         # GIVEN

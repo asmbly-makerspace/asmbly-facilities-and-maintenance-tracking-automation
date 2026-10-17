@@ -1,0 +1,121 @@
+{
+  "plan_name": "safe-exception-text",
+  "feature_branch": "feature/safe-exception-text",
+  "epic": 141,
+  "source_issue": 95,
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1,
+      "title": "ClickUp exception text and payload log lines",
+      "file": ".implementation_plans/safe-exception-text/phase-1-clickup-exception-text.md",
+      "status": "done",
+      "pre_sha": "c434c0d",
+      "review_rounds": 2,
+      "checks": {
+        "pytest": "1803 passed",
+        "cfn_lint": "skip (no template change)",
+        "sam_validate": "skip (no template change)",
+        "sam_build": "pass"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Plain error replies and /reorder error modal",
+      "file": ".implementation_plans/safe-exception-text/phase-2-plain-error-replies.md",
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "title": "Logging cleanup and request timeouts",
+      "file": ".implementation_plans/safe-exception-text/phase-3-logging-cleanup-and-timeouts.md",
+      "status": "pending"
+    }
+  ],
+  "integration": null,
+  "final_pr_number": null,
+  "admin_actions": [],
+  "events": [
+    {
+      "ts": "2026-10-17",
+      "type": "preflight",
+      "python": "3.12.11",
+      "sam": "1.166.2",
+      "gh": "ok"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "branch",
+      "name": "feature/safe-exception-text",
+      "base": "4cb5158"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "planned",
+      "epic": 141,
+      "stories": [
+        142,
+        143,
+        144,
+        145
+      ],
+      "commit": "c434c0d",
+      "decisions": 14,
+      "notes": "Phases sequential (shared files). Kiln viewer test file untouched (#137). No route auth (#79). Final PR closes #142-#145, #141, #95, #83."
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "items": [
+        "/reorder views.open/views.update calls have no timeout",
+        "Discourse calls have no timeout",
+        "#99"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 1,
+      "review_rounds": 2,
+      "pytest": "1803 passed (baseline 1779)"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 1,
+      "items": [
+        "Added common.clickup._endpoint_for_log: endpoints must match [A-Za-z0-9_/-]{1,256} or log as <invalid>, because new_purchase_request_received builds endpoints from an unauthenticated webhook body",
+        "update_task validates the requested task_id; non-dict/None responses raise the same ValueError ('no task ID') instead of TypeError",
+        "ClickUp errors raised 'from None' so tracebacks don't carry the chained requests URL/query string",
+        "/reorder: non-JSON views.update answer takes the error-log branch and returns 200 empty body (before: raised)",
+        "No README/docs change needed for phase 1 (nothing documented the old text)"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 1,
+      "items": [
+        "Duplicated _log_received_event in both slack_reaction_webhook handlers (WARN, style); not moved to common because handler tests patch reaction_processing wholesale",
+        "problem_report/slack_reaction_webhook/lambda_function.py:118 reply_response.get('id') unguarded (pre-existing)",
+        "'Network error during ClickUp API request' also labels a 2xx with a non-JSON body (pre-existing label, now pinned by a test)",
+        "pm_bot_reminder/lambda_function.py:3 unused requests import (phase 3 touches the file)"
+      ]
+    }
+  ],
+  "stories": [
+    142,
+    143,
+    144,
+    145
+  ],
+  "closes_extra": [
+    95,
+    83
+  ]
+}

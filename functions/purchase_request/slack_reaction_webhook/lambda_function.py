@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+from typing import Any
+
 import boto3
 from common import reaction_processing, aws, clickup
 
@@ -9,9 +11,23 @@ logger.setLevel(logging.INFO)
 
 # This is static and can remain in the global scope (removed as it will be an env var)
 
+
+def _log_received_event(event: Any) -> None:
+    """Logs the Slack event's IDs, never the whole event (it carries Slack's verification token)."""
+    if not isinstance(event, dict):
+        logger.info("Received event: not a dict")
+        return
+    inner = event.get("event") if isinstance(event.get("event"), dict) else {}
+    item = inner.get("item") if isinstance(inner.get("item"), dict) else {}
+    logger.info(
+        "Received event: type=%s reaction=%s channel=%s ts=%s event_id=%s",
+        inner.get("type"), inner.get("reaction"), item.get("channel"), item.get("ts"), event.get("event_id"),
+    )
+
+
 def lambda_handler(event, context):
     """Handles purchase request reactions by calling the shared processor."""
-    logger.info(f"Received event: {event}")
+    _log_received_event(event)
     try:
         # The router function passes the body of the original request directly.
         body = event

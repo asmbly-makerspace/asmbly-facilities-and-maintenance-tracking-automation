@@ -168,8 +168,13 @@ def handle_block_actions(payload, http_session, slack_bot_token):
     slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
     api_response = http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": updated_view})
 
-    if not api_response.ok or not api_response.json().get("ok"):
-        logger.error("Error updating Slack view: %s", api_response.text)
+    try:
+        response_body = api_response.json()
+    except ValueError:
+        response_body = None
+    ok = response_body.get("ok") if isinstance(response_body, dict) else None
+    if not api_response.ok or not ok:
+        logger.error("Error updating Slack view %s: HTTP %s, ok=%s", view_id, api_response.status_code, ok)
     else:
         logger.info("Successfully updated view via API")
 

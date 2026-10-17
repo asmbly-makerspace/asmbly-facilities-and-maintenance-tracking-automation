@@ -1,4 +1,3 @@
-import json
 import logging
 import re
 import requests # type: ignore
@@ -33,6 +32,16 @@ def _task_id_for_log(task_id: Any) -> str:
     return "<invalid>"
 
 
+_ENDPOINT_PATTERN = re.compile(r"[A-Za-z0-9_/-]{1,256}")
+
+
+def _endpoint_for_log(endpoint: Any) -> str:
+    """Return an endpoint path if it holds only path characters, '<invalid>' if not."""
+    if isinstance(endpoint, str) and _ENDPOINT_PATTERN.fullmatch(endpoint):
+        return endpoint
+    return "<invalid>"
+
+
 @dataclass
 class ClickUpTask:
     """A simple data class to hold processed task information."""
@@ -56,22 +65,30 @@ def _make_clickup_request(api_token: str, method: str, endpoint: str, **kwargs: 
         response.raise_for_status()
         return response.json()
     except requests.exceptions.HTTPError as e:
-        error_message = f"ClickUp API HTTP Error: {e.response.status_code} {e.response.reason}"
+        # The message carries no response body and no requests text (which holds the URL);
+        # `from None` keeps the requests exception out of any traceback.
+        safe_endpoint = _endpoint_for_log(endpoint)
         error_details = None
         try:
             error_details = e.response.json()
-            error_message += f" - Details: {json.dumps(error_details)}"
         except ValueError:
-            error_message += f" - Response body: {e.response.text}"
+            pass
+        ecode = _ecode_for_log(error_details)
         logger.error(
             "ClickUp %s %s failed with HTTP %s %s (ECODE=%s)",
-            method, endpoint, e.response.status_code, e.response.reason, _ecode_for_log(error_details),
+            method, safe_endpoint, e.response.status_code, e.response.reason, ecode,
         )
-        raise ValueError(error_message)
+        raise ValueError(
+            f"ClickUp API HTTP Error: {e.response.status_code} {e.response.reason} - "
+            f"{method} {safe_endpoint} (ECODE={ecode})"
+        ) from None
     except requests.exceptions.RequestException as e:
-        error_message = f"Network error during ClickUp API request: {str(e)}"
-        logger.error("ClickUp %s %s request failed: %s", method, endpoint, type(e).__name__)
-        raise ValueError(error_message)
+        safe_endpoint = _endpoint_for_log(endpoint)
+        error_type = type(e).__name__
+        logger.error("ClickUp %s %s request failed: %s", method, safe_endpoint, error_type)
+        raise ValueError(
+            f"Network error during ClickUp API request: {method} {safe_endpoint} ({error_type})"
+        ) from None
 
 
 def get_task(api_token, task_id):
@@ -92,27 +109,27 @@ def update_task(api_token: str, task_id: str, payload: dict[str, Any]) -> Any:
     """Updates a ClickUp task."""
     response_data = _make_clickup_request(api_token, "PUT", f"task/{task_id}", json=payload)
 
-    # ClickUp can return 200 OK but include an error in the body.
-    # A successful update returns the full task object. A failure might return
-    # a different structure or an error message.
-    if 'id' not in response_data or response_data.get('id') != task_id:
-        error_message = f"ClickUp task update for {task_id} returned 200 OK but the response body indicates a failure. Response: {json.dumps(response_data)}"
-        returned_id = response_data.get('id') if isinstance(response_data, dict) else None
+    # ClickUp can return 200 OK but include an error in the body. A successful update
+    # returns the full task object, so its ID must be the one requested. The message is
+    # built from IDs only: the returned task holds names, emails and the description.
+    returned_id = response_data.get('id') if isinstance(response_data, dict) else None
+    if returned_id != task_id:
+        # The requested ID can come from an earlier ClickUp response, so it is validated too.
+        safe_task_id = _task_id_for_log(task_id)
+        ecode = _ecode_for_log(response_data)
         if returned_id is None:
-            logger.error(
-                "ClickUp task update for %s returned no task ID (ECODE=%s)",
-                task_id, _ecode_for_log(response_data),
+            logger.error("ClickUp task update for %s returned no task ID (ECODE=%s)", safe_task_id, ecode)
+            raise ValueError(
+                f"ClickUp task update for {safe_task_id} returned 200 OK but no task ID (ECODE={ecode})"
             )
-        else:
-            logger.error(
-                "ClickUp task update for %s returned task ID %s instead (ECODE=%s)",
-                task_id, _task_id_for_log(returned_id), _ecode_for_log(response_data),
-            )
-        # We can also check for a specific error key if ClickUp uses one.
-        if 'err' in response_data:
-            error_message += f" | ClickUp Error: {response_data['err']}"
-        
-        raise ValueError(error_message)
+        safe_returned_id = _task_id_for_log(returned_id)
+        logger.error(
+            "ClickUp task update for %s returned task ID %s instead (ECODE=%s)",
+            safe_task_id, safe_returned_id, ecode,
+        )
+        raise ValueError(
+            f"ClickUp task update for {safe_task_id} returned 200 OK but task ID {safe_returned_id} (ECODE={ecode})"
+        )
 
     return response_data
 
