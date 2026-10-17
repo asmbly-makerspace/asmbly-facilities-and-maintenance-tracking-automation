@@ -6,6 +6,7 @@ import logging
 import pathlib
 import re
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
@@ -62,6 +63,99 @@ def test_generate_html_page_with_tasks(mock_tasks_from_file):
     # After sorting, the last task in the fixture ('Customer J') should appear first in the HTML.
     assert html.find("Customer J") < html.find("Customer A")
     assert "No submissions found" not in html
+
+
+def test_time_submitted_is_shown_in_central_time_with_zone() -> None:
+    """Drop-off times are shown in US Central with CST or CDT, not in UTC."""
+    tasks = [
+        {'id': 'winter', 'custom_id': 'KO-1', 'name': 'Customer W', 'date_created': '1704067200000'},
+        {'id': 'summer', 'custom_id': 'KO-2', 'name': 'Customer S', 'date_created': '1720094400000'},
+    ]
+
+    page = lambda_function.generate_html_page(tasks)
+
+    assert '2023-12-31 18:00:00&nbsp;CST' in page
+    assert '2024-07-04 07:00:00&nbsp;CDT' in page
+    assert '2024-01-01 00:00:00' not in page
+    assert '2024-07-04 12:00:00' not in page
+
+
+@pytest.mark.parametrize(
+    ("date_created", "shown"),
+    [
+        # Clocks spring forward at 2:00 CST on 2024-03-10: 08:30 UTC is 03:30 CDT.
+        ('1710059400000', '2024-03-10 03:30:00&nbsp;CDT'),
+        # Clocks fall back at 2:00 CDT on 2024-11-03: 01:30 happens twice, CDT then CST.
+        ('1730615400000', '2024-11-03 01:30:00&nbsp;CDT'),
+        ('1730619000000', '2024-11-03 01:30:00&nbsp;CST'),
+    ],
+)
+def test_time_submitted_follows_daylight_saving_changes(date_created: str, shown: str) -> None:
+    tasks = [{'id': 'abc123', 'custom_id': 'KO-1', 'name': 'Customer D', 'date_created': date_created}]
+
+    page = lambda_function.generate_html_page(tasks)
+
+    assert shown in page
+
+
+def test_time_cell_keeps_zone_on_the_time_line() -> None:
+    """The time cell wraps only between date and time: the zone is attached with &nbsp;."""
+    tasks = [
+        {'id': 'winter', 'custom_id': 'KO-1', 'name': 'Customer W', 'date_created': '1704067200000'},
+        {'id': 'summer', 'custom_id': 'KO-2', 'name': 'Customer S', 'date_created': '1720094400000'},
+    ]
+
+    page = lambda_function.generate_html_page(tasks)
+
+    body = page.split('<tbody>', 1)[1].split('</tbody>', 1)[0]
+    rows = re.findall(r'<tr>(.*?)</tr>', body, re.S)
+    assert len(rows) == 2
+    for row in rows:
+        cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.S)
+        assert len(cells) == 3
+        time_cell = cells[2]
+        assert time_cell.count(' ') == 1, time_cell
+        assert re.fullmatch(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}&nbsp;C[SD]T', time_cell), time_cell
+
+
+def test_central_zone_is_not_loaded_at_import() -> None:
+    """Missing zone data fails inside the handler's try (logged, error page), not at import."""
+    assert lambda_function.CENTRAL_TIME_ZONE == "America/Chicago"
+    assert not any(isinstance(value, ZoneInfo) for value in vars(lambda_function).values())
+
+
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+def test_lambda_handler_missing_zone_data_shows_error_page(
+    mock_get_json_param: MagicMock,
+    mock_get_all_clickup_tasks: MagicMock,
+    mock_get_secret: MagicMock,
+    reload_lambda_function: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """If the zone data is missing, the failure is logged and the plain error page is served."""
+    mock_get_json_param.return_value = '123456789'
+    mock_get_secret.return_value = 'fake-token'
+    mock_get_all_clickup_tasks.return_value = [
+        {'id': 'abc123', 'custom_id': 'KO-1', 'name': 'Customer Z', 'date_created': '1704067200000'},
+    ]
+
+    with patch(f'{LAMBDA_FUNCTION_PATH}.ZoneInfo', side_effect=ZoneInfoNotFoundError('No time zone found with key America/Chicago')), \
+            caplog.at_level(logging.INFO):
+        result = lambda_function.lambda_handler({}, None)
+
+    assert result['statusCode'] == 500
+    assert "Could not retrieve the list of submissions." in result['body']
+    assert "America/Chicago" not in result['body']
+    assert "Customer Z" not in result['body']
+    assert any(r.exc_info and isinstance(r.exc_info[1], ZoneInfoNotFoundError) for r in caplog.records)
+
+
+def test_tzdata_is_packaged_with_the_function() -> None:
+    """tzdata ships with the function, so the conversion doesn't depend on the runtime's zone files."""
+    requirements = (pathlib.Path(lambda_function.__file__).parent / "requirements.txt").read_text(encoding="utf-8")
+    assert any(re.match(r'^tzdata\b', line) for line in requirements.splitlines())
 
 
 def test_generate_html_page_no_tasks():
@@ -921,7 +1015,8 @@ def test_table_text_wraps_and_page_does_not_scroll_sideways() -> None:
     # A cell's text wraps anywhere, so no name widens the page.
     assert "overflow-wrap: anywhere" in _rule("td")
     # Headers wrap between words, so "Submitted" keeps the time column wide enough for the
-    # date in the small size; the time ("2024-01-01 00:00:00") wraps only at its space.
+    # date in the small size; the time ("2023-12-31 18:00:00&nbsp;CST") wraps only at its
+    # one plain space, between the date and the time.
     assert "overflow-wrap" not in _rule("th")
     time = _rule("td:nth-child(3)")
     assert "overflow-wrap: normal" in time and "font-size: var(--font-size-small)" in time

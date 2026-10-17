@@ -28,6 +28,7 @@ updates:
     # tests/test_dependabot.py fails when this list and the files disagree.
     directories:
       - "/"
+      - "/functions/ceramics/kiln_dropoff_recent_entries_viewer"
       - "/functions/classes/class_photo_upload_api"
       - "/functions/problem_report/slack_reaction_webhook"
       - "/functions/purchase_request/slack_reaction_webhook"
