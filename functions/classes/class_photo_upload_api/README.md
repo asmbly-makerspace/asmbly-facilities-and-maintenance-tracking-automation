@@ -147,6 +147,23 @@ DynamoDB implementation can move to the layer unchanged.
 `ClassPhotoClassListCache-<stage>`; the next request reads Neon. Or press **Refresh class list** on the
 page (`?refresh=1`).
 
+To delete the item from a terminal (replace `prod` with `stage` for the stage table):
+
+```bash
+aws dynamodb delete-item --region us-east-2 --table-name ClassPhotoClassListCache-prod --key '{"cache_key": {"S": "class-list"}}'
+```
+
+After that, the next page load, submission or **Refresh class list** finds no copy, reads
+Neon live (about 8 seconds, once) and writes a new one with `source` `live_read` (or
+`manual_refresh`). On prod the 10:00 UTC rule also refills it. An item the function can't
+read (wrong `version`, a damaged attribute) is logged as `Class list cache: unreadable
+item` and treated as no copy, so the next live read replaces it.
+
+**Undoing the cache change.** Revert the merge commit and let the workflows deploy it.
+CloudFormation then removes the table (its one item with it), the prod rule and its
+permission, and the function reads Neon on every request again, as before. Nothing else
+holds the cached data.
+
 ## Responses
 
 Every response is JSON with `Content-Type: application/json; charset=utf-8` and
