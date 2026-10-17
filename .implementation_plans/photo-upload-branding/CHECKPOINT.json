@@ -19,10 +19,21 @@
       "file": "phase-2-controls-messages-and-layout.md",
       "status": "done",
       "pre_sha": "3e5eb81",
-      "review_rounds": "build cold review-lead + round 1 inline + round 2 cold review-lead (APPROVED; 2 WARN fixed)"
+      "review_rounds": "build cold review-lead + round 1 inline + round 2 cold review-lead (APPROVED; 2 WARN fixed)",
+      "squashed_sha": "57a24ab"
     }
   ],
-  "integration": null,
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1550 passed",
+      "cfn_lint": "4 W3005 pre-existing on stage",
+      "sam_validate": "pass",
+      "sam_build": "pass",
+      "ci_test_job": "1550 passed in a fresh venv and a clean export"
+    },
+    "cross_checks": "no infra seams touched; script and lambda_function.py byte-identical to stage; design-token rule holds; page 58 KB < 100 KB; CSP unchanged"
+  },
   "final_pr_number": null,
   "admin_actions": [],
   "events": [
@@ -85,6 +96,22 @@
       "type": "deferred",
       "phase": 2,
       "detail": "Safari native select may ignore 44px min-height (not checked, no Safari); dragleave flicker (script frozen, belongs with #114)."
+    },
+    {
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "type": "docs",
+      "detail": "page README: one line fixed (url( refers only in-page); docs/README.md and CLAUDE.md unchanged"
+    },
+    {
+      "type": "manual_qa",
+      "stories_covered": [
+        112,
+        113
+      ],
+      "total_steps": 27
     }
   ],
   "stories": [
