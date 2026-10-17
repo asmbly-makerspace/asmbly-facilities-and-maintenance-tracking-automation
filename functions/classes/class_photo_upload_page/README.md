@@ -7,6 +7,7 @@
 - [What It Serves](#what-it-serves)
 - [Sign-In](#sign-in)
 - [The Page](#the-page)
+- [Brand and Design Tokens](#brand-and-design-tokens)
 - [Location Removal](#location-removal)
 - [AWS Infrastructure](#aws-infrastructure)
 - [Configuration](#configuration)
@@ -40,8 +41,8 @@ any other `/class-photo-upload` route loses its authorizer.
 
 ## What It Serves
 
-`page.html` (one inline `<style>`, one inline `<script>`, no libraries, no outside fonts
-or images), read once per container, with two markers filled in per request:
+`page.html` (one inline `<style>`, one inline `<script>`, no libraries), read once per
+container, with two markers filled in per request:
 
 - `__CSP_NONCE__`: a fresh `secrets.token_urlsafe(16)` nonce on the `<style>` and the
   `<script>`.
@@ -69,9 +70,29 @@ Content-Security-Policy: default-src 'none'; script-src 'nonce-<n>'; style-src '
 ```
 
 `img-src blob:` is for the photo preview. The page uses no `style` attributes, which the
-policy would block. Everything from outside (class names, problems, warnings, messages,
-the pull request title and description) is inserted with `textContent`; the page never
-uses `innerHTML`.
+policy would block.
+
+The branding (plan `photo-upload-branding`, epic #111) didn't change this policy, because
+the page fetches nothing for it. Everything is inline:
+
+- **The logo.** It is the official primary horizontal Asmbly logo, copied as an inline
+  SVG from `asmbly-makerspace/asmbly-classes`, file `app/src/lib/components/logo.svelte`,
+  commit `9a534a6c538df1e602fead183e30d93d97c247b4`. The path data is unchanged. The
+  Svelte attributes and `xmlns` were dropped, and the paths take their colour from CSS
+  (`fill: currentColor`). It is about 5 KB.
+- **The pattern strip.** It is redrawn from the brand guide's strip as an inline SVG,
+  because no official vector of the strip was found (plan README, Decision 8). It is
+  one 640×40 motif in an SVG `<pattern>` that fills a single `<rect>`, and it is hidden
+  from screen readers.
+- **Fonts.** The page uses system font stacks and loads no font file: no `@font-face`
+  and no `url(`.
+  - Body text is Roboto where the device has it, or the system sans-serif otherwise.
+  - Headings use a bold system stack (`"Helvetica Neue"`, `"Segoe UI"`, …). PP Gosha,
+    the brand's heading face, isn't loaded until Asmbly confirms its web licence covers
+    this page (plan README, Decision 5).
+
+Everything from outside (class names, problems, warnings, messages, the pull request
+title and description) is inserted with `textContent`; the page never uses `innerHTML`.
 
 The function logs `Served class photo page (dry_run=...)` for each page it serves, the name
 of a missing variable, and that it refused an unexpected host or path (without the
@@ -104,8 +125,11 @@ when they come back.
 
 In order:
 
-1. "Class photo upload", **Sign out**, and on stage the banner "Stage: dry run.
-   Submitting checks the photo and shows what would happen; nothing is opened on GitHub."
+1. A full-width Asmbly Purple band with the Asmbly logo, "Class photo upload" and
+   (once signed in) **Sign out**, then the decorative pattern strip. The band shows
+   while the page signs in and when sign-in didn't finish. Under it, on stage, is the
+   banner "Stage: dry run. Submitting checks the photo and shows what would happen;
+   nothing is opened on GitHub."
 2. **Class**: a list filled from `GET /class-photo-upload/classes`, by the name the site
    shows. A class with a `problem` (a character that can't be in a file name) is listed;
    choosing it shows the problem and keeps Submit disabled. A `warning` (another class
@@ -130,6 +154,92 @@ In order:
    submissions at once. Wait a minute and try again." for 429 and "Something went wrong on
    our side. Try again later." otherwise; with no answer at all, "Couldn't reach the
    server. Check your connection and try again."
+
+## Brand and Design Tokens
+
+The page follows the Asmbly brand guide (the screenshots in issue #111). Its stylesheet
+starts with one `:root { … }` block of design tokens. That block is the only place a
+colour, font stack, length or other number is written. Every other rule uses the tokens
+through `var(--…)`. The only literals allowed outside the block are `0`, `100%`, `auto`,
+`none`, `inherit`, `currentColor`, `transparent` and keywords that aren't colours.
+
+There is one exception: the breakpoint in `@media (min-width: 40rem)`, because CSS
+can't use `var()` there. It must equal the `--breakpoint-wide` token, and a test checks
+that it does.
+
+- **Defined once.** A token that means the same as another refers to it
+  (`--focus-on-dark: var(--woodwork)`). No colour literal, font stack or spacing step is
+  written twice.
+- **The SVGs** carry no colour of their own. The logo uses `currentColor`, and each
+  pattern shape has a class (`woodwork`, `lasers`, …) that a rule colours with its
+  token. No element has a `style` attribute.
+- **Brand colours**, exactly as the guide gives them:
+
+  | Token | Value |
+  | --- | --- |
+  | `--asmbly-purple` | `#292D6A` |
+  | `--asmbly-white` | `#F2F4EF` |
+  | `--midnight-black` | `#171d1a` |
+  | `--woodwork` | `#F3B61B` |
+  | `--metalwork` | `#578BC9` |
+  | `--lasers` | `#D33E43` |
+  | `--textiles` | `#79CCC4` |
+  | `--electronics` | `#00916E` |
+  | `--printing-3d` | `#EE6E23` |
+  | `--ceramics` | `#b34a9a` |
+
+  The sub-brand colours are used only in the pattern strip, in the focus ring on the
+  purple band (woodwork), and, as shades, in the error and success text and the
+  warning's left border. There is no
+  pure white or black.
+- **Derived colours** are computed per sRGB channel and rounded. A tint is
+  `tint(p) = p × asmbly-purple + (1 − p) × asmbly-white`, and a shade is
+  `shade = 0.8 × colour + 0.2 × midnight-black`. They are written as hex, not
+  `color-mix()`, so older browsers show them too.
+
+  | Token | Value | Formula |
+  | --- | --- | --- |
+  | `--asmbly-purple-80`, `-60`, `-40`, `-20` | `#515585`, `#797d9f`, `#a2a4ba`, `#caccd4` | tint 0.8, 0.6, 0.4, 0.2 |
+  | `--lasers-shade` | `#ad373b` | shade of lasers (error text, 5.6:1 on Asmbly White) |
+  | `--electronics-shade` | `#057a5d` | shade of electronics (success text, 4.8:1) |
+- **Semantic tokens** are what the rules use, and each is built from the brand tokens:
+  `--page-bg`, `--text`, `--brand`, `--on-dark`, `--line`, `--line-on-dark`,
+  `--control-border`, `--tint-bg`, `--error`, `--ok`, `--focus`, `--focus-on-dark` and
+  `--disabled-bg`.
+- **Type and space tokens:**
+  - type: `--font-body`, `--font-heading`, `--font-size-*`, `--line-height*` and
+    `--weight-*`;
+  - spacing: the scale `--space-1` (0.25rem) to `--space-6` (2rem);
+  - sizes: `--gutter`, `--radius*`, `--content-max-width`, `--logo-height` (3.5rem, so
+    56px against the brand minimum of 50px), `--pattern-height`, `--preview-max-height`,
+    `--border-width*`, `--focus-*`, `--visually-hidden-size`, `--tap-target` and
+    `--track-fill` (the header grid's flexible column).
+
+These tests enforce the rule:
+
+- `test_styles_use_tokens_only` works from an allowlist. Outside `:root`, a
+  declaration's value may hold only `var()` references, `0`, `100%`, the header's
+  grid-area names, and the non-colour keywords in `ALLOWED_VALUE_WORDS`. So any colour
+  (hex, `rgb()`, a named or system colour), any length or number, and any literal font
+  family fails. The inline SVGs may carry only the attributes in `SVG_ATTRIBUTES`, and
+  `fill` only as `url(#…)`.
+- `test_token_block_holds_only_tokens` checks that the one `:root` block holds only
+  tokens, and that each token is a `#rrggbb` colour, a `var()`, a length or number, or
+  (for `--font-*`) a font stack.
+- `test_tokens_are_defined_once` catches a duplicate token, colour, font stack or other
+  literal. Two tokens of different kinds may share a number only when the pair is listed
+  in `SHARED_LITERALS`, with the reason (for example, `--font-size-body` and `--space-4`
+  are both `1rem`).
+- `test_every_token_used_is_defined` catches a `var()` that names no token, and
+  `test_every_token_is_used` catches a token nothing uses, apart from the ones listed in
+  `RESERVED_TOKENS` with their reason.
+- `test_brand_tokens_match_the_guide` and `test_derived_tokens_follow_the_formula`
+  check the colour values, and `test_brand_colour_pairs_meet_contrast` checks the WCAG
+  2.1 contrast of the colour pairs the page uses.
+
+To change a colour or a size, change its token. To add a style, use the existing
+tokens, or add a token to the block first. Add a word to `ALLOWED_VALUE_WORDS` only if
+it is a CSS keyword that can't carry a colour or a size.
 
 ## Location Removal
 
@@ -197,7 +307,10 @@ step-by-step setup of the app client and the `/config/cognito/staff/*` parameter
 The tests cover the served HTML: the config and nonce, the stage address, the CSP, a
 config value that tries to close its script, the error pages, the warning's place above
 Submit, that the page's messages and limits are the server's, that it uses no
-`innerHTML` or `style` attributes, and that the log holds no query string.
+`innerHTML` or `style` attributes, and that the log holds no query string. They also
+cover the branding: the official logo in the header and its minimum size, that the
+pattern is decorative, the design-token rule above, the colour contrast, that no font
+or outside asset is loaded, and that the served page is under 100 KB.
 
 The page's JavaScript has no automated test in CI (plan README, Decision 19): the
 repository has no JavaScript test runner, and the server re-checks every photo. When you

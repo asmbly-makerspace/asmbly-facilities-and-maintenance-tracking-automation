@@ -59,7 +59,7 @@ which closes all three.
 
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [Brand tokens, header, logo and type](phase-1-brand-tokens-and-header.md) | lambda, docs | M | [ ] Pending |
+| 1 | [Brand tokens, header, logo and type](phase-1-brand-tokens-and-header.md) | lambda, docs | M | [x] Complete |
 | 2 | [Controls, messages, result and layout](phase-2-controls-messages-and-layout.md) | lambda, docs | M | [ ] Pending |
 
 ## Dependencies
@@ -131,7 +131,8 @@ Made without asking, inside `/offshore` (2026-10-16).
    status style) and adds no behaviour. Alternative: a loading spinner here. Reason: one
    owner for each change; avoids two plans editing the script.
 3. **Logo: the official vector, inlined.** The primary horizontal logo's SVG paths from
-   `asmbly-classes` `logo.svelte` (commit 9a534a6), inlined with `fill="currentColor"`.
+   `asmbly-classes` `logo.svelte` (commit 9a534a6), inlined with no `fill` attribute;
+   `.logo { fill: currentColor; }` colours it (as built).
    Alternatives: a redraw (less faithful), a screenshot (blurry, and `img-src` would need
    `data:`), hotlinking `asmbly.org/wp-content/uploads/2023/12/purple-horizontal.svg`
    (a third host in the CSP). Reason: exact, crisp at any zoom, about 5 KB, no CSP change.
@@ -179,7 +180,7 @@ Made without asking, inside `/offshore` (2026-10-16).
 12. **Contrast is computed by a test** from the tokens (WCAG 2.1 formula in the test
     file, no new dependency), plus a WebAIM check of anything the tests don't list.
 13. **Size ceiling 100 KB** for the served page, asserted by a test (today about 42 KB;
-    the branding adds about 15 KB). Reason: `Cache-Control: no-store` and no API Gateway
+    the branding added about 11 KB in phase 1). Reason: `Cache-Control: no-store` and no API Gateway
     compression mean every load downloads it.
 14. **Error pages stay plain.** `ERROR_PAGE` has no `style-src`; branding it would change
     its CSP for a page staff rarely see.

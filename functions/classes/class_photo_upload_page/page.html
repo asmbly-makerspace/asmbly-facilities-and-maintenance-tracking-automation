@@ -6,39 +6,190 @@
 <meta name="referrer" content="no-referrer">
 <title>Class photo upload</title>
 <style nonce="__CSP_NONCE__">
-  :root { --accent: #b34a9a; --error: #a4262c; --ok: #1e6b35; --border: #c9c9c9; }
+  /* Design tokens: the only place a colour, font stack, length or number is written.
+     Every rule below uses them through var(); the tests enforce it (README, "Brand and
+     design tokens"). */
+  :root {
+    color-scheme: light;
+
+    /* Brand colours (Asmbly brand guide). */
+    --asmbly-purple: #292D6A;
+    --asmbly-white: #F2F4EF;
+    --midnight-black: #171d1a;
+    --woodwork: #F3B61B;
+    --metalwork: #578BC9;
+    --lasers: #D33E43;
+    --textiles: #79CCC4;
+    --electronics: #00916E;
+    --printing-3d: #EE6E23;
+    --ceramics: #b34a9a;
+
+    /* Derived, per sRGB channel, rounded:
+       tint(p) = p × asmbly-purple + (1 − p) × asmbly-white (the guide's 20% steps);
+       shade = 0.8 × colour + 0.2 × midnight-black. A test recomputes each. */
+    --asmbly-purple-80: #515585;
+    --asmbly-purple-60: #797d9f;
+    --asmbly-purple-40: #a2a4ba;
+    --asmbly-purple-20: #caccd4;
+    --lasers-shade: #ad373b;
+    --electronics-shade: #057a5d;
+
+    /* What each colour is for. */
+    --page-bg: var(--asmbly-white);
+    --text: var(--midnight-black);
+    --brand: var(--asmbly-purple);
+    --on-dark: var(--asmbly-white);
+    --line: var(--asmbly-purple-40);
+    --line-on-dark: var(--asmbly-purple-60);
+    --control-border: var(--asmbly-purple-60);
+    --tint-bg: var(--asmbly-purple-20);
+    --error: var(--lasers-shade);
+    --ok: var(--electronics-shade);
+    --focus: var(--asmbly-purple);
+    --focus-on-dark: var(--woodwork);
+    --disabled-bg: var(--asmbly-purple-20);
+
+    /* Type. PP Gosha Bold is the brand's heading face; it isn't loaded until Asmbly
+       confirms its web licence covers this page (plan README, Decision 5), so headings
+       use a bold system stack. Roboto is the brand's body face, used where the device
+       has it; no font file is fetched. */
+    --font-body: Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-heading: "Helvetica Neue", "Segoe UI", Roboto, Arial, system-ui, sans-serif;
+    --font-size-body: 1rem;
+    --font-size-h1: 1.75rem;
+    --font-size-h2: 1.25rem;
+    --line-height: 1.5;
+    --line-height-heading: 1.2;
+    --weight-heading: 700;
+    --weight-strong: 600;
+
+    /* Space and size. */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --gutter: var(--space-4);
+    --radius: var(--space-2);
+    --radius-control: var(--space-1);
+    --content-max-width: 47.5rem;
+    --logo-height: 3.5rem;
+    --pattern-height: 2.5rem;
+    --preview-max-height: 20rem;
+    --border-width: 1px;
+    --border-width-strong: 2px;
+    --border-width-accent: 4px;
+    --focus-width: 3px;
+    --focus-offset: 2px;
+    --visually-hidden-size: 1px;
+    --tap-target: 2.75rem;
+    --track-fill: 1fr;
+    /* The @media rule below repeats this value (CSS can't use var() there); a test
+       checks they match. */
+    --breakpoint-wide: 40rem;
+  }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  body { margin: 0; padding: 16px; background: #f2f4ef; color: #222; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  main { max-width: 760px; margin: 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); padding: 20px; }
-  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-  h1 { margin: 0; font-size: 1.6em; color: var(--accent); }
-  h2 { font-size: 1.15em; margin: 1.4em 0 0.4em; }
-  button, .button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; display: inline-block; }
-  button.secondary { background: #fff; color: var(--accent); }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-  select { font: inherit; width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
-  .banner { margin: 12px 0 0; padding: 10px 12px; background: #fff4ce; border: 1px solid #e0c060; border-radius: 6px; }
-  .drop-zone { border: 2px dashed var(--border); border-radius: 8px; padding: 24px; text-align: center; }
-  .drop-zone.dragging { border-color: var(--accent); background: #f9eef6; }
-  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .drop-zone input:focus-visible + label, .drop-zone label:focus-visible { outline: 3px solid #333; outline-offset: 2px; }
-  .message { margin: 8px 0 0; }
-  .message.error { color: var(--error); font-weight: 600; }
+  ::selection { background: var(--tint-bg); color: var(--text); }
+  body { margin: 0; background: var(--page-bg); color: var(--text); font-family: var(--font-body); font-size: var(--font-size-body); line-height: var(--line-height); }
+  h1, h2 { font-family: var(--font-heading); font-weight: var(--weight-heading); line-height: var(--line-height-heading); }
+  h2 { font-size: var(--font-size-h2); margin: var(--space-5) 0 var(--space-2); color: var(--brand); }
+  a, a:visited { color: var(--brand); }
+
+  .brand-band { background: var(--brand); color: var(--on-dark); }
+  .brand-inner {
+    max-width: var(--content-max-width); margin: 0 auto; padding: var(--space-4) var(--gutter);
+    display: grid; grid-template-columns: var(--track-fill) auto; grid-template-areas: "logo logo" "title sign-out";
+    align-items: center; gap: var(--space-3) var(--space-5);
+  }
+  .logo { grid-area: logo; display: block; height: var(--logo-height); width: auto; fill: currentColor; }
+  .brand-band h1 { grid-area: title; margin: 0; font-size: var(--font-size-h1); color: var(--on-dark); }
+  .brand-band #sign-out { grid-area: sign-out; }
+  .pattern { display: block; width: 100%; height: var(--pattern-height); overflow: hidden; }
+  .pattern .woodwork { fill: var(--woodwork); }
+  .pattern .metalwork { fill: var(--metalwork); }
+  .pattern .lasers { fill: var(--lasers); }
+  .pattern .textiles { fill: var(--textiles); }
+  .pattern .electronics { fill: var(--electronics); }
+  .pattern .printing-3d { fill: var(--printing-3d); }
+  .pattern .ceramics { fill: var(--ceramics); }
+  .pattern .asmbly-white { fill: var(--asmbly-white); }
+  .pattern .brand { fill: var(--brand); }
+
+  main { max-width: var(--content-max-width); margin: 0 auto; padding: var(--space-5) var(--gutter); }
+  button, .button { font: inherit; padding: var(--space-2) var(--space-4); border-radius: var(--radius-control); border: var(--border-width) solid var(--brand); background: var(--brand); color: var(--on-dark); cursor: pointer; display: inline-block; }
+  button:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+  button:disabled { background: var(--disabled-bg); border-color: var(--disabled-bg); color: var(--text); cursor: not-allowed; }
+  .brand-band button.secondary { background: transparent; color: var(--on-dark); border: var(--border-width-strong) solid var(--on-dark); }
+  .brand-band button:focus-visible { outline-color: var(--focus-on-dark); }
+  select { font: inherit; width: 100%; padding: var(--space-2); border: var(--border-width) solid var(--control-border); border-radius: var(--radius-control); background: var(--page-bg); color: var(--text); }
+  select:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+  .banner { margin: var(--space-3) 0 0; padding: var(--space-2) var(--space-3); background: var(--tint-bg); border: var(--border-width) solid var(--line); border-radius: var(--radius-control); }
+  .drop-zone { border: var(--border-width-strong) dashed var(--control-border); border-radius: var(--radius); padding: var(--space-5); text-align: center; }
+  .drop-zone.dragging { border-color: var(--brand); background: var(--tint-bg); }
+  .visually-hidden { position: absolute; width: var(--visually-hidden-size); height: var(--visually-hidden-size); overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .drop-zone input:focus-visible + label, .drop-zone label:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+  .message { margin: var(--space-2) 0 0; }
+  .message.error { color: var(--error); font-weight: var(--weight-strong); }
   .message.ok { color: var(--ok); }
-  .preview { display: block; max-width: 100%; max-height: 320px; margin: 12px auto 0; border-radius: 6px; }
-  .warning { margin: 24px 0 12px; padding: 12px; border-left: 4px solid var(--error); background: #fdf1f1; }
-  .result { margin-top: 20px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; }
-  .result pre { white-space: pre-wrap; word-break: break-word; background: #f6f6f6; padding: 10px; border-radius: 6px; }
-  .result ul { margin: 4px 0; }
+  .preview { display: block; max-width: 100%; max-height: var(--preview-max-height); margin: var(--space-3) auto 0; border-radius: var(--radius-control); }
+  .warning { margin: var(--space-5) 0 var(--space-3); padding: var(--space-3); border-left: var(--border-width-accent) solid var(--error); }
+  .result { margin-top: var(--space-5); padding: var(--space-3); border: var(--border-width) solid var(--line); border-radius: var(--radius-control); }
+  .result pre { white-space: pre-wrap; word-break: break-word; background: var(--tint-bg); padding: var(--space-2); border-radius: var(--radius-control); }
+  .result ul { margin: var(--space-1) 0; }
+
+  /* Must match --breakpoint-wide. */
+  @media (min-width: 40rem) {
+    .brand-inner { padding: var(--space-5); grid-template-columns: auto var(--track-fill) auto; grid-template-areas: "logo title sign-out"; }
+    .brand-band h1 { padding-left: var(--space-5); border-left: var(--border-width) solid var(--line-on-dark); }
+    main { padding: var(--space-6) var(--space-5); }
+  }
 </style>
 </head>
 <body>
-<main>
-  <header>
+<header class="brand-band">
+  <div class="brand-inner">
+    <svg class="logo" role="img" aria-label="Asmbly Makerspace" viewBox="0 0 443.61 122.16" focusable="false">
+      <path d="m183.67,64.46c0-3.96,2.59-7.96,8.14-7.96,3.55,0,5.32,1.14,6.32,2.73v-5.23h-12.15v-5.82h18.74v17.51h3.09v6.28h-9.69v-2.27c-1,1.59-2.78,2.73-6.32,2.73-5.55,0-8.14-4-8.14-7.96Zm14.47,0c0-1.41-.96-2.64-3.91-2.64s-3.96,1.23-3.96,2.64.96,2.64,3.96,2.64,3.91-1.23,3.91-2.64Z"/>
+      <path d="m211.92,69.51v-6.64c4.14,2.59,7.64,3.41,11.01,3.41,1.77,0,2.64-.64,2.64-1.68,0-1.14-.68-1.68-4-2.14-7.51-.87-9.64-4.05-9.64-7.69,0-5.14,4.28-7.05,9.14-7.05,3.05,0,7.05.82,9.28,2.37v6.14c-3.32-1.64-7.23-2.37-9.74-2.37-1.32,0-2.09.41-2.09,1.46s.59,1.55,4.14,2.18c6.87,1.18,9.51,2.68,9.51,7.32,0,5.1-4.59,7.6-9.92,7.6-3.55,0-7.01-.68-10.33-2.91Z"/>
+      <path d="m243.4,54.32v17.65h-6.6v-23.79h34.12v23.79h-6.6v-17.65h-7.14v17.65h-6.6v-17.65h-7.19Z"/>
+      <path d="m299.49,60.1c0,6.69-3.27,12.33-10.14,12.33-2.64,0-4.96-.91-6.6-3.37v2.91h-6.6v-31.84h6.6v10.96c1.64-2.46,3.96-3.37,6.6-3.37,6.87,0,10.14,5.69,10.14,12.37Zm-6.6,0c0-4.28-1.64-6.23-5.05-6.23s-5.1,1.96-5.1,6.23,1.64,6.19,5.1,6.19,5.05-1.96,5.05-6.19Z"/>
+      <path d="m309.82,40.12v31.84h-6.6v-31.84h6.6Z"/>
+      <path d="m338.02,48.18v31.07h-20.02v-6.14h13.42v-5.6c-1.36,1.5-3.59,2.41-6.32,2.41-7.23,0-10.19-4-10.19-10.46v-11.28h6.6v10.92c0,3.18,1.64,4.69,4.96,4.69s4.96-1.5,4.96-4.69v-10.92h6.6Z"/>
+      <path d="m191.18,95.26v17.65h-6.6v-23.79h34.12v23.79h-6.6v-17.65h-7.14v17.65h-6.6v-17.65h-7.19Z"/>
+      <path d="m222.88,105.4c0-3.96,2.59-7.96,8.14-7.96,3.55,0,5.32,1.14,6.32,2.73v-5.23h-12.15v-5.82h18.74v17.51h3.09v6.28h-9.69v-2.27c-1,1.59-2.77,2.73-6.32,2.73-5.55,0-8.14-4-8.14-7.96Zm14.47,0c0-1.41-.95-2.64-3.91-2.64s-3.96,1.23-3.96,2.64.96,2.64,3.96,2.64,3.91-1.23,3.91-2.64Z"/>
+      <path d="m257.82,104.13v8.78h-6.6v-31.85h6.6v16.92h3.23l6-8.87h7.92l-8.23,11.97,8.23,11.83h-7.92l-6-8.78h-3.23Z"/>
+      <path d="m275.74,101.08c0-6.87,2.82-12.42,10.6-12.42s10.42,5.19,10.42,11.92v2.64h-14.19c.45,2.68,1.91,4,6.1,4,1.14,0,3.32,0,6.55-.64v6.05c-3.55.73-5.51.73-7.23.73-10.6,0-12.24-7.42-12.24-12.28Zm14.38-2.27c-.18-2.82-1.32-4-3.87-4s-3.64,1.27-3.87,4h7.73Z"/>
+      <path d="m307.54,95.26v17.65h-6.6v-23.79h15.33v6.14h-8.73Z"/>
+      <path d="m319.91,110.45v-6.64c4.14,2.59,7.64,3.41,11.01,3.41,1.77,0,2.64-.64,2.64-1.68,0-1.14-.68-1.68-4-2.14-7.51-.86-9.64-4.05-9.64-7.69,0-5.14,4.28-7.05,9.14-7.05,3.05,0,7.05.82,9.28,2.37v6.14c-3.32-1.64-7.23-2.37-9.74-2.37-1.32,0-2.09.41-2.09,1.46s.59,1.55,4.14,2.18c6.87,1.18,9.51,2.68,9.51,7.32,0,5.1-4.59,7.6-9.92,7.6-3.55,0-7.01-.68-10.33-2.91Z"/>
+      <path d="m368.14,101.04c0,6.69-3.27,12.33-10.14,12.33-2.64,0-4.96-.91-6.6-3.37v10.19h-6.6v-31.07h6.6v2.91c1.64-2.46,3.96-3.37,6.6-3.37,6.87,0,10.14,5.69,10.14,12.37Zm-6.6,0c0-4.28-1.64-6.23-5.05-6.23s-5.1,1.96-5.1,6.23,1.64,6.19,5.1,6.19,5.05-1.96,5.05-6.19Z"/>
+      <path d="m371.09,105.4c0-3.96,2.59-7.96,8.14-7.96,3.55,0,5.32,1.14,6.32,2.73v-5.23h-12.15v-5.82h18.74v17.51h3.09v6.28h-9.69v-2.27c-1,1.59-2.77,2.73-6.32,2.73-5.55,0-8.14-4-8.14-7.96Zm14.47,0c0-1.41-.96-2.64-3.91-2.64s-3.96,1.23-3.96,2.64.96,2.64,3.96,2.64,3.91-1.23,3.91-2.64Z"/>
+      <path d="m397.61,101.04c0-7.14,3.5-12.37,11.06-12.37,7.14,0,10.65,5.05,10.65,10.46h-6.6c-.18-2.46-.77-4.32-4-4.32-3.87,0-4.5,2.37-4.5,6.23s.64,6.19,4.5,6.19c3.23,0,3.82-1.86,4-4.32h6.6c0,5.41-3.5,10.46-10.65,10.46-7.55,0-11.06-5.19-11.06-12.33Z"/>
+      <path d="m422.59,101.08c0-6.87,2.82-12.42,10.6-12.42s10.42,5.19,10.42,11.92v2.64h-14.19c.45,2.68,1.91,4,6.1,4,1.14,0,3.32,0,6.55-.64v6.05c-3.55.73-5.51.73-7.23.73-10.6,0-12.24-7.42-12.24-12.28Zm14.38-2.27c-.18-2.82-1.32-4-3.87-4s-3.64,1.27-3.87,4h7.73Z"/>
+      <path d="m122.16,77.71V0H0v44.44h20.85C9.16,51.21,1.05,63.5.1,77.71h-.1v5.59h.1c1.38,20.74,18.01,37.37,38.75,38.75v.1h5.59v-.1c14.22-.95,26.5-9.06,33.27-20.75v20.85h83.3v-44.44h-38.86Zm-5.59,0h-33.27v-33.27h33.27v33.27ZM44.44,44.44h33.27v33.27h-33.27v-33.27ZM83.3,5.59h33.27v33.27h-33.27V5.59Zm-38.86,0h33.27v33.27h-33.27V5.59Zm-38.86,0h33.27v33.27H5.59V5.59Zm33.27,38.96v33.16H5.69c1.36-17.66,15.5-31.81,33.16-33.16ZM5.69,83.3h33.16v33.16c-17.66-1.36-31.81-15.5-33.16-33.16Zm38.75,33.16v-33.16h33.16c-1.36,17.66-15.5,31.81-33.16,33.16Zm72.13.11h-33.27v-33.27h33.27v33.27Zm38.86,0h-33.27v-33.27h33.27v33.27Z"/>
+    </svg>
     <h1>Class photo upload</h1>
     <button type="button" id="sign-out" class="secondary" hidden>Sign out</button>
-  </header>
+  </div>
+  <svg class="pattern" aria-hidden="true" focusable="false" viewBox="0 0 5120 40" preserveAspectRatio="xMinYMid slice">
+    <defs><pattern id="brand-tiles" width="640" height="40" patternUnits="userSpaceOnUse">
+      <path class="printing-3d" d="M0 0h40v40H0zM280 0h40v40H280zM520 0h40L520 40z"/>
+      <path class="textiles" d="M40 0L80 40H40zM440 0h40v40H440zM560 0v40H520z"/>
+      <path class="metalwork" d="M80 0h20a20 20 0 0 1-20 20zM120 0v20a20 20 0 0 1-20-20zM120 40h-20a20 20 0 0 1 20-20zM80 40v-20a20 20 0 0 1 20 20z"/>
+      <path class="ceramics" d="M200 0h40v40H200zM480 40a20 20 0 0 1 40 0z"/>
+      <path class="lasers" d="M120 0h40L120 40zM280 40V8a32 32 0 0 1 32 32zM600 0h40L600 40z"/>
+      <path class="woodwork" d="M220 0a20 20 0 0 1 0 40zM240 0h40v40z"/>
+      <path class="electronics" d="M320 40L360 0v40z"/>
+      <path class="asmbly-white" d="M12 12h16a8 8 0 0 1 0 16h-16a8 8 0 0 1 0-16zM412 12h16a8 8 0 0 1 0 16h-16a8 8 0 0 1 0-16z"/>
+      <path class="brand" d="M446 6Q460 14 474 6Q466 20 474 34Q460 26 446 34Q454 20 446 6z"/>
+      <path class="electronics" d="M4 20a8 8 0 1 0 16 0a8 8 0 1 0 -16 0z"/>
+      <path class="woodwork" d="M420 20a8 8 0 1 0 16 0a8 8 0 1 0 -16 0z"/>
+    </pattern></defs>
+    <rect width="5120" height="40" fill="url(#brand-tiles)"/>
+  </svg>
+</header>
+<main>
   <p id="dry-run-banner" class="banner" hidden>Stage: dry run. Submitting checks the photo and shows what would happen; nothing is opened on GitHub.</p>
 
   <p id="signing-in" class="message">Signing in…</p>

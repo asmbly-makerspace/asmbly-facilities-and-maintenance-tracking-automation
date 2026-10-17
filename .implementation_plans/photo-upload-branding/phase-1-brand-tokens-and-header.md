@@ -10,7 +10,7 @@ estimated_size: M
 
 # Phase 1: Brand tokens, header, logo and type
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-16 on branch feature/photo-upload-branding
 
 ## Required reading
 
@@ -73,12 +73,16 @@ None.
 1. The first rule in the stylesheet is `:root { … }`, the **token block**. It is the only
    place a literal colour (`#hex`, `rgb()`, `rgba()`, `hsl()`, a colour keyword), length
    (`px`, `rem`, `em`, `%` other than `0` and `100%`), font stack, line height, duration
-   or z-index appears.
+   or z-index appears, and the only place any number other than `0` appears in a
+   declaration's value (a font weight, an opacity, a line height: prep amendment).
 2. Every other rule uses tokens through `var(--…)`. Allowed literals outside `:root`:
    `0`, `100%`, `auto`, `none`, `inherit`, `currentColor`, `transparent`, keywords that
-   are not colours (`flex`, `solid`, `dashed`, `bold`, …), and the breakpoint in an
+   are not colours (`flex`, `solid`, `dashed`, …), and the breakpoint in an
    `@media` condition (CSS can't put `var()` there): one breakpoint, `@media (min-width: 40rem)`,
-   with a comment saying it must match `--breakpoint-wide` documented in the token block.
+   with a comment saying it must match `--breakpoint-wide`. `--breakpoint-wide: 40rem;`
+   is a real custom property in the token block (not a comment), and a test checks the
+   `@media` value equals it (prep amendment). The `font:` shorthand outside `:root` is
+   only `font: inherit` (controls); families go through `font-family: var(--font-…)`.
 3. Each value is defined **once**. A token that means the same thing as another refers
    to it (`--focus-on-dark: var(--woodwork);`, `--radius: var(--space-2);`), so a colour
    literal, a font stack, or a step of the spacing scale is never written twice. (Two
@@ -86,8 +90,9 @@ None.
    and `--space-4: 1rem`; they are separate decisions and stay separate tokens.)
 4. Brand tokens are named after the brand guide; semantic tokens (what a rule means) are
    built from them. Rules use semantic tokens where one exists.
-5. The SVGs carry no colour literals: the logo's paths use `fill="currentColor"` (the band
-   sets `color: var(--on-dark)`), and the pattern's shapes carry a class
+5. The SVGs carry no colour literals: the logo's paths have no `fill` attribute and the
+   `.logo { fill: currentColor; }` rule colours them once (the band sets
+   `color: var(--on-dark)`; as built), and the pattern's shapes carry a class
    (`class="woodwork"`, …) that a rule colours with `fill: var(--woodwork)`. No `style=`
    attribute anywhere (already enforced by `test_page_uses_text_content_not_inner_html`).
 
@@ -147,8 +152,9 @@ defined once: `--gutter: var(--space-4)` (16px), `--radius: var(--space-2)`,
 `--content-max-width: 47.5rem` (760px, as now), `--logo-height: 3.5rem` (56px; brand
 minimum 50px), `--pattern-height: 2.5rem`, `--border-width: 1px`,
 `--border-width-strong: 2px`, `--focus-width: 3px`, `--focus-offset: 2px`,
-`--tap-target: 2.75rem` (44px, used by phase 2), `--breakpoint-wide: 40rem` (comment
-only; see rule 2). The builder may add tokens, never literals outside `:root`.
+`--tap-target: 2.75rem` (44px, used by phase 2), `--breakpoint-wide: 40rem` (a real
+property, matched by the `@media` literal; see rule 2). The builder may add tokens, never
+literals outside `:root`.
 
 #### Header band
 
@@ -159,7 +165,7 @@ window. Suggested markup:
 <header class="brand-band">
   <div class="brand-inner">
     <svg class="logo" role="img" aria-label="Asmbly Makerspace" viewBox="0 0 443.61 122.16" focusable="false">
-      <path fill="currentColor" d="…"/>  <!-- the paths from logo.svelte, d values unchanged -->
+      <path d="…"/>  <!-- the paths from logo.svelte, d values unchanged; no fill attribute -->
     </svg>
     <h1>Class photo upload</h1>
     <button type="button" id="sign-out" class="secondary" hidden>Sign out</button>
@@ -169,16 +175,28 @@ window. Suggested markup:
 ```
 
 - The logo SVG: `d` values copied unchanged from `logo.svelte`; drop the Svelte
-  attributes (`class={…}`, `id`, `data-name`, `class="cls-1"`); every path
-  `fill="currentColor"`; no `<title>` (the `aria-label` names it), no `<script>`, no
+  attributes (`class={…}`, `id`, `data-name`, `class="cls-1"`) and `xmlns` (inline SVG
+  in HTML doesn't need it, and its `http://` would fail
+  `test_page_loads_no_fonts_or_outside_assets`: prep amendment); drop the wrapping `<g>`
+  elements; no `fill` attribute on the paths (`.logo { fill: currentColor; }` colours
+  them, as built); no `<title>` (the `aria-label` names it), no `<script>`, no
   `style=`. `.logo { height: var(--logo-height); width: auto; }`: at 56px it is about
-  203px wide, so it fits a 320px screen inside the gutters.
+  203px wide, so it fits a 320px screen inside the gutters. In the headless render,
+  compare the icon with the brand guide (`cls-1` was styled by `asmbly-classes`; check
+  that no cut-out fills in with plain `currentColor`).
 - Clear space: `.brand-inner` has padding of at least `--space-4` on every side,
   `--space-5` from the breakpoint up, `max-width: var(--content-max-width); margin: 0 auto;`
   `display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-5);`
-  logo first, title next, **Sign out** pushed right (`margin-left: auto`).
+  logo first, title next, **Sign out** pushed right (`margin-left: auto`). *As built:* a
+  grid instead (`grid-template-areas` "logo logo" / "title sign-out" on phones, "logo
+  title sign-out" from the breakpoint, with a `--track-fill: 1fr` token and a
+  `--line-on-dark` divider before the title), so **Sign out** never wraps onto a third
+  line at 320px. Keep it.
 - `.brand-band { background: var(--brand); color: var(--on-dark); }`; the `h1` in it uses
-  `--on-dark`.
+  `--on-dark`. The old `header { display: flex; justify-content: space-between; … }` and
+  global `h1 { color: … }` rules go (prep amendment): the flex layout lives on
+  `.brand-inner`, so the pattern sits under it, not beside it; `body` loses its padding
+  so the band spans the window.
 - **Sign out** (`button.secondary`) on the band: transparent background, `--on-dark`
   text and a `--border-width-strong` `--on-dark` border; its focus ring uses
   `--focus-on-dark`. Phase 2 finishes the button styles; this phase makes it readable on
@@ -192,13 +210,23 @@ circle, a right triangle, a half-circle "pill", a four-pointed star cut by four 
 circles, a diagonally split square. Plain `<rect>`, `<path>`, `<circle>`, each with a
 class naming its colour (`woodwork`, `metalwork`, `lasers`, `textiles`, `electronics`,
 `printing-3d`, `ceramics`, `asmbly-white`); rules `.pattern .woodwork { fill: var(--woodwork); }`
-and so on. About 10–12 tiles of 40×40 user units, `viewBox` wide enough for a 1440px
-window at `height: var(--pattern-height)`; `preserveAspectRatio="xMinYMid slice"`;
-`.pattern { display: block; width: 100%; height: var(--pattern-height); overflow: hidden; }`
-so a narrow screen cuts it off on the right. `aria-hidden="true"`, `focusable="false"`.
-Under 4 KB. No `<text>`, `<image>`, `href`, `fill="#…"` or `<script>` in it. (SVG
-coordinates in `viewBox`, `d`, `x`, `width` are geometry, not CSS values, and are not
-tokens.)
+and so on.
+
+**Tiling (prep amendment, replaces "about 10–12 tiles").** With `slice`, a `viewBox`
+narrower than the window scales the tiles up and crops them through the middle (12 tiles
+= 480 units, scaled about 2.7× at 1280px). Instead, draw one motif of about 16 slots of
+40×40 user units (some slots empty, showing the band's purple, as in the guide) inside
+`<defs><pattern id="brand-tiles" width="640" height="40" patternUnits="userSpaceOnUse">`,
+and fill one `<rect width="5120" height="40" fill="url(#brand-tiles)"/>` with it, in an
+SVG with `viewBox="0 0 5120 40"` and `preserveAspectRatio="xMinYMid slice"`. The tiles are
+then exactly `--pattern-height` high on any window up to 5120px (at 16px root size) and
+the right side is cut off. The shapes inside the `<pattern>` carry the colour classes
+above (CSS applies to them); `fill="url(#brand-tiles)"` is a same-document reference, not
+a colour literal and not a fetch. `.pattern { display: block; width: 100%;
+height: var(--pattern-height); overflow: hidden; }`. `aria-hidden="true"`,
+`focusable="false"`. Under 4 KB. No `<text>`, `<image>`, `href`, `fill="#…"` or
+`<script>` in it. (SVG coordinates in `viewBox`, `d`, `x`, `width` are geometry, not CSS
+values, and are not tokens.)
 
 #### Signing-in states
 
@@ -207,6 +235,10 @@ finish. Sign in again." are on screen; **Sign out** stays hidden until the scrip
 (unchanged). Nothing else from `#app` shows.
 
 #### Main
+
+*As built:* `main { max-width: var(--content-max-width); margin: 0 auto; padding:
+var(--space-5) var(--gutter); }`, and `padding: var(--space-6) var(--space-5)` from the
+breakpoint up, so the content lines up with the band's logo. The plan text follows.
 
 `<main>` keeps its children from `#dry-run-banner` down. Page and content background
 `--page-bg` (the card's old `#fff` goes), padding `--space-5`, `margin: var(--gutter)` on
@@ -218,6 +250,13 @@ literal colours become tokens; `#fff4ce`/`#e0c060`, `#f9eef6`, `#fdf1f1`, `#f6f6
 on disabled buttons becomes a token or, better, phase 2's disabled style; in this phase
 `--disabled-opacity: 0.5` is acceptable.
 
+Prep amendments: drop the card's `box-shadow` in this phase (its `rgba` would repeat the
+purple's channels where the "defined once" test can't see it; phase 2 gives the card its
+edge). Browser defaults that would show colours outside the palette get token colours:
+`:root { color-scheme: light; }`, `select` (background `--page-bg`, text `--text`, border
+`--control-border`, purple-60, which meets 3:1 on Asmbly White; `--line` does not), links `a` and `a:visited` (`--brand`), and `::selection` (background
+`--asmbly-purple-20`, text `--text`).
+
 #### Size
 
 Today the served page is about 42 KB; the logo adds about 5 KB, the pattern under 4 KB,
@@ -226,7 +265,7 @@ the CSS a few KB. Ceiling 100 KB, asserted by a test.
 #### What must not change
 
 The `<script nonce="__CSP_NONCE__">` block and the JSON config block, byte for byte; every
-element ID the script reads (`page.html` line 565: `sign-out`, `dry-run-banner`,
+element ID the script reads (the script's `for (const id of [...])` list: `sign-out`, `dry-run-banner`,
 `signing-in`, `sign-in-problem`, `sign-in-again`, `app`, `class-select`, `class-status`,
 `drop-zone`, `photo-input`, `photo-status`, `photo-note`, `preview`, `submit`,
 `submit-status`, `result`); the `[hidden] { display: none !important; }` rule; the
@@ -282,20 +321,34 @@ Tests:
 - `test_derived_tokens_follow_the_formula`: each `--asmbly-purple-N` equals
   `_mix(purple, asmbly_white, N/100)` and each `-shade` equals
   `_mix(colour, midnight_black, 0.8)` (phase 2 adds its tints to the list).
-- `test_styles_use_tokens_only` (the owner's rule): in `_rules_after_root()` there is no
-  `#` followed by 3–8 hex digits, no `rgb(`, `rgba(`, `hsl(`, `hsla(`, no colour keyword
-  as a value (`(?<![\w-])(white|black|red|green|blue|gray|grey|yellow|purple)(?![\w-])`,
-  so `white-space` doesn't match), no length with a unit (`\d*\.?\d+(px|rem|em|vh|vw)`)
-  outside the one `@media (min-width: …)` condition, no percentage other than `100%`,
-  no `font-family:` with a literal family (only `var(`). The markup outside `<style>` and
-  `<script>` has no `fill="#`, `stroke="#`, `style=` or `color=`.
+- `test_styles_use_tokens_only` (the owner's rule; *as built it is an allowlist*, which is
+  stricter than what follows: see Hand-off): CSS comments (`/* … */`) are removed
+  first, so a comment that names a value doesn't fail it. In `_rules_after_root()` there
+  is no `#` followed by 3–8 hex digits (anchored with `(?![\w-])`), no `rgb(`, `rgba(`,
+  `hsl(`, `hsla(`, no colour keyword as a value (`(?<![\w-])(white|black|red|green|blue|gray|grey|yellow|purple|orange|pink|silver|navy|maroon|teal|olive|lime|aqua|fuchsia)(?![\w-])`,
+  so `white-space` doesn't match). Prep amendment, to catch every magic value: parse each
+  declaration's value (the text after the first `:` of each `;`-separated declaration in
+  each `{ … }` body, not selectors, so `h1` and `.printing-3d` don't match), remove the
+  `var(--…)` references, and assert no number remains other than `0` and the `100` of
+  `100%`: this rejects lengths in any unit (`px`, `rem`, `em`, `ch`, `vh`, `vw`, `dvh`,
+  `vmin`, `s`, `ms`, `deg`, …), unitless `font-weight`, `opacity`, `line-height` and
+  `z-index`. The `@media (min-width: …)` condition is not a declaration and is the one
+  exception. No `font-family:` with a literal family (only `var(`), and `font:` only as
+  `font: inherit`. The markup outside `<style>` and `<script>` has no `fill="#`,
+  `stroke="#`, `style=` or `color=`.
+- `test_breakpoint_matches_token` (prep amendment): the stylesheet has exactly one
+  `@media (min-width: …)` breakpoint, and its value equals the `--breakpoint-wide` token.
+  (As built, other media queries, such as `prefers-reduced-motion` for #114, are
+  allowed.)
 - `test_tokens_are_defined_once`: in the root block no token is defined twice; no two
   tokens share a colour literal (compared as lower-case `#rrggbb`) or a font stack; the
   `--space-*` steps are all different; references with `var()` are not literals.
 - `test_every_token_used_is_defined`: every `var(--x)` in the stylesheet names a token
   in the root block (catches a typo that silently falls back).
 - `test_page_has_no_pure_white_or_black`: `#fff`, `#ffffff`, `#000`, `#000000` appear
-  nowhere in the page (case-insensitive), and `--ceramics` is used only by the pattern.
+  nowhere in the page (case-insensitive, as substrings), no
+  token in the root block has a colour keyword (`white`, `black`, …) as its value (story
+  #112 AC 2, prep amendment), and `--ceramics` is used only by the pattern.
 - `test_brand_colour_pairs_meet_contrast`: for these (foreground, background, minimum)
   pairs, `_contrast` passes: `--text`/`--page-bg` 4.5, `--on-dark`/`--brand` 4.5,
   `--brand`/`--page-bg` 4.5, `--error`/`--page-bg` 4.5, `--ok`/`--page-bg` 4.5,
@@ -306,6 +359,10 @@ Tests:
   outside the `<script>` blocks.
 - `test_served_page_is_small`: `len(_call(_event())["body"].encode("utf-8")) < 100 * 1024`.
 - Existing tests all pass without edits; `test_csp_header` in particular is unchanged.
+- *As built, also:* `test_token_block_holds_only_tokens`, `test_every_token_is_used`,
+  `test_headings_are_bold_and_larger_than_body`, and two more contrast pairs
+  (`--control-border`/`--page-bg` 3.0 and `--text`/`--tint-bg` 4.5). The Hand-off lists
+  what the tests enforce.
 
 ## Acceptance criteria
 
@@ -360,10 +417,54 @@ None.
 
 ## Hand-off
 
-Phase 2 can rely on: the token block and its names (brand, derived, semantic, type, space
-and size tokens, including `--tap-target`, `--focus`, `--focus-on-dark`,
-`--border-width-strong`); the helpers `_style()`, `_root_block()`, `_rules_after_root()`,
-`_tokens()`, `_colour()`, `_mix()`, `_contrast()` and the contrast and derived-token lists
-in the test file; the header band (`header.brand-band`) outside `<main>` with **Sign
-out** in it; `<main>` holding everything from `#dry-run-banner` down with today's IDs,
-classes and order; the script unchanged.
+Phase 2 can rely on:
+
+- **The token block** (`:root`, the stylesheet's first rule), as built:
+  - brand and derived colours as in the tables above;
+  - semantic colours: `--page-bg`, `--text`, `--brand`, `--on-dark`, `--line`,
+    `--line-on-dark`, `--control-border` (purple-60, 3.6:1 on Asmbly White), `--tint-bg`,
+    `--error`, `--ok`, `--focus`, `--focus-on-dark` and `--disabled-bg`;
+  - type: `--font-body`, `--font-heading`, `--font-size-body`/`-h1`/`-h2`,
+    `--line-height`, `--line-height-heading`, `--weight-heading` and `--weight-strong`;
+  - space and size: `--space-1`…`--space-6`, `--gutter`, `--radius`, `--radius-control`,
+    `--content-max-width`, `--logo-height`, `--pattern-height`, `--preview-max-height`,
+    `--border-width`, `--border-width-strong`, `--border-width-accent`, `--focus-width`,
+    `--focus-offset`, `--visually-hidden-size`, `--tap-target` (not used yet),
+    `--track-fill` and `--breakpoint-wide`.
+
+  `--asmbly-purple-80` isn't used yet; it is there for a hover state. Unused tokens are
+  listed in `RESERVED_TOKENS` in the tests (with the reason), and
+  `test_every_token_is_used` fails on any other unused token. It also fails when a
+  reserved token starts being used: delete its `RESERVED_TOKENS` entry in the same
+  change (phase 2, for `--tap-target` and `--asmbly-purple-80`). There is no
+  `--disabled-opacity`: disabled buttons already use `--disabled-bg` with `--text`.
+- **The test helpers** in `tests/test_lambda_function.py`: `_style()`, `_css()` (no
+  comments), `_root_block()`, `_rules_after_root()`, `_tokens()`, `_colour()`, `_mix()`,
+  `_contrast()`, `_declaration_values()`, `_markup()` and `_rem_to_px()`. Phase 2 adds
+  its tints to `DERIVED_COLOURS` and its pairs to `CONTRAST_PAIRS`. The token test
+  is an allowlist: outside `:root` a declaration's value may hold only `var()`, `0`,
+  `100%`, the grid-area names (`GRID_AREAS`) and the keywords in `ALLOWED_VALUE_WORDS`;
+  the SVGs may carry only `SVG_ATTRIBUTES`, `fill` only as `url(#…)`. A new non-colour
+  keyword (such as `flex`) is added to `ALLOWED_VALUE_WORDS`.
+- **The header.** `header.brand-band` sits outside `<main>`. `.brand-inner` is a grid
+  holding the logo, the `h1` and **Sign out**, with a `--line-on-dark` divider before
+  the title from the breakpoint up. The pattern is an SVG `<pattern id="brand-tiles">`
+  (a 640×40 motif) that fills one 5120×40 `<rect>`.
+- **`<main>`** holds everything from `#dry-run-banner` down, with the same IDs, classes
+  and order. The `<script>` is byte-for-byte unchanged.
+
+Left for phase 2:
+
+- The stage banner uses `--tint-bg` with a `--line` border; it gets the woodwork tint.
+- The warning has only a `--error` left border and no background; it gets the lasers
+  tint.
+- Buttons have no hover state.
+- Links: `a, a:visited` have the `--brand` colour, but no link exists yet. If the
+  result card adds one, give `a:focus-visible` the token outline.
+- `TOKEN_VALUE` in the tests allows only `rem`, `px` and `fr` units and no `%`. A
+  duration or percentage token needs the pattern widened. A shared literal between two
+  tokens needs an entry in `SHARED_LITERALS`.
+- Disabled buttons are opaque `--disabled-bg` with `--text`, and can read as an enabled
+  secondary button (the old look was `opacity: 0.5`). Give them a clearly disabled look
+  that still passes the contrast test.
+- The result card and `<main>` have no card edge (the shadow was dropped).

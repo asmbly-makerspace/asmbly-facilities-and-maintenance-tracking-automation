@@ -1,0 +1,71 @@
+{
+  "plan_name": "photo-upload-branding",
+  "feature_branch": "feature/photo-upload-branding",
+  "epic": 111,
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1,
+      "title": "Brand tokens, header, logo and type",
+      "file": "phase-1-brand-tokens-and-header.md",
+      "status": "done",
+      "pre_sha": "c0ae42f",
+      "review_rounds": "build independent review + 3 independent review-lead rounds (1 BLOCK, WARNs fixed; rounds 2-3 APPROVED)"
+    },
+    {
+      "id": 2,
+      "title": "Controls, messages, result and layout",
+      "file": "phase-2-controls-messages-and-layout.md",
+      "status": "pending"
+    }
+  ],
+  "integration": null,
+  "final_pr_number": null,
+  "admin_actions": [],
+  "events": [
+    {
+      "type": "start",
+      "detail": "Run on the owner's Mac; branch created from origin/stage (ae2957c) because the session's claude/* branch was already merged."
+    },
+    {
+      "type": "planned",
+      "detail": "Plan c0ae42f; stories #112 #113 under epic #111; 16 decisions. Owner rules relayed: design tokens only (no hardcoded colors), #114 owns loading UX."
+    },
+    {
+      "type": "decision",
+      "detail": "PP Gosha not embedded (licence for facilities.asmbly.org unconfirmed); bold system stack for headings. Roboto first in body stack, not self-hosted."
+    },
+    {
+      "type": "decision",
+      "detail": "Logo: official vector from asmbly-classes app/src/lib/components/logo.svelte @9a534a6, inline SVG currentColor. Pattern strip redrawn as inline SVG (no official vector found). CSP unchanged."
+    },
+    {
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "type": "decision",
+      "detail": "Owner confirmed: keep the system heading font (no PP Gosha). Found: the kiln page hotlinks PP Gosha from asmbly.org, but asmbly.org sends no Access-Control-Allow-Origin, so cross-origin fonts likely never load there. Option for later: CORS rule on asmbly.org fonts folder, then hotlink for both pages."
+    },
+    {
+      "type": "phase_done",
+      "phase": 1,
+      "pytest": "1529 passed",
+      "page_kb": 53
+    },
+    {
+      "type": "decision",
+      "phase": 1,
+      "detail": "Logo colored once via .logo{fill:currentColor}; header grid layout; token tests are allowlists (SHARED_LITERALS, RESERVED_TOKENS) catching 44 hand-written violations; script and CSP untouched."
+    },
+    {
+      "type": "deferred",
+      "phase": 1,
+      "detail": "Owner may confirm: shared literals between token kinds (1px, 2px, 1rem) are listed in SHARED_LITERALS with reasons."
+    }
+  ],
+  "stories": [
+    112,
+    113
+  ]
+}
