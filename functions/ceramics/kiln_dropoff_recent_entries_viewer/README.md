@@ -282,7 +282,7 @@ From the repository root:
 .venv/bin/python -m pytest functions/ceramics/kiln_dropoff_recent_entries_viewer
 ```
 
-The tests mock SSM, Secrets Manager and ClickUp, so they need no AWS access. After a deploy to stage, open `<stage API URL>/KilnOpsDropoffRecentEntriesViewer` and check that the list loads, Refresh reloads it, and the browser console shows no Content-Security-Policy violations. Stage has no custom domain, so `<stage API URL>` is the `FacilitiesApiUrl` output of the stage stack, `AsmblyFacilitiesMaintTrackingStack-stage`, which looks like `https://<api-id>.execute-api.us-east-2.amazonaws.com/stage`. Find it in the AWS console under CloudFormation, that stack, the **Outputs** tab. (In prod the page is `https://facilities.asmbly.org/KilnOpsDropoffRecentEntriesViewer`.)
+The tests mock SSM, Secrets Manager and ClickUp, so they need no AWS access. After a deploy to stage, open `<stage API URL>/KilnOpsDropoffRecentEntriesViewer` and check that the list loads, each time ends in `CST` or `CDT` (which shows the deployed function has its zone data), Refresh reloads it, and the browser console shows no Content-Security-Policy violations. Stage has no custom domain, so `<stage API URL>` is the `FacilitiesApiUrl` output of the stage stack, `AsmblyFacilitiesMaintTrackingStack-stage`, which looks like `https://<api-id>.execute-api.us-east-2.amazonaws.com/stage`. Find it in the AWS console under CloudFormation, that stack, the **Outputs** tab. (In prod the page is `https://facilities.asmbly.org/KilnOpsDropoffRecentEntriesViewer`.)
 
 The browser's own request for `/favicon.ico` may show as blocked by `default-src 'none'` (Firefox) or as a 403. That is older than the page's styling and is the one expected console message.
 

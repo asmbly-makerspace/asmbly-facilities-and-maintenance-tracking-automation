@@ -127,7 +127,13 @@ def test_central_zone_is_not_loaded_at_import() -> None:
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
-def test_lambda_handler_missing_zone_data_shows_error_page(mock_get_json_param, mock_get_all_clickup_tasks, mock_get_secret, reload_lambda_function, caplog):
+def test_lambda_handler_missing_zone_data_shows_error_page(
+    mock_get_json_param: MagicMock,
+    mock_get_all_clickup_tasks: MagicMock,
+    mock_get_secret: MagicMock,
+    reload_lambda_function: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """If the zone data is missing, the failure is logged and the plain error page is served."""
     mock_get_json_param.return_value = '123456789'
     mock_get_secret.return_value = 'fake-token'
