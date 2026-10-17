@@ -3,6 +3,7 @@
 ## Table of Contents
 - [Purpose](#purpose)
 - [How It Works](#how-it-works)
+- [Look and brand tokens](#look-and-brand-tokens)
 - [AWS Resources](#aws-resources)
 - [Configuration](#configuration)
 - [Deployment](#deployment)
@@ -112,7 +113,7 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 8.  **Generate and Return HTML**
     * **Source:** AWS Lambda
     * **Destination:** AWS API Gateway
-    * **Action:** The function processes the JSON data, constructs a complete HTML document on the fly, and returns it as the response. Each drop-off's name and ID are HTML-escaped, so text typed into the form shows as text and never runs as code. A drop-off with no custom ID shows its ClickUp task ID.
+    * **Action:** The function processes the JSON data, builds the table rows, fills them into the page shell `page.html`, and returns the page as the response. Each drop-off's name and ID are HTML-escaped, so text typed into the form shows as text and never runs as code. A drop-off with no custom ID shows its ClickUp task ID. The "Time Submitted" column is in US Central time (`America/Chicago`), with `CST` or `CDT` after each time, for example `2023-12-31 18:00:00 CST`. ClickUp gives the time in UTC; the zone data decides whether daylight saving time applies. The function packages `tzdata` (in `requirements.txt`), so the conversion works even if the Lambda runtime has no system zone data. If the zone can't be loaded, the function logs the error and shows the error page.
 
 9.  **Display Page**
     * **Source:** AWS API Gateway
@@ -122,13 +123,107 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 ### Errors and security headers
 
 - If anything goes wrong (a missing environment variable, an empty token, an SSM, Secrets Manager or ClickUp error), the page says only "Could not retrieve the list of submissions." The details go to the log group `/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-<stage>`, never to the page.
-- The error page shows the title, the error message, "Please wait 1-2 minutes and refresh." and the Refresh button. It shows no list and no "No submissions found" line. That line appears only when the list loads and nothing was dropped off in the last 24 hours ("No submissions found in the last 24 hours. Please try refreshing.").
+- The error page has the same header band, Refresh button and logo as the list page, and shows the error message in a box, then "Please wait 1-2 minutes and refresh." above the Refresh button. It shows no list and no "No submissions found" line. That line appears only when the list loads and nothing was dropped off in the last 24 hours ("No submissions found in the last 24 hours. Please try refreshing.").
 - Every response, the list and the error page alike, is sent with these headers:
   - `Content-Type: text/html; charset=utf-8`
   - `X-Content-Type-Options: nosniff`
   - `Cache-Control: no-store`, so Refresh always fetches a fresh list
-  - `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; font-src https://asmbly.org; img-src https://asmbly.org; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`. The page runs no script, uses one inline style block, and loads its fonts and logos from https://asmbly.org. It can't be shown inside a frame. If you add an image, font or script from another site, add that site to the policy in `lambda_function.py`.
+  - `Content-Security-Policy: default-src 'none'; style-src 'sha256-<hash>'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, where `<hash>` is the base64 SHA-256 of the text of the one `<style>` block in `page.html`. The page runs no script and loads nothing from any other site: the icon and the logo are drawn in the page and the fonts are the device's own. The browser applies the style block only if its hash matches, and it ignores any `style="…"` attribute. The page can't be shown inside a frame.
+- `lambda_function.py` computes the hash from `page.html` when the function starts, so editing the stylesheet needs no change to the policy. If `page.html` ever has no `<style>` block or more than one, the function fails as it starts and API Gateway answers every request with a bare 502 instead of a page. A deploy does not catch that; the tests do (`test_style_hash_rejects_zero_or_two_style_blocks`, `test_csp_style_hash_matches_served_style`), so run them after editing `page.html`.
+- If you ever need an image, font or script from another site, the policy must allow it in `lambda_function.py`. Prefer drawing it in the page, as the icon and logo are.
 - The Refresh button is a plain link back to the same page, so it works without script.
+
+## Look and brand tokens
+
+The page follows the Asmbly brand guide with the ceramics colour as its accent, in the
+same way as the class photo upload page (`functions/classes/class_photo_upload_page/`).
+The list page, the empty list and the error page share one shell, `page.html`, next to
+`lambda_function.py`. The function reads it once per container and fills in two
+placeholders: `__RELOAD_TEXT__` (the hint above the Refresh button) and
+`__MAIN_CONTENT__` (the list or the error box). The main content goes in last, so a
+drop-off named `__RELOAD_TEXT__` shows as that name.
+
+- **Header band:** full width, in the ceramics colour `--ceramics` (#b34a9a), with the
+  ceramics icon and the title in Asmbly White. Asmbly White on the ceramics colour is
+  4.35:1: enough for large text and for the icon (3:1), not for body text. The band
+  therefore holds only the icon and the `h1`, which is 1.75rem bold at every width. The
+  subtitle and everything else sit on the Asmbly White page.
+- **Table:** the header row on the ceramics 20% tint; drop-off IDs in a bold monospace
+  1.125rem in the ceramics shade, never split across lines, because members copy them
+  onto a slip. Names wrap anywhere, so a long name never widens the page. The time is in
+  the small size and wraps only between the date and the time: the zone is joined to the
+  time with a non-breaking space, so "18:00:00 CST" stays on one line.
+- **Refresh button:** the ceramics shade, darker on hover where a pointer can hover, at
+  least 44px by 44px, with a 3px focus ring.
+- **Error box:** the lasers 20% tint, with a 4px lasers-shade edge on the left and a ✕
+  before the heading, so it differs from the page by more than colour. Browsers older
+  than iOS Safari 17.4 and Firefox 128 don't show the ✕; the edge and the heading still
+  mark the error.
+- **Footer:** the Asmbly logo in Asmbly Purple, 3.5rem (56px) tall, above the brand
+  guide's 50px minimum.
+- **Ceramics icon:** the single path of
+  `https://asmbly.org/wp-content/uploads/2025/02/ceramics-white.svg` (viewBox
+  `0 0 38.4 38.4`), copied without its `<style>` and `fill`, so it takes Asmbly White from
+  the band through `fill: currentColor`. The pot is cut out of the square, so the band's
+  colour shows through it. Screen readers announce it as "Ceramics".
+- **Asmbly logo:** the official vector from `asmbly-makerspace/asmbly-classes`
+  (`app/src/lib/components/logo.svelte`, commit
+  `9a534a6c538df1e602fead183e30d93d97c247b4`), as inlined on the class photo upload page,
+  with `fill: currentColor`. Screen readers announce it as "Asmbly Makerspace".
+- **Type:** system font stacks (the photo page's), so no font file is fetched. PP Gosha,
+  the brand's heading face, is not used until Asmbly confirms its web licence covers
+  this site.
+
+### Tokens
+
+Every colour, font stack, length and number is a CSS custom property, defined once in the
+`:root` block at the top of the stylesheet in `page.html`. Every other rule uses them
+through `var()`. No `style` attribute, no colour or size written anywhere else; the tests
+fail if that changes.
+
+- Brand colours: `--asmbly-purple` #292D6A, `--asmbly-white` #F2F4EF,
+  `--midnight-black` #171d1a, `--ceramics` #b34a9a, `--lasers` #D33E43.
+- Tints and shades, per sRGB channel, rounded:
+  `tint(p) = p × colour + (1 − p) × asmbly-white`,
+  `shade(p) = p × colour + (1 − p) × midnight-black`.
+  `--ceramics-shade` (0.8) #944180, `--ceramics-shade-60` (0.6) #753867,
+  `--ceramics-40` #d9b0cd, `--ceramics-20` #e5d2de, `--ceramics-10` #ece3e6,
+  `--lasers-shade` (0.8) #ad373b, `--lasers-20` #ecd0cd. A test recomputes each, so to
+  change a brand colour, change it and recompute its tints and shades.
+- What each colour is for: `--page-bg`, `--text`, `--accent` (= `--ceramics`),
+  `--on-accent`, `--accent-strong` (IDs, button), `--accent-hover`, `--table-head-bg`,
+  `--row-hover-bg`, `--line`, `--focus`, `--logo-colour` (the only use of Asmbly Purple),
+  `--error-bg`, `--error-edge`, and the glyph `--glyph-error`.
+- Type and size: `--font-body`, `--font-heading`, `--font-mono`, `--font-size-*`,
+  `--line-height*`, `--weight-*`, `--space-1` to `--space-6`, `--gutter`, `--radius`,
+  `--content-max-width`, `--icon-height`, `--logo-height`, `--border-width*`,
+  `--focus-width`, `--focus-offset`, `--tap-target`.
+
+Add a token only when a rule uses it. `--lasers` is the one token no rule reads; it is
+the parent of the two lasers tokens.
+
+### Contrast
+
+WCAG 2.1, computed by `test_colour_pairs_meet_contrast` from the token values.
+
+| Foreground | Background | Where | Minimum | Ratio |
+| --- | --- | --- | --- | --- |
+| `--on-accent` | `--accent` | h1 and icon in the band | 3.0 (large text, non-text) | 4.35 |
+| `--text` | `--page-bg` | body text | 4.5 | 15.45 |
+| `--accent-strong` | `--page-bg` | drop-off IDs | 4.5 | 5.70 |
+| `--accent-strong` | `--row-hover-bg` | IDs on a hovered row | 4.5 | 5.02 |
+| `--text` | `--row-hover-bg` | text on a hovered row | 4.5 | 13.61 |
+| `--text` | `--table-head-bg` | table header | 4.5 | 11.90 |
+| `--on-accent` | `--accent-strong` | Refresh button | 4.5 | 5.70 |
+| `--on-accent` | `--accent-hover` | Refresh button, hover | 4.5 | 7.53 |
+| `--text` | `--error-bg` | error box text | 4.5 | 11.79 |
+| `--error-edge` | `--page-bg` | error box edge | 3.0 | 5.60 |
+| `--error-edge` | `--error-bg` | error box edge, and the ✕ in the 20px bold heading | 3.0 | 4.27 |
+| `--focus` | `--page-bg` | focus ring | 3.0 | 7.53 |
+| `--logo-colour` | `--page-bg` | Asmbly logo | 3.0 | 11.30 |
+
+The table header's line (`--line`, the ceramics 40% tint) is decorative; the header
+row's tint and bold text set it apart.
 
 ## AWS Resources
 
@@ -168,6 +263,8 @@ The template `templates/ceramics.yaml` sets two environment variables:
 
 The list ID itself lives in `configs/clickup_ceramics_dropOffRequests.json`; the template turns that file into the SSM parameter. To point the page at another ClickUp list, change the JSON file and deploy.
 
+The time zone of the "Time Submitted" column is the constant `CENTRAL_TIME_ZONE` (`America/Chicago`) in `lambda_function.py`, not configuration. Its zone data comes from the `tzdata` package in `requirements.txt`, which `sam build` installs with the function. The entry has no version, so each build gets the latest zone data.
+
 
 ## Deployment
 
@@ -185,6 +282,8 @@ From the repository root:
 .venv/bin/python -m pytest functions/ceramics/kiln_dropoff_recent_entries_viewer
 ```
 
-The tests mock SSM, Secrets Manager and ClickUp, so they need no AWS access. After a deploy to stage, open `<stage API URL>/KilnOpsDropoffRecentEntriesViewer` and check that the list loads, Refresh reloads it, and the browser console shows no Content-Security-Policy violations. Stage has no custom domain, so `<stage API URL>` is the `FacilitiesApiUrl` output of the stage stack, `AsmblyFacilitiesMaintTrackingStack-stage`, which looks like `https://<api-id>.execute-api.us-east-2.amazonaws.com/stage`. Find it in the AWS console under CloudFormation, that stack, the **Outputs** tab. (In prod the page is `https://facilities.asmbly.org/KilnOpsDropoffRecentEntriesViewer`.)
+The tests mock SSM, Secrets Manager and ClickUp, so they need no AWS access. After a deploy to stage, open `<stage API URL>/KilnOpsDropoffRecentEntriesViewer` and check that the list loads, each time ends in `CST` or `CDT` (which shows the deployed function has its zone data), Refresh reloads it, and the browser console shows no Content-Security-Policy violations. Stage has no custom domain, so `<stage API URL>` is the `FacilitiesApiUrl` output of the stage stack, `AsmblyFacilitiesMaintTrackingStack-stage`, which looks like `https://<api-id>.execute-api.us-east-2.amazonaws.com/stage`. Find it in the AWS console under CloudFormation, that stack, the **Outputs** tab. (In prod the page is `https://facilities.asmbly.org/KilnOpsDropoffRecentEntriesViewer`.)
 
-The asmbly.org fonts already fail with a CORS error because asmbly.org sends no `Access-Control-Allow-Origin` header; that is not a CSP problem.
+The browser's own request for `/favicon.ico` may show as blocked by `default-src 'none'` (Firefox) or as a 403. That is older than the page's styling and is the one expected console message.
+
+The tests also cover the look: every colour, size and font is a token (and every token is used and defined once), the tints and shades follow the formula, every pair in the contrast table meets its minimum, the Refresh button is a 44px target with a visible focus ring, hover looks exist only where a pointer can hover, table text wraps, the band holds only the icon and the title, the error page shares the shell, and the page with 50 drop-offs is under 60 KB. To see the pages without deploying, write `generate_html_page([...])`, `generate_html_page([])` and `generate_error_page()` to files and open them in a browser. A local file has no CSP header, so the policy is checked on stage.

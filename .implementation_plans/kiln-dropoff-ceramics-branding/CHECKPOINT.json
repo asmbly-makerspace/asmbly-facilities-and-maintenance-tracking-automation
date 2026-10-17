@@ -1,0 +1,158 @@
+{
+  "plan_name": "kiln-dropoff-ceramics-branding",
+  "feature_branch": "feature/kiln-dropoff-ceramics-branding",
+  "epic": 132,
+  "status": "complete",
+  "phases": [
+    {
+      "id": "1",
+      "title": "Ceramics-branded page shell, tokens and tests",
+      "file": "phase-1-ceramics-page-shell.md",
+      "status": "done",
+      "review_rounds": 1,
+      "squashed_sha": "7577de8"
+    }
+  ],
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1771 passed, 4 subtests passed (test_templates.py 56 passed)",
+      "cfn_lint": "0 errors; 4 W3005 warnings in template.yaml, identical on origin/stage",
+      "sam_validate": "pass",
+      "sam_build": "pass; page.html packaged byte-for-byte"
+    },
+    "preexisting": [
+      "cfn-lint W3005 x4 in template.yaml (FacilitiesCertificate / FacilitiesApiCustomDomain), also on stage"
+    ],
+    "skipped": [],
+    "commits": 0
+  },
+  "final_pr_number": 135,
+  "admin_actions": [],
+  "events": [
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "planned",
+      "note": "Plan already on branch (626b8b2); 1 phase; README lists no admin actions"
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "phase_start",
+      "phase": "1",
+      "pre_phase_sha": "626b8b2"
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "decision",
+      "phase": "1",
+      "note": "Prep NEEDS_REVISION (1 MED: IDs could split at 320px); amendments applied to phase doc (IDs nowrap, --lasers exempt from token-used test, import-time ValueError wording, glyph + --error-edge/--error-bg contrast pair, shell test splits on both placeholders, word-boundary white/black check, #133 AC4 tests, 400% zoom + favicon in Verification). Declined SVG width/height fallback attributes."
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "decision",
+      "phase": "1",
+      "note": "Logo height 3.5rem (56px) not plan's 2.5rem: brand-guide minimum is 50px; pinned by a kiln test."
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "decision",
+      "phase": "1",
+      "note": "After headless Chrome render at 320px: overflow-wrap:anywhere on td only, time cell small font with normal wrap, cell padding --space-1, --font-size-id 1.125rem."
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "decision",
+      "phase": "1",
+      "note": "test_footer_shows_asmbly_logo pins viewBox, 17 paths and the icon path instead of reading the photo page's page.html (shared with #114)."
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "decision",
+      "phase": "1",
+      "note": "Served CSP now default-src 'none'; style-src 'sha256-...' (hash computed at import from page.html); base-uri/form-action/frame-ancestors 'none'. Only the pinned-CSP test, the asmbly.org URL test and the @font-face assertion changed, per the plan."
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "deferral",
+      "phase": "1",
+      "note": "Times still shown in UTC (plan Decision 14): a behaviour change, owner's call."
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "deferral",
+      "phase": "1",
+      "note": "Token/contrast test helpers duplicated between kiln and photo-upload tests (Decision 11); could move to a shared module once #114 no longer touches the photo page's tests."
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "deferral",
+      "phase": "1",
+      "note": "Browser pass at 768px, 200%/400% zoom, CSP header in DevTools, console clean except /favicon.ico: left for stage QA. Screenshots must not show member rows."
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "phase_done",
+      "phase": "1",
+      "review_rounds": 1,
+      "checks": {
+        "pytest": "1771 passed",
+        "cfn_lint": "4 pre-existing W3005 warnings in template.yaml (untouched)",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      }
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "integration_start",
+      "pre_gate_sha": "7577de8"
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "integration_done",
+      "result": "clean"
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "docs_start",
+      "pre_docs_sha": "7577de8"
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "docs_done",
+      "docs_updated": [
+        "docs/README.md (1 line)"
+      ],
+      "note": "Function README verified accurate, unchanged; no regression (158->158)"
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "manual_qa_start",
+      "pre_qa_sha": "c9474e7"
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "manual_qa_done",
+      "stories_covered": [
+        133,
+        134
+      ],
+      "total_steps": 17
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "pr_start"
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "pr_ready",
+      "pr": 135,
+      "checks": "green",
+      "rounds": 0,
+      "merge_state": "CLEAN"
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "complete"
+    }
+  ]
+}

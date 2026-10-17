@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Recent Kiln Drop-Offs</title>
+<style>
+  /* Design tokens: the only place a colour, font stack, length or number is written.
+     Every rule below uses them through var(); the tests enforce it (README, "Look and
+     brand tokens"). The response's Content-Security-Policy allows this block by its
+     SHA-256 hash, so any edit here changes the hash; lambda_function.py recomputes it. */
+  :root {
+    color-scheme: light;
+
+    /* Brand colours (Asmbly brand guide). */
+    --asmbly-purple: #292D6A;
+    --asmbly-white: #F2F4EF;
+    --midnight-black: #171d1a;
+    --ceramics: #b34a9a;
+    --lasers: #D33E43;
+
+    /* Derived, per sRGB channel, rounded:
+       tint(p) = p × colour + (1 − p) × asmbly-white;
+       shade(p) = p × colour + (1 − p) × midnight-black. A test recomputes each. */
+    --ceramics-shade: #944180;
+    --ceramics-shade-60: #753867;
+    --ceramics-40: #d9b0cd;
+    --ceramics-20: #e5d2de;
+    --ceramics-10: #ece3e6;
+    --lasers-shade: #ad373b;
+    --lasers-20: #ecd0cd;
+
+    /* What each colour is for. */
+    --page-bg: var(--asmbly-white);
+    --text: var(--midnight-black);
+    --accent: var(--ceramics);
+    --on-accent: var(--asmbly-white);
+    --accent-strong: var(--ceramics-shade);
+    --accent-hover: var(--ceramics-shade-60);
+    --table-head-bg: var(--ceramics-20);
+    --row-hover-bg: var(--ceramics-10);
+    --line: var(--ceramics-40);
+    --focus: var(--ceramics-shade-60);
+    --logo-colour: var(--asmbly-purple);
+    --error-bg: var(--lasers-20);
+    --error-edge: var(--lasers-shade);
+
+    /* The error heading's glyph. After the slash is its alternative text, empty so
+       screen readers skip it. A browser without that syntax shows no glyph; the edge
+       and the heading still mark the error. */
+    --glyph-error: "✕" / "";
+
+    /* Type: system stacks, no font file is fetched. */
+    --font-body: Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-heading: "Helvetica Neue", "Segoe UI", Roboto, Arial, system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --font-size-body: 1rem;
+    --font-size-h1: 1.75rem;
+    --font-size-h2: 1.25rem;
+    --font-size-id: 1.125rem;
+    --font-size-small: 0.875rem;
+    --line-height: 1.5;
+    --line-height-heading: 1.2;
+    --weight-heading: 700;
+    --weight-strong: 600;
+
+    /* Space and size. */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --gutter: var(--space-4);
+    --radius: var(--space-2);
+    --content-max-width: 50rem;
+    --icon-height: 3rem;
+    --logo-height: 3.5rem;
+    --border-width: 1px;
+    --border-width-accent: 4px;
+    --focus-width: 3px;
+    --focus-offset: 2px;
+    --tap-target: 2.75rem;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page-bg); color: var(--text); font-family: var(--font-body); font-size: var(--font-size-body); line-height: var(--line-height); }
+  h1, h2 { font-family: var(--font-heading); font-weight: var(--weight-heading); line-height: var(--line-height-heading); }
+
+  /* The band holds only the icon and the title: Asmbly White on the ceramics colour is
+     4.35:1, enough for large text and the icon, not for body text. */
+  .brand-band { background: var(--accent); color: var(--on-accent); }
+  .brand-inner {
+    max-width: var(--content-max-width); margin: 0 auto; padding: var(--space-4) var(--gutter);
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4);
+  }
+  .ceramics-icon { display: block; flex: none; height: var(--icon-height); width: auto; fill: currentColor; }
+  .brand-band h1 { margin: 0; font-size: var(--font-size-h1); color: var(--on-accent); }
+
+  .container { max-width: var(--content-max-width); margin: 0 auto; padding: var(--space-5) var(--gutter); }
+  .subtitle { margin: 0 0 var(--space-4); text-align: center; color: var(--text); }
+  .instructions { margin: 0 0 var(--space-5); text-align: center; font-size: var(--font-size-h2); font-weight: var(--weight-strong); color: var(--text); }
+
+  /* The list, three columns even on a 320px phone. A long name wraps anywhere inside its
+     cell, never widening the page. The ID never splits (members copy it onto a slip). The
+     headers wrap only between words, so "Submitted" keeps the time column wide enough for
+     a date in the small size. The time wraps only between the date and the time: the zone
+     is attached with a non-breaking space, so "18:00:00 CST" is the widest unbreakable
+     piece of the column. */
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: var(--space-3) var(--space-1); text-align: left; vertical-align: top; border-bottom: var(--border-width) solid var(--line); }
+  td { overflow-wrap: anywhere; }
+  th { background: var(--table-head-bg); color: var(--text); font-family: var(--font-heading); font-weight: var(--weight-heading); }
+  td:nth-child(3) { font-size: var(--font-size-small); overflow-wrap: normal; }
+  .task-id { font-family: var(--font-mono); font-size: var(--font-size-id); font-weight: var(--weight-heading); color: var(--accent-strong); white-space: nowrap; }
+  .no-tasks { padding: var(--space-5) var(--space-2); text-align: center; color: var(--text); }
+
+  /* The error. It differs from the page by its edge and glyph, not only by colour. */
+  .error-box { padding: var(--space-4); background: var(--error-bg); color: var(--text); border-left: var(--border-width-accent) solid var(--error-edge); border-radius: var(--radius); }
+  .error-box h2 { margin: 0 0 var(--space-2); font-size: var(--font-size-h2); color: var(--text); }
+  .error-box h2::before { content: var(--glyph-error); margin-right: var(--space-2); color: var(--error-edge); }
+  .error-box p { margin: 0; }
+
+  .reload-section { margin-top: var(--space-6); text-align: center; }
+  .reload-text { margin: 0 0 var(--space-4); color: var(--text); }
+  .reload-button {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: var(--tap-target); min-width: var(--tap-target); padding: var(--space-3) var(--space-6);
+    border-radius: var(--radius); background: var(--accent-strong); color: var(--on-accent);
+    font-family: var(--font-heading); font-weight: var(--weight-heading); text-decoration: none;
+  }
+  .reload-button:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+
+  .site-footer { padding: var(--space-6) var(--gutter); text-align: center; }
+  .logo { display: inline-block; height: var(--logo-height); width: auto; max-width: 100%; fill: currentColor; color: var(--logo-colour); }
+
+  /* Hover, only where a pointer can hover (a tap on a phone would leave it on). */
+  @media (hover: hover) {
+    tbody tr:hover { background: var(--row-hover-bg); }
+    .reload-button:hover { background: var(--accent-hover); }
+  }
+</style>
+</head>
+<body>
+<header class="brand-band">
+  <div class="brand-inner">
+    <svg class="ceramics-icon" role="img" aria-label="Ceramics" viewBox="0 0 38.4 38.4" focusable="false"><path d="M0,0v38.4h38.4V0H0ZM24.1,17.2c1.6,1.7,2.8,3,2.3,6.4-.4,2.8-1.6,6.4-2.5,9.3l-.2.7h-9l-.2-.7c-1-2.9-2.2-6.5-2.5-9.3-.4-3.3.8-4.7,2.3-6.4,1.9-2,4.4-4.8,2.1-10.5,0,0,0-.1-.9-1.9h7.5c-.9,1.8-.9,1.8-.9,1.9-2.3,5.7.2,8.5,2.1,10.5ZM4.8,4.8h5.3c.1.3.4.9.7,1.5.5.9,1,2,1.1,2.3,1.1,2.8.5,3.5-1.2,5.4-1.8,2-4.3,4.7-3.6,10.3.4,2.9,1.5,6.4,2.5,9.4h-4.8V4.8h0ZM33.6,33.6h-4.8c1-2.9,2.1-6.4,2.5-9.4.7-5.6-1.8-8.3-3.6-10.3-1.7-1.8-2.3-2.6-1.2-5.4.1-.2.6-1.3,1.1-2.3.3-.7.6-1.3.7-1.5h5.3v28.8h0Z"/></svg>
+    <h1>Recent Kiln Drop-Offs</h1>
+  </div>
+</header>
+<main class="container">
+__MAIN_CONTENT__
+  <div class="reload-section">
+    <p class="reload-text">__RELOAD_TEXT__</p>
+    <a class="reload-button" href="">Refresh</a>
+  </div>
+</main>
+<footer class="site-footer">
+  <svg class="logo" role="img" aria-label="Asmbly Makerspace" viewBox="0 0 443.61 122.16" focusable="false">
+      <path d="m183.67,64.46c0-3.96,2.59-7.96,8.14-7.96,3.55,0,5.32,1.14,6.32,2.73v-5.23h-12.15v-5.82h18.74v17.51h3.09v6.28h-9.69v-2.27c-1,1.59-2.78,2.73-6.32,2.73-5.55,0-8.14-4-8.14-7.96Zm14.47,0c0-1.41-.96-2.64-3.91-2.64s-3.96,1.23-3.96,2.64.96,2.64,3.96,2.64,3.91-1.23,3.91-2.64Z"/>
+      <path d="m211.92,69.51v-6.64c4.14,2.59,7.64,3.41,11.01,3.41,1.77,0,2.64-.64,2.64-1.68,0-1.14-.68-1.68-4-2.14-7.51-.87-9.64-4.05-9.64-7.69,0-5.14,4.28-7.05,9.14-7.05,3.05,0,7.05.82,9.28,2.37v6.14c-3.32-1.64-7.23-2.37-9.74-2.37-1.32,0-2.09.41-2.09,1.46s.59,1.55,4.14,2.18c6.87,1.18,9.51,2.68,9.51,7.32,0,5.1-4.59,7.6-9.92,7.6-3.55,0-7.01-.68-10.33-2.91Z"/>
+      <path d="m243.4,54.32v17.65h-6.6v-23.79h34.12v23.79h-6.6v-17.65h-7.14v17.65h-6.6v-17.65h-7.19Z"/>
+      <path d="m299.49,60.1c0,6.69-3.27,12.33-10.14,12.33-2.64,0-4.96-.91-6.6-3.37v2.91h-6.6v-31.84h6.6v10.96c1.64-2.46,3.96-3.37,6.6-3.37,6.87,0,10.14,5.69,10.14,12.37Zm-6.6,0c0-4.28-1.64-6.23-5.05-6.23s-5.1,1.96-5.1,6.23,1.64,6.19,5.1,6.19,5.05-1.96,5.05-6.19Z"/>
+      <path d="m309.82,40.12v31.84h-6.6v-31.84h6.6Z"/>
+      <path d="m338.02,48.18v31.07h-20.02v-6.14h13.42v-5.6c-1.36,1.5-3.59,2.41-6.32,2.41-7.23,0-10.19-4-10.19-10.46v-11.28h6.6v10.92c0,3.18,1.64,4.69,4.96,4.69s4.96-1.5,4.96-4.69v-10.92h6.6Z"/>
+      <path d="m191.18,95.26v17.65h-6.6v-23.79h34.12v23.79h-6.6v-17.65h-7.14v17.65h-6.6v-17.65h-7.19Z"/>
+      <path d="m222.88,105.4c0-3.96,2.59-7.96,8.14-7.96,3.55,0,5.32,1.14,6.32,2.73v-5.23h-12.15v-5.82h18.74v17.51h3.09v6.28h-9.69v-2.27c-1,1.59-2.77,2.73-6.32,2.73-5.55,0-8.14-4-8.14-7.96Zm14.47,0c0-1.41-.95-2.64-3.91-2.64s-3.96,1.23-3.96,2.64.96,2.64,3.96,2.64,3.91-1.23,3.91-2.64Z"/>
+      <path d="m257.82,104.13v8.78h-6.6v-31.85h6.6v16.92h3.23l6-8.87h7.92l-8.23,11.97,8.23,11.83h-7.92l-6-8.78h-3.23Z"/>
+      <path d="m275.74,101.08c0-6.87,2.82-12.42,10.6-12.42s10.42,5.19,10.42,11.92v2.64h-14.19c.45,2.68,1.91,4,6.1,4,1.14,0,3.32,0,6.55-.64v6.05c-3.55.73-5.51.73-7.23.73-10.6,0-12.24-7.42-12.24-12.28Zm14.38-2.27c-.18-2.82-1.32-4-3.87-4s-3.64,1.27-3.87,4h7.73Z"/>
+      <path d="m307.54,95.26v17.65h-6.6v-23.79h15.33v6.14h-8.73Z"/>
+      <path d="m319.91,110.45v-6.64c4.14,2.59,7.64,3.41,11.01,3.41,1.77,0,2.64-.64,2.64-1.68,0-1.14-.68-1.68-4-2.14-7.51-.86-9.64-4.05-9.64-7.69,0-5.14,4.28-7.05,9.14-7.05,3.05,0,7.05.82,9.28,2.37v6.14c-3.32-1.64-7.23-2.37-9.74-2.37-1.32,0-2.09.41-2.09,1.46s.59,1.55,4.14,2.18c6.87,1.18,9.51,2.68,9.51,7.32,0,5.1-4.59,7.6-9.92,7.6-3.55,0-7.01-.68-10.33-2.91Z"/>
+      <path d="m368.14,101.04c0,6.69-3.27,12.33-10.14,12.33-2.64,0-4.96-.91-6.6-3.37v10.19h-6.6v-31.07h6.6v2.91c1.64-2.46,3.96-3.37,6.6-3.37,6.87,0,10.14,5.69,10.14,12.37Zm-6.6,0c0-4.28-1.64-6.23-5.05-6.23s-5.1,1.96-5.1,6.23,1.64,6.19,5.1,6.19,5.05-1.96,5.05-6.19Z"/>
+      <path d="m371.09,105.4c0-3.96,2.59-7.96,8.14-7.96,3.55,0,5.32,1.14,6.32,2.73v-5.23h-12.15v-5.82h18.74v17.51h3.09v6.28h-9.69v-2.27c-1,1.59-2.77,2.73-6.32,2.73-5.55,0-8.14-4-8.14-7.96Zm14.47,0c0-1.41-.96-2.64-3.91-2.64s-3.96,1.23-3.96,2.64.96,2.64,3.96,2.64,3.91-1.23,3.91-2.64Z"/>
+      <path d="m397.61,101.04c0-7.14,3.5-12.37,11.06-12.37,7.14,0,10.65,5.05,10.65,10.46h-6.6c-.18-2.46-.77-4.32-4-4.32-3.87,0-4.5,2.37-4.5,6.23s.64,6.19,4.5,6.19c3.23,0,3.82-1.86,4-4.32h6.6c0,5.41-3.5,10.46-10.65,10.46-7.55,0-11.06-5.19-11.06-12.33Z"/>
+      <path d="m422.59,101.08c0-6.87,2.82-12.42,10.6-12.42s10.42,5.19,10.42,11.92v2.64h-14.19c.45,2.68,1.91,4,6.1,4,1.14,0,3.32,0,6.55-.64v6.05c-3.55.73-5.51.73-7.23.73-10.6,0-12.24-7.42-12.24-12.28Zm14.38-2.27c-.18-2.82-1.32-4-3.87-4s-3.64,1.27-3.87,4h7.73Z"/>
+      <path d="m122.16,77.71V0H0v44.44h20.85C9.16,51.21,1.05,63.5.1,77.71h-.1v5.59h.1c1.38,20.74,18.01,37.37,38.75,38.75v.1h5.59v-.1c14.22-.95,26.5-9.06,33.27-20.75v20.85h83.3v-44.44h-38.86Zm-5.59,0h-33.27v-33.27h33.27v33.27ZM44.44,44.44h33.27v33.27h-33.27v-33.27ZM83.3,5.59h33.27v33.27h-33.27V5.59Zm-38.86,0h33.27v33.27h-33.27V5.59Zm-38.86,0h33.27v33.27H5.59V5.59Zm33.27,38.96v33.16H5.69c1.36-17.66,15.5-31.81,33.16-33.16ZM5.69,83.3h33.16v33.16c-17.66-1.36-31.81-15.5-33.16-33.16Zm38.75,33.16v-33.16h33.16c-1.36,17.66-15.5,31.81-33.16,33.16Zm72.13.11h-33.27v-33.27h33.27v33.27Zm38.86,0h-33.27v-33.27h33.27v33.27Z"/>
+  </svg>
+</footer>
+</body>
+</html>

@@ -1,0 +1,51 @@
+# Dependabot version updates. What it does and how to handle its pull requests:
+# docs/CONTRIBUTING.md, "Dependency Updates".
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    # "/" covers every workflow in .github/workflows/.
+    directory: "/"
+    target-branch: "stage"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    groups:
+      # Every action's new version in one pull request. Security updates are not
+      # grouped: each one still gets its own pull request.
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    # Every directory with a requirements file, listed by hand: a glob such as
+    # /functions/*/* would also match the functions that have none.
+    # tests/test_dependabot.py fails when this list and the files disagree.
+    directories:
+      - "/"
+      - "/functions/ceramics/kiln_dropoff_recent_entries_viewer"
+      - "/functions/classes/class_photo_upload_api"
+      - "/functions/problem_report/slack_reaction_webhook"
+      - "/functions/purchase_request/slack_reaction_webhook"
+    target-branch: "stage"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      # Every package's new version, in all the directories above, in one pull
+      # request. Security updates are not grouped.
+      pip:
+        applies-to: version-updates
+        patterns:
+          - "*"

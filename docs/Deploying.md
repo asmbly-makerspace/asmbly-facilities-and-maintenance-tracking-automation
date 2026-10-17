@@ -21,7 +21,7 @@ You'll need the following installed and configured on your machine:
 
 This project uses a **multi-stack architecture**. The root `template.yaml` file acts as a container for several nested stacks, each representing a logical part of the application (e.g., `CeramicsStack`, `PurchaseRequestStack`).
 
-Each nested stack is defined in its own template file within the `/templates` directory. This structure helps organize resources and allows for independent deployments of different parts of the application.
+Each nested stack is defined in its own template file within the `/templates` directory. This keeps each part of the application's resources together. The nested stacks are always deployed together, through the root stack; only what changed is updated (see [What a Deploy Changes](#what-a-deploy-changes)).
 
 `template.yaml` reads these shared SSM parameters (us-east-2) whenever any stage deploys; they are created by hand, not by a stack, and a missing one fails the deploy: `/config/route53/asmbly/hosted-zone-id`, and the staff sign-in pool's `/config/cognito/staff/user-pool-id`, `/config/cognito/staff/auth-domain` and `/config/cognito/staff/class-photo-app-client-id` (the pool is owned by AsmblyMCPs).
 
@@ -214,13 +214,27 @@ You should not need to deploy to `prod` manually.
 
 ### The Deployment Pipeline
 
-Each workflow has one job, **Deploy to AWS**:
+Each workflow has two jobs. The first, **Deploy to AWS**:
 
 * It builds the SAM application inside a Docker container that mimics the Lambda environment.
 * It deploys all the AWS resources defined in the templates to its environment.
-* It reads the API's URL from the stack outputs.
+* It reads the API's URL from the stack outputs and attaches it to the deployment, so the repository's **Deployments** page and the run's summary link to it: `https://facilities.asmbly.org` for prod, and the `execute-api` address for stage. It is the API's base address; opened on its own it answers `Missing Authentication Token`, because every route is a path under it.
+
+The second, **List API routes**, runs after it and writes every route's full URL to the run's summary (`scripts/list_api_routes.py`, which reads the routes from `template.yaml`). The README's [API Routes](README.md#api-routes) table lists the same routes with what calls each one. It is a separate job because it installs a package from PyPI (PyYAML, pinned to an exact version): it gets only read access to the repository, no AWS credentials, and no permission to request the OIDC token the deploy role trusts. A failure in it doesn't fail the run.
+
+`tests/test_workflows.py` checks the workflows in `.github/workflows/`. Each action must be pinned by major tag (`@v7`) and be at least the first major that runs on Node.js 24, which the table `MIN_NODE24_MAJOR` in the test lists. The `test` check fails on an older major, on a commit SHA or branch pin, and on an action that isn't in the table. When you add a step that uses a new action, check which Node.js version it runs on and add it to the table. When you bump an action, the test passes as long as the new major is at least the listed one. The test also checks that each deploy job keeps the environment name and the OIDC sign-in the deploy role trusts, and that the **List API routes** job has neither an environment nor permission to request the OIDC token.
 
 Slack, ClickUp and the other services call the permanent `https://facilities.asmbly.org` address, so nothing has to be updated after a prod deploy. (`scripts/update_slack_manifest.py` is no longer run by a workflow.)
+
+### What a Deploy Changes
+
+Every deploy builds and deploys the whole application, but CloudFormation updates only what changed:
+
+* `sam build` produces the same package for a function whose code and dependencies didn't change, so `sam deploy` doesn't upload it again (the log says `File with same data already exists`). The function's code location in the template stays the same, and CloudFormation leaves the function alone. A change to the class photo upload function updates that function, not the problem report functions.
+* A change to the shared layer (`layers/common/`) creates a new layer version, so every function that uses the layer is updated.
+* CloudFormation still steps through every nested stack on each deploy: the log shows `UPDATE_IN_PROGRESS` and `UPDATE_COMPLETE` for each one, about ten seconds apiece, in parallel. Nothing inside a nested stack that didn't change is modified.
+
+A nested stack can't be deployed on its own: CloudFormation updates nested stacks only through their root stack, and `sam deploy` has no option to pick one. Deploying one part alone would mean making it a separate root stack, with the shared API, layer and deploy role wired across stacks.
 
 ## Manual Deployment (for Dev & Stage)
 
@@ -230,7 +244,7 @@ Before deploying manually, you must build the project from the **root directory*
 sam build
 ```
 
-This command only needs to be run once, even if you plan to deploy individual stacks.
+Run it again after you change code, before you deploy.
 
 ### Manual Deployment Workflow
 
@@ -254,31 +268,15 @@ Each environment serves a specific purpose in our development lifecycle. `stage`
     * **Purpose:** This is the live environment used by end-users.
     * **Expectations:** Deployments to `prod` are the most critical. Code should only be deployed to production after it has been thoroughly verified in `stage`, all automated tests are passing, and manual workflow tests have been completed. **Do not deploy to `prod` if there is any risk of breaking existing functionality.**
 
-### Deploying All Stacks Manually
+### Deploying Manually
 
-To deploy the entire application, including all nested stacks, run the `sam deploy` command from the root directory without specifying a stack.
+`sam deploy` deploys the entire application, including all nested stacks. There is no option to deploy a single stack, and none is needed: only what changed is updated (see [What a Deploy Changes](#what-a-deploy-changes)).
 
-**Deploy all stacks to the `dev` environment:**
+**Deploy to the `dev` environment:**
 ```bash
 sam deploy --config-env dev
 ```
 
-### Deploying a Sindle Stack
-
-To deploy only a specific part of the application (e.g., after making a change to a single function), you can target its logical stack ID. This is much faster than deploying the entire application.
-
-To do this, append the **logical ID** of the stack (as defined in the root `template.yaml`) to the `sam deploy` command.
-
-**Example: Deploy only the `CeramicsStack` to the `dev` environment:**
-```bash
-sam deploy --config-env dev CeramicsStack
-```
-
-**Example: Deploy only the `PurchaseRequestStack` to the `prod` environment:**
-```bash
-sam deploy --config-env prod PurchaseRequestStack
-```
-
-> **Important:** Always run `sam deploy` from the root of the project, regardless of whether you are deploying the entire application or a single stack.
+> **Important:** Always run `sam deploy` from the root of the project.
 
 SAM will show you the changes to be made and ask for confirmation before applying them to your AWS account.

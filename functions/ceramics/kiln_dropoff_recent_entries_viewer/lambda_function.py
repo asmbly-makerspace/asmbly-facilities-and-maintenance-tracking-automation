@@ -1,7 +1,12 @@
+import base64
+import hashlib
 import html
 import logging
 import os
+import pathlib
+import re
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from common.aws import get_secret, get_json_parameter
 from common.clickup import get_all_clickup_tasks
@@ -17,137 +22,69 @@ SECRET_NAME = os.environ.get("SECRET_NAME")
 # Name of the SSM Parameter containing the ClickUp config (e.g., list ID)
 CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME = os.environ.get("CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME")
 
-# The page has no script, one inline <style> block, and fonts and images from asmbly.org.
+# The makerspace's local zone. Whether a time is CST or CDT comes from the zone data, not
+# from this code. The zone is looked up when a page is built, not at import, so missing
+# zone data is logged and shows the error page instead of failing every request.
+CENTRAL_TIME_ZONE = "America/Chicago"
+
+# The page shell (styles, header band, Refresh button, footer logo), read once per container.
+PAGE_PATH = pathlib.Path(__file__).with_name("page.html")
+PAGE_TEMPLATE: str = PAGE_PATH.read_text(encoding="utf-8")
+_STYLE_BLOCK = re.compile(r"<style>(.*?)</style>", re.S)
+
+
+def _style_hash(page: str) -> str:
+    """The CSP source for the page's one inline <style> block: 'sha256-<base64 digest>'.
+
+    Raises ValueError when the page has no <style> block or more than one. At import that
+    makes every request fail (API Gateway answers 502) instead of serving an unstyled page;
+    it does not stop a deploy, so the tests are the guard.
+    """
+    blocks = _STYLE_BLOCK.findall(page)
+    if len(blocks) != 1:
+        raise ValueError(f"page.html must have exactly one <style> block, found {len(blocks)}")
+    # The browser hashes the element's text exactly as written, so nothing is stripped.
+    digest = hashlib.sha256(blocks[0].encode("utf-8")).digest()
+    return "'sha256-" + base64.b64encode(digest).decode("ascii") + "'"
+
+
+# The page runs no script, loads nothing from another site, and has one inline <style>
+# block, allowed by its hash.
 RESPONSE_HEADERS = {
     "Content-Type": "text/html; charset=utf-8",
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "no-store",
     "Content-Security-Policy": (
-        "default-src 'none'; style-src 'unsafe-inline'; font-src https://asmbly.org; "
-        "img-src https://asmbly.org; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        f"default-src 'none'; style-src {_style_hash(PAGE_TEMPLATE)}; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     ),
 }
 
 
 def _render_page(main_content: str, reload_text: str) -> str:
-    """Wraps the main content in the page shell: styles, title box, Refresh button and footer.
+    """Fills the page shell (page.html) with the main content and the text above the Refresh button.
 
     Both arguments are trusted HTML; anything from outside must be escaped before it is passed in.
+    The main content goes in last, so text from ClickUp is never searched for a placeholder.
     """
-    return f"""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Recent Kiln Drop-Offs</title>
-        <style>
-            @font-face {{
-                font-family: "PP Gosha Sans";
-                src: url("https://asmbly.org/wp-content/themes/altpico/assets/fonts/PPGoshaSans-Bold.woff2") format("woff2"),
-                     url("https://asmbly.org/wp-content/themes/altpico/assets/fonts/PPGoshaSans-Bold.woff") format("woff");
-                font-weight: bold;
-                font-style: normal;
-                font-display: swap;
-            }}
-            @font-face {{
-                font-family: "PP Gosha Sans";
-                src: url("https://asmbly.org/wp-content/themes/altpico/assets/fonts/PPGoshaSans-Regular.woff2") format("woff2"),
-                     url("https://asmbly.org/wp-content/themes/altpico/assets/fonts/PPGoshaSans-Regular.woff") format("woff");
-                font-weight: normal;
-                font-style: normal;
-                font-display: swap;
-            }}
-
-            body {{ font-family: "PP Gosha Sans", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F2F4EF; margin: 0; padding: 15px; color: #333; font-size: 16px; }}
-            .container {{ max-width: 800px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 20px; }}
-            
-            .title-box {{ 
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 20px;
-                background-color: #b34a9a; 
-                color: white; 
-                padding: 15px 25px; 
-                border-radius: 8px; 
-                margin-bottom: 20px;
-            }}
-            .header-logo {{ max-height: 60px; width: auto; }}
-            h1 {{ font-family: "PP Gosha Sans"; font-weight: 500; text-align: center; font-size: 1.8em; margin: 0; }}
-            .subtitle {{ text-align: center; margin-top: 5px; margin-bottom: 25px; color: #555; }}
-            
-            .instructions {{
-                font-size: 1.25em;
-                font-weight: 500;
-                text-align: center;
-                padding: 20px;
-                margin: 20px 0;
-                color: #2c3e50;
-            }}
-
-            table {{ width: 100%; border-collapse: collapse; margin-top: 25px; }}
-            th, td {{ padding: 12px 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 1.1em; }}
-            th {{ font-family: "PP Gosha Sans"; font-weight: 500; background-color: #e8ecef; color: #34495e; }}
-            tr:hover {{ background-color: #f9f9f9; }}
-            .task-id {{ font-weight: 700; color: #2980b9; font-size: 1.4em; font-family: 'Courier New', Courier, monospace; }}
-            .no-tasks {{ text-align: center; color: #95a5a6; padding: 20px; }}
-            .error-box {{ background-color: #fbeae5; border: 1px solid #e74c3c; color: #c0392b; padding: 20px; border-radius: 5px; text-align: center; }}
-
-            .reload-section {{ text-align: center; margin-top: 30px; }}
-            .reload-text {{ margin-bottom: 15px; color: #555; font-size: 1em; }}
-            .reload-button {{
-                display: inline-block;
-                width: auto;
-                padding: 15px 45px;
-                border: none;
-                border-radius: 8px;
-                background-color: #27ae60;
-                color: white;
-                cursor: pointer;
-                text-align: center;
-                font-family: "PP Gosha Sans";
-                font-size: 1.2em;
-                font-weight: 500;
-                text-decoration: none;
-                -webkit-tap-highlight-color: transparent; /* Removes tap highlight on mobile */
-            }}
-            .reload-button:hover {{ background-color: #229954; }}
-            .footer-logo {{ display: block; width: 100%; max-width: 125px; margin: 40px auto 10px auto; }}
-
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="title-box">
-                <img src="https://asmbly.org/wp-content/uploads/2025/02/ceramics-white.svg" alt="Ceramics Logo" class="header-logo">
-                <h1>Recent Kiln Drop-Offs</h1>
-            </div>
-            {main_content}
-
-            <div class="reload-section">
-                <p class="reload-text">{reload_text}</p>
-                <a class="reload-button" href="">Refresh</a>
-            </div>
-            
-            <img src="https://asmbly.org/wp-content/uploads/2023/12/purple-horizontal.svg" alt="Asmbly Logo" class="footer-logo">
-
-        </div>
-    </body>
-    </html>
-    """
+    return PAGE_TEMPLATE.replace("__RELOAD_TEXT__", reload_text).replace("__MAIN_CONTENT__", main_content)
 
 
 def generate_html_page(tasks: list[dict]) -> str:
-    """Generates the HTML page to display the recent tasks."""
-    
+    """Generates the HTML page to display the recent tasks.
+
+    Each time is shown in US Central with its zone, e.g. "2023-12-31 18:00:00&nbsp;CST".
+    The non-breaking space keeps the zone on the same line as the time.
+    """
+    central = ZoneInfo(CENTRAL_TIME_ZONE)
     task_rows = ""
     if not tasks:
         task_rows = '<tr><td colspan="3" class="no-tasks">No submissions found in the last 24 hours. Please try refreshing.</td></tr>'
     else:
         for task in tasks:
-            # ClickUp API returns date created as a Unix timestamp in milliseconds
-            created_date = datetime.fromtimestamp(int(task['date_created']) / 1000, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+            # ClickUp API returns date created as a Unix timestamp in milliseconds (UTC)
+            created_utc = datetime.fromtimestamp(int(task['date_created']) / 1000, timezone.utc)
+            created_date = created_utc.astimezone(central).strftime('%Y-%m-%d %H:%M:%S&nbsp;%Z')
             
             # Use the custom_id if it exists, otherwise fall back to the standard id
             # (ClickUp sends "custom_id": null when a list has no custom IDs)

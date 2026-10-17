@@ -17,7 +17,10 @@ jobs:
     outputs:
       FACILITIES_API_URL: ${{ steps.get-api-url.outputs.API_URL }}
     name: Deploy to AWS
-    environment: prod
+    environment:
+      name: prod
+      # Shown on the repository's Deployments page and the run's summary
+      url: ${{ steps.get-api-url.outputs.API_URL }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write # Required for OIDC if you use it
@@ -25,16 +28,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::110104886034:role/GitHub-OIDC-facilities-automation-deploy
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup SAM CLI
-        uses: aws-actions/setup-sam@v2
+        uses: aws-actions/setup-sam@v3
 
       - name: Build SAM Application
         # The --use-container flag builds your functions in a Docker container
@@ -47,16 +50,49 @@ jobs:
           # --no-confirm-changeset is required for automation
           sam deploy --config-env prod --no-confirm-changeset
 
-      - name: Get API Gateway URL Output
+      - name: Get API URL Output
         id: get-api-url
         run: |
-          echo "Fetching API Gateway URL from CloudFormation stack outputs..."
+          # Prod is served at its custom domain (https://facilities.asmbly.org)
+          echo "Fetching the API's URL from CloudFormation stack outputs..."
           API_URL=$(aws cloudformation describe-stacks \
             --stack-name ${{ env.SAM_STACK_NAME }} \
-            --query "Stacks[0].Outputs[?OutputKey=='FacilitiesApiUrl'].OutputValue" \
+            --query "Stacks[0].Outputs[?OutputKey=='FacilitiesProdUrl'].OutputValue" \
             --output text)
           if [ -z "$API_URL" ]; then
-            echo "::error::Failed to retrieve 'FacilitiesApiUrl' from stack outputs."
+            echo "::error::Failed to retrieve 'FacilitiesProdUrl' from stack outputs."
             exit 1
           fi
           echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
+
+  # =================================================================
+  # JOB 2: List the API's routes in the run summary
+  # =================================================================
+  # A separate job, so the package it downloads runs without the deploy job's
+  # AWS credentials or its permission to request an OIDC token.
+  list-routes:
+    name: List API routes
+    needs: deploy
+    # The deploy has already succeeded, so a problem here mustn't fail the run.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: List API routes in the run summary
+        env:
+          API_URL: ${{ needs.deploy.outputs.FACILITIES_API_URL }}
+        run: |
+          pip install --quiet --only-binary=:all: PyYAML==6.0.3
+          python scripts/list_api_routes.py --base-url "$API_URL" >> "$GITHUB_STEP_SUMMARY"
