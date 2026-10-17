@@ -9,6 +9,7 @@ and one of those documents ever disagree, the linked document is right; fix this
 - [Start Here](#start-here)
 - [From Issue to Production](#from-issue-to-production)
 - [Running Tests](#running-tests)
+- [Dependency Updates](#dependency-updates)
 - [Adding a New Lambda Function](#adding-a-new-lambda-function)
 - [Coding Standards](#coding-standards)
 - [Working with AI Agents](#working-with-ai-agents)
@@ -108,6 +109,31 @@ without your change, say so in the pull request. A check you didn't run is not a
 
 ---
 
+## Dependency Updates
+
+[Dependabot](https://docs.github.com/en/code-security/dependabot) looks for new versions
+every Monday at 9:00 Central time and opens pull requests to `stage`. Its settings are in
+[`.github/dependabot.yml`](../.github/dependabot.yml).
+
+- **GitHub Actions** in `.github/workflows/`: all the new versions in one pull request,
+  with commits that start with `ci:`.
+- **Python packages** in `requirements-dev.txt` and each function's `requirements.txt`:
+  all the new versions in one pull request, with commits that start with `chore(deps):`
+  or `chore(deps-dev):`. Dependabot can only bump a version that is pinned, such as
+  `PyJWT[crypto]==2.15.1`. Most entries have no version, so each install already gets
+  the latest release and there is nothing for Dependabot to change. It doesn't update
+  `layers/requests_layer/` either: that layer's packages are committed as files, with no
+  requirements file.
+- **Security fixes** arrive when GitHub publishes an advisory, one pull request per
+  package.
+
+A Dependabot pull request is handled like any other: the `test` check must be green,
+someone reviews it, and a person merges it. Merging deploys the stage stack, so check it
+there before you promote to `main`. If an update breaks something, close the pull
+request and open an issue.
+
+---
+
 ## Adding a New Lambda Function
 
 Copy the shape of [`functions/networking/dynamic_dns_update/`](../functions/networking/dynamic_dns_update/)
@@ -115,7 +141,11 @@ and its block in [`templates/networking.yaml`](../templates/networking.yaml). It
 closest example of how new code should look.
 
 1. **Code.** Put the code in `functions/<area>/<name>/lambda_function.py`, with a
-   `lambda_handler` function. Add a `README.md` and a `tests/` folder next to it.
+   `lambda_handler` function. Add a `README.md` and a `tests/` folder next to it. If it
+   needs a package that no layer provides, list it in a `requirements.txt` next to the
+   code, and add that folder to the pip `directories` in `.github/dependabot.yml`;
+   `tests/test_dependabot.py` fails until you do
+   ([Dependency Updates](#dependency-updates)).
 2. **Template.** Add an `AWS::Serverless::Function` to the area's nested template,
    `templates/<area>.yaml`, with `CodeUri: ../functions/<area>/<name>/`. Give it:
    - `${Stage}` in its name
