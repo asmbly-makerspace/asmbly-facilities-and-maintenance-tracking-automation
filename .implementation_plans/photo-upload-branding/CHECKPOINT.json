@@ -10,13 +10,16 @@
       "file": "phase-1-brand-tokens-and-header.md",
       "status": "done",
       "pre_sha": "c0ae42f",
-      "review_rounds": "build independent review + 3 independent review-lead rounds (1 BLOCK, WARNs fixed; rounds 2-3 APPROVED)"
+      "review_rounds": "build independent review + 3 independent review-lead rounds (1 BLOCK, WARNs fixed; rounds 2-3 APPROVED)",
+      "squashed_sha": "3e5eb81"
     },
     {
       "id": 2,
       "title": "Controls, messages, result and layout",
       "file": "phase-2-controls-messages-and-layout.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "3e5eb81",
+      "review_rounds": "build cold review-lead + round 1 inline + round 2 cold review-lead (APPROVED; 2 WARN fixed)"
     }
   ],
   "integration": null,
@@ -62,6 +65,26 @@
       "type": "deferred",
       "phase": 1,
       "detail": "Owner may confirm: shared literals between token kinds (1px, 2px, 1rem) are listed in SHARED_LITERALS with reasons."
+    },
+    {
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "type": "phase_done",
+      "phase": 2,
+      "pytest": "1550 passed",
+      "page_kb": 57.9
+    },
+    {
+      "type": "decision",
+      "phase": 2,
+      "detail": "Style block only; script and markup byte-identical. Hover only under @media (hover: hover); buttons radius 4px weight 600; result card purple top edge; banner edge --brand (woodwork 1.6:1 too low); glyphs as tokens."
+    },
+    {
+      "type": "deferred",
+      "phase": 2,
+      "detail": "Safari native select may ignore 44px min-height (not checked, no Safari); dragleave flicker (script frozen, belongs with #114)."
     }
   ],
   "stories": [

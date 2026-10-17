@@ -25,7 +25,7 @@
     --ceramics: #b34a9a;
 
     /* Derived, per sRGB channel, rounded:
-       tint(p) = p × asmbly-purple + (1 − p) × asmbly-white (the guide's 20% steps);
+       tint(p) = p × colour + (1 − p) × asmbly-white (the guide's 20% steps);
        shade = 0.8 × colour + 0.2 × midnight-black. A test recomputes each. */
     --asmbly-purple-80: #515585;
     --asmbly-purple-60: #797d9f;
@@ -33,6 +33,8 @@
     --asmbly-purple-20: #caccd4;
     --lasers-shade: #ad373b;
     --electronics-shade: #057a5d;
+    --lasers-20: #ecd0cd;
+    --woodwork-20: #f2e8c5;
 
     /* What each colour is for. */
     --page-bg: var(--asmbly-white);
@@ -48,6 +50,20 @@
     --focus: var(--asmbly-purple);
     --focus-on-dark: var(--woodwork);
     --disabled-bg: var(--asmbly-purple-20);
+    --hover-bg: var(--asmbly-purple-80);
+    --drag-bg: var(--asmbly-purple-20);
+    --code-bg: var(--asmbly-purple-20);
+    --warning-bg: var(--lasers-20);
+    --banner-bg: var(--woodwork-20);
+    --banner-edge: var(--brand);
+
+    /* Message glyphs, one per kind. After the slash is the glyph's alternative text,
+       empty so screen readers skip it. A browser without that syntax shows no glyph;
+       the edge, background and weight still tell the kinds apart. */
+    --glyph-error: "✕" / "";
+    --glyph-ok: "✓" / "";
+    --glyph-warning: "!" / "";
+    --glyph-banner: "i" / "";
 
     /* Type. PP Gosha Bold is the brand's heading face; it isn't loaded until Asmbly
        confirms its web licence covers this page (plan README, Decision 5), so headings
@@ -55,9 +71,11 @@
        has it; no font file is fetched. */
     --font-body: Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     --font-heading: "Helvetica Neue", "Segoe UI", Roboto, Arial, system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     --font-size-body: 1rem;
     --font-size-h1: 1.75rem;
     --font-size-h2: 1.25rem;
+    --font-size-small: 0.875rem;
     --line-height: 1.5;
     --line-height-heading: 1.2;
     --weight-heading: 700;
@@ -84,6 +102,9 @@
     --focus-offset: 2px;
     --visually-hidden-size: 1px;
     --tap-target: 2.75rem;
+    --glyph-size: 1.25rem;
+    --glyph-offset: 0.125rem;
+    --underline-offset: 0.1875rem;
     --track-fill: 1fr;
     /* The @media rule below repeats this value (CSS can't use var() there); a test
        checks they match. */
@@ -118,26 +139,97 @@
   .pattern .brand { fill: var(--brand); }
 
   main { max-width: var(--content-max-width); margin: 0 auto; padding: var(--space-5) var(--gutter); }
-  button, .button { font: inherit; padding: var(--space-2) var(--space-4); border-radius: var(--radius-control); border: var(--border-width) solid var(--brand); background: var(--brand); color: var(--on-dark); cursor: pointer; display: inline-block; }
-  button:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
-  button:disabled { background: var(--disabled-bg); border-color: var(--disabled-bg); color: var(--text); cursor: not-allowed; }
-  .brand-band button.secondary { background: transparent; color: var(--on-dark); border: var(--border-width-strong) solid var(--on-dark); }
-  .brand-band button:focus-visible { outline-color: var(--focus-on-dark); }
-  select { font: inherit; width: 100%; padding: var(--space-2); border: var(--border-width) solid var(--control-border); border-radius: var(--radius-control); background: var(--page-bg); color: var(--text); }
-  select:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
-  .banner { margin: var(--space-3) 0 0; padding: var(--space-2) var(--space-3); background: var(--tint-bg); border: var(--border-width) solid var(--line); border-radius: var(--radius-control); }
+
+  /* Buttons: Submit, Choose a photo (a label), Sign in again; Sign out on the band. */
+  button, .button {
+    font: inherit; font-weight: var(--weight-strong);
+    display: inline-block; min-height: var(--tap-target); padding: var(--space-2) var(--space-5);
+    border: var(--border-width-strong) solid var(--brand); border-radius: var(--radius-control);
+    background: var(--brand); color: var(--on-dark); cursor: pointer; text-align: center;
+  }
+  button:disabled { background: var(--disabled-bg); color: var(--text); border-color: var(--control-border); border-style: dashed; cursor: not-allowed; }
+  .brand-band button.secondary { background: transparent; color: var(--on-dark); border-color: var(--on-dark); padding: var(--space-2) var(--space-4); }
+  #sign-in-again { margin-top: var(--space-3); }
+
+  /* The class list. A long class name is cut inside the list, never widening the page. */
+  select {
+    font: inherit; width: 100%; max-width: 100%; min-height: var(--tap-target); padding: var(--space-2) var(--space-3);
+    border: var(--border-width-strong) solid var(--control-border); border-radius: var(--radius-control);
+    background: var(--page-bg); color: var(--text); cursor: pointer; text-overflow: ellipsis;
+  }
+  select:disabled { background: var(--disabled-bg); color: var(--text); border-style: dashed; cursor: not-allowed; }
+
+  /* The photo box. */
   .drop-zone { border: var(--border-width-strong) dashed var(--control-border); border-radius: var(--radius); padding: var(--space-5); text-align: center; }
-  .drop-zone.dragging { border-color: var(--brand); background: var(--tint-bg); }
+  .drop-zone p { margin: 0 0 var(--space-3); }
+  .drop-zone.dragging { background: var(--drag-bg); color: var(--text); border-style: solid; border-color: var(--brand); }
+  /* While a photo is over the box, its text and button don't take the pointer, so the
+     box doesn't flicker between dragging and not as the pointer crosses them. */
+  .drop-zone.dragging * { pointer-events: none; }
   .visually-hidden { position: absolute; width: var(--visually-hidden-size); height: var(--visually-hidden-size); overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .drop-zone input:focus-visible + label, .drop-zone label:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+  .preview { display: block; max-width: 100%; height: auto; max-height: var(--preview-max-height); margin: var(--space-3) auto 0; border-radius: var(--radius-control); }
+
+  /* Focus: a ring on everything that takes the keyboard. The file input is hidden, so
+     its label shows the ring. */
+  button:focus-visible, select:focus-visible, a:focus-visible, .drop-zone input:focus-visible + label, .drop-zone label:focus-visible {
+    outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset);
+  }
+  .brand-band button:focus-visible { outline-color: var(--focus-on-dark); }
+
+  /* Messages. Plain status text ("Signing in…", "Loading classes…", "Submitting…")
+     keeps the plain look. The four kinds each add a left edge and a glyph, so they
+     differ by more than colour. */
   .message { margin: var(--space-2) 0 0; }
-  .message.error { color: var(--error); font-weight: var(--weight-strong); }
-  .message.ok { color: var(--ok); }
-  .preview { display: block; max-width: 100%; max-height: var(--preview-max-height); margin: var(--space-3) auto 0; border-radius: var(--radius-control); }
-  .warning { margin: var(--space-5) 0 var(--space-3); padding: var(--space-3); border-left: var(--border-width-accent) solid var(--error); }
-  .result { margin-top: var(--space-5); padding: var(--space-3); border: var(--border-width) solid var(--line); border-radius: var(--radius-control); }
-  .result pre { white-space: pre-wrap; word-break: break-word; background: var(--tint-bg); padding: var(--space-2); border-radius: var(--radius-control); }
-  .result ul { margin: var(--space-1) 0; }
+  .message.error, .message.ok, .warning, .banner {
+    display: grid; grid-template-columns: auto var(--track-fill); align-items: start; gap: var(--space-3);
+  }
+  .message.error::before, .message.ok::before, .warning::before, .banner::before {
+    width: var(--glyph-size); height: var(--glyph-size); margin-top: var(--glyph-offset);
+    border-radius: var(--radius-control); color: var(--on-dark);
+    font-family: var(--font-heading); font-size: var(--font-size-small); font-weight: var(--weight-heading);
+    line-height: var(--glyph-size); text-align: center;
+  }
+  .message.error { padding-left: var(--space-3); color: var(--error); font-weight: var(--weight-strong); border-left: var(--border-width-accent) solid var(--error); }
+  .message.error::before { content: var(--glyph-error); background: var(--error); }
+  .message.ok { padding-left: var(--space-3); color: var(--ok); border-left: var(--border-width-accent) solid var(--ok); }
+  .message.ok::before { content: var(--glyph-ok); background: var(--ok); }
+  .warning {
+    margin: var(--space-5) 0 var(--space-3); padding: var(--space-3) var(--space-4);
+    background: var(--warning-bg); color: var(--text); font-weight: var(--weight-strong);
+    border-left: var(--border-width-accent) solid var(--error); border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  }
+  .warning::before { content: var(--glyph-warning); background: var(--error); }
+  .banner {
+    margin: 0 0 var(--space-5); padding: var(--space-3) var(--space-4);
+    background: var(--banner-bg); color: var(--text);
+    border-left: var(--border-width-accent) solid var(--banner-edge); border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  }
+  /* A monospace "i" has the serifs that keep it from reading as a capital I. */
+  .banner::before { content: var(--glyph-banner); background: var(--banner-edge); font-family: var(--font-mono); }
+
+  /* The result card. */
+  .result { margin-top: var(--space-5); padding: var(--space-4) var(--space-5); background: var(--page-bg); border: var(--border-width) solid var(--line); border-top: var(--border-width-accent) solid var(--brand); border-radius: var(--radius); }
+  .result > :first-child { margin-top: 0; }
+  .result p, .result li, .result pre { overflow-wrap: anywhere; }
+  .result p { margin: var(--space-3) 0 0; }
+  .result ul { margin: var(--space-1) 0 0; padding-left: var(--space-5); }
+  .result pre {
+    margin: var(--space-2) 0 0; padding: var(--space-3); white-space: pre-wrap;
+    background: var(--code-bg); color: var(--text); border-radius: var(--radius-control);
+    font-family: var(--font-mono); font-size: var(--font-size-small);
+  }
+  /* "Opened pull request #N" is a link alone in a grid message: keep it (and its focus
+     ring) the width of its text, not of the card. */
+  .message > a { justify-self: start; }
+  .result a { text-decoration: underline; text-decoration-thickness: var(--border-width); text-underline-offset: var(--underline-offset); }
+
+  /* Hover, only where a pointer can hover (a tap on a phone would leave it on). */
+  @media (hover: hover) {
+    button:hover:not(:disabled), .button:hover { background: var(--hover-bg); border-color: var(--hover-bg); }
+    .brand-band button.secondary:hover { background: var(--on-dark); color: var(--brand); border-color: var(--on-dark); }
+    select:hover:not(:disabled), .drop-zone:hover { border-color: var(--brand); }
+    .result a:hover { text-decoration-thickness: var(--border-width-strong); }
+  }
 
   /* Must match --breakpoint-wide. */
   @media (min-width: 40rem) {

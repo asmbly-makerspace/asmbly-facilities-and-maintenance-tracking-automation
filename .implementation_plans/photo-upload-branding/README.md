@@ -60,7 +60,7 @@ which closes all three.
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
 | 1 | [Brand tokens, header, logo and type](phase-1-brand-tokens-and-header.md) | lambda, docs | M | [x] Complete |
-| 2 | [Controls, messages, result and layout](phase-2-controls-messages-and-layout.md) | lambda, docs | M | [ ] Pending |
+| 2 | [Controls, messages, result and layout](phase-2-controls-messages-and-layout.md) | lambda, docs | M | [x] Complete |
 
 ## Dependencies
 

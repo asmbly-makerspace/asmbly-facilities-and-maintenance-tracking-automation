@@ -155,6 +155,48 @@ In order:
    our side. Try again later." otherwise; with no answer at all, "Couldn't reach the
    server. Check your connection and try again."
 
+### How It Looks
+
+The texts above are word for word what the page shows; only their look is described
+here.
+
+- **Buttons.** **Submit**, **Choose a photo** and **Sign in again** are Asmbly Purple
+  with Asmbly White text, at least 44px high. **Sign out** is an outline on the band
+  that fills with Asmbly White on hover. On a device with a mouse or trackpad, a
+  button turns the 80% purple tint while the pointer is over it; on a phone, where a
+  tap would leave that look on, it doesn't change. **Submit** while disabled is the 20% purple tint with a dashed border, dark
+  text and a "not allowed" cursor, so it differs from the enabled button by more than
+  colour. Every control shows a 3px focus ring from the keyboard (woodwork yellow on
+  the band, Asmbly Purple elsewhere); the hidden file input shows its ring on **Choose a
+  photo**.
+- **The class list and the photo box** have a 60% purple border that turns Asmbly
+  Purple on hover. The list is dashed and tinted while it is disabled (as the classes
+  load), and cuts a long class name short instead of widening the page. While a photo is
+  dragged over the box, the box is tinted and its dashed border turns solid purple.
+- **Messages.** Four kinds differ from one another and from plain text by a 4px left
+  edge and a glyph in a small square, not by colour alone:
+  - an error ("Couldn't load the class list…", a photo problem, a failed submission,
+    "Sign-in didn't finish…"): dark red bold text, a red edge and "✕";
+  - a success ("This photo can be used…", "Location data was removed from this photo.",
+    the first line of the result): green text, a green edge and "✓". When that first
+    line is "Opened pull request #N" or "Updated pull request #N", it is all link, so
+    it reads in Asmbly Purple, underlined, after the green edge and "✓";
+  - the public-on-GitHub warning: dark bold text on the light lasers-red tint, a red
+    edge and "!";
+  - the stage banner: dark text on the light woodwork tint, a purple edge and "i".
+
+  "Signing in…", "Loading classes…", "Submitting…" and a class `warning` keep the plain
+  text style (loading behaviour belongs to #114). The glyphs are decorative: their
+  alternative text is empty, so screen readers read only the message. Browsers that
+  don't know that syntax (Safari before 17.4, Firefox before 128) show no glyph; the
+  edge, the background and the weight still tell the kinds apart.
+- **The result** is a card with a purple top edge. Its link is underlined (thicker on
+  hover), long file names and the pull request description wrap inside it, and the
+  description sits in a tinted monospace block. The card's 1px border is decorative
+  (2.2:1); its purple top edge marks it.
+- **Layout.** One column, up to 760px wide. At 320px and at 200% zoom nothing scrolls
+  sideways: the header wraps, the pattern is cut off, and the text wraps.
+
 ## Brand and Design Tokens
 
 The page follows the Asmbly brand guide (the screenshots in issue #111). Its stylesheet
@@ -189,11 +231,11 @@ that it does.
   | `--ceramics` | `#b34a9a` |
 
   The sub-brand colours are used only in the pattern strip, in the focus ring on the
-  purple band (woodwork), and, as shades, in the error and success text and the
-  warning's left border. There is no
+  purple band (woodwork), as shades in the error and success text and edges, and as
+  20% tints behind the warning (lasers) and the stage banner (woodwork). There is no
   pure white or black.
 - **Derived colours** are computed per sRGB channel and rounded. A tint is
-  `tint(p) = p × asmbly-purple + (1 − p) × asmbly-white`, and a shade is
+  `tint(p) = p × colour + (1 − p) × asmbly-white`, and a shade is
   `shade = 0.8 × colour + 0.2 × midnight-black`. They are written as hex, not
   `color-mix()`, so older browsers show them too.
 
@@ -202,18 +244,31 @@ that it does.
   | `--asmbly-purple-80`, `-60`, `-40`, `-20` | `#515585`, `#797d9f`, `#a2a4ba`, `#caccd4` | tint 0.8, 0.6, 0.4, 0.2 |
   | `--lasers-shade` | `#ad373b` | shade of lasers (error text, 5.6:1 on Asmbly White) |
   | `--electronics-shade` | `#057a5d` | shade of electronics (success text, 4.8:1) |
+  | `--lasers-20` | `#ecd0cd` | tint 0.2 of lasers (the warning's background) |
+  | `--woodwork-20` | `#f2e8c5` | tint 0.2 of woodwork (the stage banner's background) |
+
+  Tints lighter than 60% only ever carry Midnight Black text (the guide's rule), and a
+  test checks every rule that puts one behind text.
 - **Semantic tokens** are what the rules use, and each is built from the brand tokens:
   `--page-bg`, `--text`, `--brand`, `--on-dark`, `--line`, `--line-on-dark`,
-  `--control-border`, `--tint-bg`, `--error`, `--ok`, `--focus`, `--focus-on-dark` and
-  `--disabled-bg`.
+  `--control-border`, `--tint-bg`, `--error`, `--ok`, `--focus`, `--focus-on-dark`,
+  `--disabled-bg`, `--hover-bg`, `--drag-bg`, `--code-bg`, `--warning-bg`, `--banner-bg`
+  and `--banner-edge`.
+- **Glyph tokens** (`--glyph-error`, `--glyph-ok`, `--glyph-warning`, `--glyph-banner`)
+  each hold one character and its empty alternative text (`"✕" / ""`), so the glyph is
+  written once and the rules use it through `var()`.
 - **Type and space tokens:**
-  - type: `--font-body`, `--font-heading`, `--font-size-*`, `--line-height*` and
-    `--weight-*`;
+  - type: `--font-body`, `--font-heading`, `--font-mono` (the result's description and
+    the banner's "i"), `--font-size-*`, `--line-height*` and `--weight-*`;
   - spacing: the scale `--space-1` (0.25rem) to `--space-6` (2rem);
   - sizes: `--gutter`, `--radius*`, `--content-max-width`, `--logo-height` (3.5rem, so
     56px against the brand minimum of 50px), `--pattern-height`, `--preview-max-height`,
-    `--border-width*`, `--focus-*`, `--visually-hidden-size`, `--tap-target` and
-    `--track-fill` (the header grid's flexible column).
+    `--border-width*`, `--focus-*`, `--visually-hidden-size`, `--tap-target` (2.75rem,
+    44px), `--glyph-size`, `--glyph-offset`, `--underline-offset` and `--track-fill`
+    (the flexible column of the header grid and of each message's glyph-and-text grid).
+
+  Hover rules sit in `@media (hover: hover)`, which has no number, so the one
+  `min-width` breakpoint stays the only literal outside the block.
 
 These tests enforce the rule:
 
@@ -224,8 +279,9 @@ These tests enforce the rule:
   family fails. The inline SVGs may carry only the attributes in `SVG_ATTRIBUTES`, and
   `fill` only as `url(#…)`.
 - `test_token_block_holds_only_tokens` checks that the one `:root` block holds only
-  tokens, and that each token is a `#rrggbb` colour, a `var()`, a length or number, or
-  (for `--font-*`) a font stack.
+  tokens, and that each token is a `#rrggbb` colour, a `var()`, a length or number,
+  (for `--font-*`) a font stack, or (for the four `--glyph-*` glyphs) one character with
+  an empty alternative text.
 - `test_tokens_are_defined_once` catches a duplicate token, colour, font stack or other
   literal. Two tokens of different kinds may share a number only when the pair is listed
   in `SHARED_LITERALS`, with the reason (for example, `--font-size-body` and `--space-4`
@@ -310,7 +366,23 @@ Submit, that the page's messages and limits are the server's, that it uses no
 `innerHTML` or `style` attributes, and that the log holds no query string. They also
 cover the branding: the official logo in the header and its minimum size, that the
 pattern is decorative, the design-token rule above, the colour contrast, that no font
-or outside asset is loaded, and that the served page is under 100 KB.
+or outside asset is loaded, and that the served page is under 100 KB. And the controls:
+that light tints carry dark text, that the four message kinds each have a left edge and
+their own glyph while plain status text has neither, a focus ring on every control, 44px
+tap targets, a hover look on every control (only inside `@media (hover: hover)`), a
+disabled look that is dashed and not only coloured, that the result's text wraps and its
+link is underlined, and that nothing hides a horizontal overflow.
+
+Some things the tests can't see; check them by hand when you change the styles:
+
+- Render the page (`lambda_function.render_page` with a test config) in Chrome or
+  Firefox at 320px wide and at 1280px with 200% zoom, with the longest class name chosen
+  and a dry-run result with long file names: nothing scrolls sideways.
+- Walk it with the keyboard: **Sign out**, the class list, **Choose a photo**,
+  **Submit**, the result's link, each with a visible ring. (Safari skips buttons and
+  links on Tab unless "Press Tab to highlight each item" is on.)
+- Check any colour pair the tests don't list with the WebAIM contrast checker.
+- Safari may draw a native `select` at its own height rather than 44px.
 
 The page's JavaScript has no automated test in CI (plan README, Decision 19): the
 repository has no JavaScript test runner, and the server re-checks every photo. When you

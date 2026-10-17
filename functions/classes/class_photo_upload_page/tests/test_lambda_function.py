@@ -273,19 +273,20 @@ PURE_WHITE_OR_BLACK = re.compile(r"(?<![\w-])(white|black)(?![\w-])", re.I)
 # else (a named colour such as whitesmoke, a system colour such as Highlight, a length)
 # fails test_styles_use_tokens_only. Add a keyword here only if it can't carry a value.
 ALLOWED_VALUE_WORDS = {
-    "absolute", "auto", "block", "border-box", "break-word", "center", "currentColor", "dashed", "grid",
-    "hidden", "important", "inherit", "inline-block", "none", "not-allowed", "nowrap", "pointer", "pre-wrap",
-    "rect", "solid", "transparent",
+    "absolute", "anywhere", "auto", "block", "border-box", "center", "currentColor", "dashed", "ellipsis",
+    "grid", "hidden", "important", "inherit", "inline-block", "none", "not-allowed", "nowrap", "pointer",
+    "pre-wrap", "rect", "solid", "start", "transparent", "underline",
 }
 GRID_AREAS = {"logo", "title", "sign-out"}
 # Token values: a #rrggbb colour, a reference to another token, a length or unitless
 # number, or (for --font-* stacks only) a list of family names.
 TOKEN_VALUE = re.compile(r"#[0-9a-fA-F]{6}|var\(--[\w-]+\)|\d*\.?\d+(?:rem|px|fr)?")
 FONT_STACK = re.compile(r'(?:"[\w ]+"|[\w-]+)(?:, (?:"[\w ]+"|[\w-]+))*')
+# A --glyph-* token: one visible character and an empty alternative text, so screen
+# readers skip it (CSS Generated Content, "content: <string> / <string>").
+GLYPH_TOKEN = re.compile(r'"[^"\s]" / ""')
 # Tokens defined for later phases or used outside var(): see the phase 1 hand-off.
 RESERVED_TOKENS = {
-    "--asmbly-purple-80": "the guide's 80% tint, for phase 2's hover state",
-    "--tap-target": "phase 2's control height",
     "--breakpoint-wide": "the @media literal repeats it (test_breakpoint_matches_token)",
 }
 # Literal values two tokens of different kinds may share (plan Design rule 3): a new
@@ -294,6 +295,7 @@ SHARED_LITERALS = {
     "1px": {"--border-width", "--visually-hidden-size"},  # a hairline border; the clip box of hidden text
     "2px": {"--border-width-strong", "--focus-offset"},  # a strong border; the gap before the focus ring
     "1rem": {"--font-size-body", "--space-4"},  # body text size; a spacing step
+    "1.25rem": {"--font-size-h2", "--glyph-size"},  # the h2 size; the box a message glyph sits in
 }
 # The only attributes the inline SVGs may carry; fill only as a same-page paint server.
 SVG_ATTRIBUTES = {
@@ -323,6 +325,8 @@ DERIVED_COLOURS = [
     ("--asmbly-purple-20", "--asmbly-purple", "--asmbly-white", 0.2),
     ("--lasers-shade", "--lasers", "--midnight-black", 0.8),
     ("--electronics-shade", "--electronics", "--midnight-black", 0.8),
+    ("--lasers-20", "--lasers", "--asmbly-white", 0.2),
+    ("--woodwork-20", "--woodwork", "--asmbly-white", 0.2),
 ]
 # (foreground, background, minimum WCAG 2.1 contrast ratio).
 CONTRAST_PAIRS = [
@@ -336,7 +340,30 @@ CONTRAST_PAIRS = [
     ("--text", "--disabled-bg", 4.5),
     ("--control-border", "--page-bg", 3.0),
     ("--text", "--tint-bg", 4.5),
+    ("--text", "--warning-bg", 4.5),
+    ("--text", "--banner-bg", 4.5),
+    ("--text", "--drag-bg", 4.5),
+    ("--text", "--code-bg", 4.5),
+    ("--on-dark", "--hover-bg", 4.5),
+    # The message glyphs: Asmbly White on each kind's edge colour.
+    ("--on-dark", "--error", 4.5),
+    ("--on-dark", "--ok", 4.5),
+    ("--on-dark", "--banner-edge", 4.5),
+    # Edges (non-text, 3:1) against the background they sit on.
+    ("--error", "--warning-bg", 3.0),
+    ("--banner-edge", "--banner-bg", 3.0),
+    ("--banner-edge", "--page-bg", 3.0),
 ]
+# The four message kinds: (selector, glyph token).
+MESSAGE_KINDS = [
+    (".message.error", "--glyph-error"),
+    (".message.ok", "--glyph-ok"),
+    (".warning", "--glyph-warning"),
+    (".banner", "--glyph-banner"),
+]
+MEDIA_BLOCK = re.compile(r"@media([^{]*)\{((?:[^{}]*\{[^{}]*\})*[^{}]*)\}")
+RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+HOVER_MEDIA = "(hover: hover)"
 
 
 def _style() -> str:
@@ -413,6 +440,25 @@ def _declaration_values(css: str) -> list[str]:
             if ":" in declaration:
                 values.append(declaration.split(":", 1)[1].strip())
     return values
+
+
+def _rules() -> list[tuple[str, list[str], str]]:
+    """Every rule after the token block as (media condition or "", selectors, declarations)."""
+    css = _rules_after_root()
+    found = []
+    for media in MEDIA_BLOCK.finditer(css):
+        for selectors, body in RULE.findall(media.group(2)):
+            found.append((media.group(1).strip(), [s.strip() for s in selectors.split(",")], body))
+    for selectors, body in RULE.findall(MEDIA_BLOCK.sub("", css)):
+        found.append(("", [s.strip() for s in selectors.split(",")], body))
+    return found
+
+
+def _rule(selector: str, media: str = "") -> str:
+    """The declarations of every rule whose selector list holds exactly `selector`, joined."""
+    bodies = [" ".join(body.split()) for condition, selectors, body in _rules() if condition == media and selector in selectors]
+    assert bodies, f"no rule for {selector} {media}".strip()
+    return "; ".join(bodies)
 
 
 def _markup() -> str:
@@ -522,6 +568,8 @@ def test_token_block_holds_only_tokens() -> None:
         assert name.startswith("--"), f"{name} in the token block"
         if name.startswith("--font-") and not name.startswith("--font-size"):
             assert FONT_STACK.fullmatch(value), f"{name}: {value}"
+        elif name.startswith("--glyph-") and not name.startswith(("--glyph-size", "--glyph-offset")):
+            assert GLYPH_TOKEN.fullmatch(value), f"{name}: {value}"
         else:
             assert TOKEN_VALUE.fullmatch(value), f"{name}: {value}"
 
@@ -607,3 +655,94 @@ def test_headings_are_bold_and_larger_than_body() -> None:
 
 def test_served_page_is_small() -> None:
     assert len(_call(_event())["body"].encode("utf-8")) < 100 * 1024
+
+
+# ---- Controls, messages and result (plan photo-upload-branding, phase 2) ----
+
+
+def test_light_tints_carry_dark_text() -> None:
+    tints = {_colour(name) for name in _tokens() if re.search(r"-(20|40)$", name)}
+    checked = 0
+    for media, selectors, body in _rules():
+        for token in re.findall(r"background(?:-color)?:\s*var\((--[\w-]+)\)", body):
+            if _colour(token) in tints:
+                checked += 1
+                assert re.search(r"(?<![\w-])color:\s*var\(--text\)", body), f"{selectors} {media}"
+                assert "--on-dark" not in body, f"{selectors} {media}"
+    assert checked >= 6
+
+
+def test_message_kinds_differ_beyond_colour() -> None:
+    tokens = _tokens()
+    glyphs = []
+    for selector, glyph in MESSAGE_KINDS:
+        assert re.search(r"border-left: var\(--border-width-accent\) solid var\(--[\w-]+\)", _rule(selector)), selector
+        assert f"content: var({glyph})" in _rule(selector + "::before"), selector
+        assert GLYPH_TOKEN.fullmatch(tokens[glyph]), glyph
+        glyphs.append(tokens[glyph])
+    assert len(set(glyphs)) == len(glyphs)
+    # Plain status text ("Signing in…", "Loading classes…", "Submitting…") has no edge or glyph.
+    assert "border" not in _rule(".message") and "content" not in _rule(".message")
+    # Error and warning text is heavier than success and banner text.
+    for selector in (".message.error", ".warning"):
+        assert "font-weight: var(--weight-strong)" in _rule(selector)
+    for selector in (".message.ok", ".banner"):
+        assert "font-weight" not in _rule(selector)
+
+
+def test_focus_is_visible() -> None:
+    ring = "outline: var(--focus-width) solid var(--focus)"
+    for selector in ("button:focus-visible", "select:focus-visible", "a:focus-visible", ".drop-zone input:focus-visible + label"):
+        assert ring in _rule(selector), selector
+    assert "outline-color: var(--focus-on-dark)" in _rule(".brand-band button:focus-visible")
+    assert float(_tokens()["--focus-width"].removesuffix("px")) >= 2
+    assert not re.search(r"outline:\s*(none|0)\b", _css())
+
+
+def test_tap_targets_are_44px() -> None:
+    for selector in ("button", ".button", "select"):
+        assert "min-height: var(--tap-target)" in _rule(selector), selector
+    assert _rem_to_px(_tokens()["--tap-target"]) >= 44
+    # font: inherit resets font-weight, so the weight must come after it.
+    buttons = _rule("button")
+    assert buttons.index("font: inherit") < buttons.index("font-weight: var(--weight-strong)")
+
+
+def test_controls_have_hover() -> None:
+    assert "background: var(--hover-bg)" in _rule("button:hover:not(:disabled)", HOVER_MEDIA)
+    assert "background: var(--hover-bg)" in _rule(".button:hover", HOVER_MEDIA)
+    assert "background: var(--on-dark)" in _rule(".brand-band button.secondary:hover", HOVER_MEDIA)
+    assert "color: var(--brand)" in _rule(".brand-band button.secondary:hover", HOVER_MEDIA)
+    for selector in ("select:hover:not(:disabled)", ".drop-zone:hover"):
+        assert "border-color: var(--brand)" in _rule(selector, HOVER_MEDIA), selector
+    # No hover look outside (hover: hover), where a tap would leave it on.
+    assert not [selectors for media, selectors, _ in _rules() if media != HOVER_MEDIA and any(":hover" in s for s in selectors)]
+
+
+def test_disabled_controls_differ_beyond_colour() -> None:
+    for selector in ("button:disabled", "select:disabled"):
+        rule = _rule(selector)
+        assert "border-style: dashed" in rule and "cursor: not-allowed" in rule, selector
+        assert "color: var(--text)" in rule
+    assert "opacity" not in _css()
+    assert "background: var(--drag-bg)" in _rule(".drop-zone.dragging")
+    assert "border-style: solid" in _rule(".drop-zone.dragging")
+
+
+def test_result_text_wraps() -> None:
+    for selector in (".result p", ".result li", ".result pre"):
+        assert "overflow-wrap: anywhere" in _rule(selector), selector
+    assert "white-space: pre-wrap" in _rule(".result pre")
+    assert "text-decoration: underline" in _rule(".result a")
+    # The opened/updated link is the only child of a grid message: it must not stretch.
+    assert "justify-self: start" in _rule(".message > a")
+    assert "border: var(--border-width) solid var(--line)" in _rule(".result")
+
+
+def test_no_hidden_horizontal_overflow() -> None:
+    for selector in ("html", "body", "main"):
+        for media, selectors, body in _rules():
+            if selector in selectors:
+                assert not re.search(r"overflow(-x)?:\s*hidden", body), selector
+    assert "tabindex" not in PAGE_HTML
+    assert "max-width: 100%" in _rule("select") and "max-width: 100%" in _rule(".preview")

@@ -10,7 +10,7 @@ estimated_size: M
 
 # Phase 2: Controls, messages, result and layout
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-16 on branch feature/photo-upload-branding (prep amendments applied: see the end)
 
 ## Required reading
 
@@ -69,11 +69,9 @@ None.
 | `--woodwork-20` | `#f2e8c5` | `mix(woodwork, asmbly-white, 0.2)` |
 | `--warning-bg` | `var(--lasers-20)` | Midnight Black on it: 11.8:1 |
 | `--banner-bg` | `var(--woodwork-20)` | Midnight Black on it: 14.0:1 |
-| `--banner-edge` | `var(--woodwork)` | |
+| `--banner-edge` | `var(--brand)` | 10.2:1 on `--banner-bg` (prep amendment 2; woodwork was 1.6:1) |
 | `--hover-bg` | `var(--asmbly-purple-80)` | Asmbly White on it: 6.4:1 |
-| `--control-edge` | `var(--asmbly-purple-60)` | 3.6:1 on Asmbly White (non-text 3:1) |
 | `--drag-bg` | `var(--asmbly-purple-20)` | Midnight Black on it: 10.7:1 |
-| `--edge-width` | `4px` | message left edges |
 | `--code-bg` | `var(--asmbly-purple-20)` | the dry-run description's `pre`; Midnight Black on it: 10.7:1 |
 
 Tints lighter than 60% (all the `-20` tokens) only ever carry `--text` (Midnight Black),
@@ -90,7 +88,7 @@ both too low).
   border.
 - **Sign out** (`button.secondary` on the band): phase 1's outline; hover fills it with
   `--on-dark` and turns its text `--brand`.
-- Disabled **Submit**: `background: var(--disabled-bg); color: var(--text); border-style: dashed; border-color: var(--control-edge); cursor: not-allowed;`
+- Disabled **Submit**: `background: var(--disabled-bg); color: var(--text); border-style: dashed; border-color: var(--control-border); cursor: not-allowed;`
   no `opacity` (it would lower the text's contrast; remove phase 1's `--disabled-opacity`
   if it is no longer used). Different from enabled by background, dashed border and
   cursor, and the label stays at 10.7:1.
@@ -100,11 +98,11 @@ both too low).
   `--focus-on-dark`. Never `outline: none` without a replacement.
 
 **Class list** (`select`): `width: 100%; max-width: 100%; min-height: var(--tap-target);`
-`border: var(--border-width-strong) solid var(--control-edge); border-radius: var(--radius);`
+`border: var(--border-width-strong) solid var(--control-border); border-radius: var(--radius);`
 `background: var(--page-bg); color: var(--text);`. A long class name is cut inside the
 select, never widening the page.
 
-**Photo box** (`.drop-zone`): `border: var(--border-width-strong) dashed var(--control-edge);`
+**Photo box** (`.drop-zone`): `border: var(--border-width-strong) dashed var(--control-border);`
 `border-radius: var(--radius); padding: var(--space-5);` text centred. `.drop-zone.dragging`:
 `background: var(--drag-bg); border-style: solid; border-color: var(--brand);`.
 
@@ -116,10 +114,10 @@ the first). The visible text is unchanged.
 
 | Kind | Selector | Look |
 | --- | --- | --- |
-| Error | `.message.error` (class status, photo status, `#result` errors, sign-in problem) | `--error` text, bold, `--edge-width` solid `--error` left edge, padding-left `--space-3`, glyph "✕" |
-| Success | `.message.ok` (photo OK, "Location data was removed…", "Opened/Updated pull request #N", "Dry run: nothing was opened") | `--ok` text, `--edge-width` solid `--ok` left edge, glyph "✓" |
-| Public-on-GitHub warning | `.warning` | `--warning-bg` background, `--text` text, `--edge-width` solid `--error` left edge, bold, glyph "!" |
-| Stage banner | `.banner` | `--banner-bg` background, `--text` text, `--edge-width` solid `--banner-edge` left edge, glyph "i" or "⚙" |
+| Error | `.message.error` (class status, photo status, `#result` errors, sign-in problem) | `--error` text, bold, `--border-width-accent` solid `--error` left edge, padding-left `--space-3`, glyph "✕" |
+| Success | `.message.ok` (photo OK, "Location data was removed…", "Opened/Updated pull request #N", "Dry run: nothing was opened") | `--ok` text, `--border-width-accent` solid `--ok` left edge, glyph "✓" |
+| Public-on-GitHub warning | `.warning` | `--warning-bg` background, `--text` text, `--border-width-accent` solid `--error` left edge, bold, glyph "!" |
+| Stage banner | `.banner` | `--banner-bg` background, `--text` text, `--border-width-accent` solid `--banner-edge` left edge, glyph "i" or "⚙" |
 
 Plain status messages ("Signing in…", "Loading classes…", "Submitting…", a class
 warning) keep the plain `.message` style: `--text`, no edge, no glyph (README Decision 2:
@@ -167,13 +165,13 @@ rule whose selector list contains `selector` (exact match of one selector in the
 - `test_derived_tokens_follow_the_formula` (extended): `--lasers-20` and `--woodwork-20`.
 - `test_brand_colour_pairs_meet_contrast` (extended): `--text`/`--warning-bg` 4.5,
   `--text`/`--banner-bg` 4.5, `--text`/`--drag-bg` 4.5, `--text`/`--code-bg` 4.5, `--on-dark`/`--hover-bg` 4.5,
-  `--brand`/`--page-bg` 4.5 (links), `--control-edge`/`--page-bg` 3.0,
+  `--brand`/`--page-bg` 4.5 (links), `--control-border`/`--page-bg` 3.0,
   `--focus`/`--page-bg` 3.0, `--focus-on-dark`/`--brand` 3.0, `--text`/`--disabled-bg` 4.5.
 - `test_light_tints_carry_dark_text`: every rule whose `background` is a token resolving
   to a tint lighter than 60% (`--*-20`, `--*-40`) sets `color: var(--text)` or inherits it
   (no `--on-dark` in that rule).
 - `test_message_kinds_differ_beyond_colour`: `.message.error`, `.message.ok`, `.warning`
-  and `.banner` each have a left-edge border (`border-left` with `--edge-width`) and a
+  and `.banner` each have a left-edge border (`border-left` with `--border-width-accent`) and a
   `::before` rule whose `content` glyph differs from the other three; each `::before`
   has the `/ ""` alternative-text form.
 - `test_focus_is_visible`: `:focus-visible` rules exist for `button`, `select`, `a` and
@@ -254,3 +252,122 @@ rules for buttons, select, drop zone, the four message kinds and the result card
 tests that enforce tokens, contrast, focus, tap targets and message cues. The `<script>`
 is unchanged, so #114 can change loading behaviour on top of this styling and should style
 any new state with these tokens and message kinds.
+
+As built (only the `<style>` block of `page.html` changed; everything outside it is
+byte-for-byte the phase 1 page):
+
+- **New tokens:** `--lasers-20`, `--woodwork-20`; `--hover-bg`, `--drag-bg`, `--code-bg`,
+  `--warning-bg`, `--banner-bg`, `--banner-edge` (`--brand`); `--glyph-error` "✕",
+  `--glyph-ok` "✓", `--glyph-warning` "!", `--glyph-banner` "i" (each `"x" / ""`);
+  `--font-mono`, `--font-size-small`, `--glyph-size` (1.25rem, listed in
+  `SHARED_LITERALS` with `--font-size-h2`), `--glyph-offset`, `--underline-offset`.
+  `RESERVED_TOKENS` now holds only `--breakpoint-wide`.
+- **Message kinds:** a grid (`auto` glyph column, `--track-fill` text column) with a
+  `::before` square (`--glyph-size`, Asmbly White glyph on the kind's edge colour). A new
+  kind for #114 adds a selector to the shared grid and `::before` rules, a `--glyph-*`
+  token, a `border-left: var(--border-width-accent) solid …` and a row in
+  `MESSAGE_KINDS`. The banner's "i" uses `--font-mono` so it doesn't read as a capital I.
+- **Hover** rules live only in `@media (hover: hover)`; `test_controls_have_hover` fails
+  on a `:hover` outside it.
+- **Test helpers added:** `_rules() -> list[tuple[str, list[str], str]]` (media
+  condition, selectors, declarations, for every rule after `:root`) and
+  `_rule(selector: str, media: str = "") -> str` (the declarations of every rule whose
+  selector list holds exactly `selector`). New tests: `test_light_tints_carry_dark_text`,
+  `test_message_kinds_differ_beyond_colour`, `test_focus_is_visible`,
+  `test_tap_targets_are_44px`, `test_controls_have_hover`,
+  `test_disabled_controls_differ_beyond_colour` (the planned
+  `test_disabled_submit_differs_beyond_colour`, widened to the disabled class list),
+  `test_result_text_wraps`, `test_no_hidden_horizontal_overflow`. The new tests were
+  mutation-checked: each fails when its rule is broken.
+- **Departures from the values above, on purpose:** buttons, the class list, the
+  preview and the `pre` use `--radius-control` (4px), not `--radius`, for the crisp
+  corners of the brand's geometric tiles (the drop zone and the result card keep
+  `--radius`); buttons use `--weight-strong` (600), not `--weight-heading`; the result
+  card has `--space-4 --space-5` padding and an Asmbly Purple `--border-width-accent`
+  top edge, so it reads as a card; the warning and the banner pad `--space-3 --space-4`,
+  the inline error and success messages pad `--space-3` from their edge; `<main>` has no
+  card edge (there is no lighter brand surface than Asmbly White, and the band, the
+  messages and the result card carry the structure).
+- **Verified in headless Chrome with the real CSP** (no console or CSP message): every
+  state (signed out, sign-in problem, signed in, class chosen, good photo with preview
+  and the location note, each photo error, the class-list error, dragging, submitting,
+  the dry-run result with removals, title and description, an opened result, an error
+  result) at 1280, 1920, 639 and 320px and at 200% zoom (640px at 2×): no horizontal
+  scroll, the longest class name is cut inside the list, the header wraps (the title
+  takes two lines at 320px). The keyboard order is **Sign out**, the class list,
+  **Choose a photo** (the ring on its label), **Submit**, the result link, each with a
+  3px ring (woodwork on the band). Hover looks checked on every control.
+- **Colour pairs the tests don't list** (checked by computation, WCAG 2.1): the dashed
+  `--control-border` of disabled controls on `--disabled-bg` is 2.5:1 (inactive
+  components are exempt from 1.4.11; the dashed style, the tint and the cursor mark
+  them); the result card's 1px `--line` on `--page-bg` is 2.2:1 (decorative; the
+  card's purple top edge carries it); the banner's woodwork tint on the page is 1.1:1,
+  which is why its edge is `--brand`.
+- **Left for later:** Safari's native `select` height (not checked here; the README
+  says so); the stage walk-through in `MANUAL_QA.md` after deploy.
+
+## Prep amendments (2026-10-16)
+
+`/prep` checked this phase against the code after phase 1 (drift detector and auditor).
+These amendments win over the text above where they disagree.
+
+1. **Reuse phase 1's tokens; add no duplicates.** `--control-edge` is phase 1's
+   `--control-border` (purple-60, 3.6:1): use `--control-border` wherever this document
+   says `--control-edge`. `--edge-width` is phase 1's `--border-width-accent` (4px): use
+   `--border-width-accent` for the message edges and don't add `--edge-width` (a second
+   `4px` token fails `test_tokens_are_defined_once`). `--disabled-opacity` doesn't
+   exist: nothing to remove. `--drag-bg` and `--code-bg` stay as `var()` aliases of
+   purple-20 (like `--tint-bg` and `--disabled-bg`), so each use can change on its own.
+2. **The banner's edge is `--brand`, not woodwork.** Woodwork is 1.6:1 on
+   `--banner-bg` and 1.8:1 on `--page-bg`, so the edge would be nearly invisible.
+   `--banner-edge: var(--brand)` (10.2:1 on `--banner-bg`); the woodwork tint stays the
+   background. Add the pairs `--banner-edge`/`--banner-bg` 3.0 and `--banner-edge`/`--page-bg` 3.0.
+3. **Glyphs are tokens.** A literal string in a rule fails `test_styles_use_tokens_only`,
+   and writing it twice (`content: "!"; content: "!" / "";`) duplicates a value. Each
+   kind's glyph is one token that holds the whole alternative-text value
+   (`--glyph-error: "✕" / "";`, `--glyph-ok: "✓" / "";`, `--glyph-warning: "!" / "";`,
+   `--glyph-banner: "i" / "";`, no emoji such as "⚙"), and its `::before` rule is
+   `content: var(--glyph-…)`. A browser without the `/ ""` form (Safari before 17.4,
+   Firefox before 128) drops the glyph, because a `var()` declaration can't fall back;
+   the edge, background and weight still tell the kinds apart, and screen readers never
+   read a glyph. The README's "The Page" says so. `test_token_block_holds_only_tokens`
+   allows a quoted single glyph followed by `/ ""` for `--glyph-*` tokens only, and
+   `test_message_kinds_differ_beyond_colour` checks the four glyph tokens differ.
+4. **Hover** (#113 AC 1 asks for one on the class list and the photo box too). Every
+   hover rule sits in `@media (hover: hover)` (no number, so
+   `test_breakpoint_matches_token` passes), so a tap doesn't leave a hover look on a
+   phone, and carries `:not(:disabled)` where the control can be disabled:
+   `button`/`.button` take `--hover-bg`; **Sign out** fills with `--on-dark`;
+   `select:hover:not(:disabled)` and `.drop-zone:hover` take `border-color: var(--brand)`
+   (the box's border only: a drop-target cue, since only **Choose a photo** opens the
+   picker). New `test_controls_have_hover` checks these rules exist.
+5. **Disabled class list.** `#class-select` is disabled while classes load:
+   `select:disabled` takes the disabled Submit's look (`--disabled-bg`, `--text`, dashed
+   `--control-border`, `cursor: not-allowed`).
+6. **Light tints name their text colour.** `test_light_tints_carry_dark_text` requires
+   an explicit `color: var(--text)` in every rule whose `background` resolves to a tint
+   lighter than 60% ("or inherits it" can't be checked from the stylesheet).
+7. **Message weights and spacing.** Error and warning text use `--weight-strong`;
+   success and banner text the body weight. Every kind pads its text `--space-3` from
+   its edge. The drop zone's children ignore the pointer while dragging
+   (`.drop-zone.dragging * { pointer-events: none; }`) so the drag look doesn't flicker
+   as the pointer crosses the text.
+8. **Order inside `button, .button`:** `font: inherit` first, then `font-weight`
+   (the shorthand resets the weight). If **Sign out** with the new padding pushes the
+   title to three lines at 320px, give `.secondary` a smaller padding.
+9. **Phase 1's tests change in these ways only, never loosened:** delete the
+   `RESERVED_TOKENS` entries for `--asmbly-purple-80` and `--tap-target` (now used); add
+   the new non-colour keywords (`underline`, `anywhere`, …) to `ALLOWED_VALUE_WORDS`;
+   add `--lasers-20` and `--woodwork-20` to `DERIVED_COLOURS` and only the new pairs to
+   `CONTRAST_PAIRS` (the warning, banner, drag, code and hover pairs, the banner edge,
+   and Asmbly White on `--error` and `--ok` if a glyph sits on them; the others already
+   exist); update the token block's formula comment to cover the lasers and woodwork
+   tints. `_rule(selector)` is a new helper in this phase, not phase 1's, and it also
+   finds rules inside `@media`. The band's focus rule sets
+   `outline-color: var(--focus-on-dark)` over the base outline, which
+   `test_focus_is_visible` accepts. Add `a:focus-visible`.
+10. **Verification:** walk the keyboard order in Chrome or Firefox (Safari skips buttons
+    and links on Tab unless "Press Tab to highlight each item" is on). Check 639px as
+    well as 640px (1280px at 200% zoom is exactly the breakpoint). Safari may ignore
+    `min-height` on a native `select`; note it if so (`appearance: none` would need a
+    `url()` arrow, which the page forbids).
