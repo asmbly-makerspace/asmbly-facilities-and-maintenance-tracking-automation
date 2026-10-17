@@ -113,7 +113,7 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 8.  **Generate and Return HTML**
     * **Source:** AWS Lambda
     * **Destination:** AWS API Gateway
-    * **Action:** The function processes the JSON data, builds the table rows, fills them into the page shell `page.html`, and returns the page as the response. Each drop-off's name and ID are HTML-escaped, so text typed into the form shows as text and never runs as code. A drop-off with no custom ID shows its ClickUp task ID.
+    * **Action:** The function processes the JSON data, builds the table rows, fills them into the page shell `page.html`, and returns the page as the response. Each drop-off's name and ID are HTML-escaped, so text typed into the form shows as text and never runs as code. A drop-off with no custom ID shows its ClickUp task ID. The "Time Submitted" column is in US Central time (`America/Chicago`), with `CST` or `CDT` after each time, for example `2023-12-31 18:00:00 CST`. ClickUp gives the time in UTC; the zone data decides whether daylight saving time applies. The function packages `tzdata` (in `requirements.txt`), so the conversion works even if the Lambda runtime has no system zone data. If the zone can't be loaded, the function logs the error and shows the error page.
 
 9.  **Display Page**
     * **Source:** AWS API Gateway
@@ -151,7 +151,8 @@ drop-off named `__RELOAD_TEXT__` shows as that name.
 - **Table:** the header row on the ceramics 20% tint; drop-off IDs in a bold monospace
   1.125rem in the ceramics shade, never split across lines, because members copy them
   onto a slip. Names wrap anywhere, so a long name never widens the page. The time is in
-  the small size and wraps only at its space.
+  the small size and wraps only between the date and the time: the zone is joined to the
+  time with a non-breaking space, so "18:00:00 CST" stays on one line.
 - **Refresh button:** the ceramics shade, darker on hover where a pointer can hover, at
   least 44px by 44px, with a 3px focus ring.
 - **Error box:** the lasers 20% tint, with a 4px lasers-shade edge on the left and a ✕
@@ -261,6 +262,8 @@ The template `templates/ceramics.yaml` sets two environment variables:
 | `CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME` | `/<stage>/config/clickup/ceramics/dropOffRequests` | The SSM parameter with the drop-off list ID under the key `list_id` |
 
 The list ID itself lives in `configs/clickup_ceramics_dropOffRequests.json`; the template turns that file into the SSM parameter. To point the page at another ClickUp list, change the JSON file and deploy.
+
+The time zone of the "Time Submitted" column is the constant `CENTRAL_TIME_ZONE` (`America/Chicago`) in `lambda_function.py`, not configuration. Its zone data comes from the `tzdata` package in `requirements.txt`, which `sam build` installs with the function. The entry has no version, so each build gets the latest zone data.
 
 
 ## Deployment
