@@ -17,7 +17,10 @@ jobs:
     outputs:
       FACILITIES_API_URL: ${{ steps.get-api-url.outputs.API_URL }}
     name: Deploy to AWS
-    environment: prod
+    environment:
+      name: prod
+      # Shown on the repository's Deployments page and the run's summary
+      url: ${{ steps.get-api-url.outputs.API_URL }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write # Required for OIDC if you use it
@@ -47,16 +50,17 @@ jobs:
           # --no-confirm-changeset is required for automation
           sam deploy --config-env prod --no-confirm-changeset
 
-      - name: Get API Gateway URL Output
+      - name: Get API URL Output
         id: get-api-url
         run: |
-          echo "Fetching API Gateway URL from CloudFormation stack outputs..."
+          # Prod is served at its custom domain (https://facilities.asmbly.org)
+          echo "Fetching the API's URL from CloudFormation stack outputs..."
           API_URL=$(aws cloudformation describe-stacks \
             --stack-name ${{ env.SAM_STACK_NAME }} \
-            --query "Stacks[0].Outputs[?OutputKey=='FacilitiesApiUrl'].OutputValue" \
+            --query "Stacks[0].Outputs[?OutputKey=='FacilitiesProdUrl'].OutputValue" \
             --output text)
           if [ -z "$API_URL" ]; then
-            echo "::error::Failed to retrieve 'FacilitiesApiUrl' from stack outputs."
+            echo "::error::Failed to retrieve 'FacilitiesProdUrl' from stack outputs."
             exit 1
           fi
           echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
