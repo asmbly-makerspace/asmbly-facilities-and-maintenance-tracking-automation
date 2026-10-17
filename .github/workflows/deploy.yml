@@ -65,18 +65,34 @@ jobs:
           fi
           echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
 
-      # The deploy has already succeeded, so a problem listing the routes
-      # mustn't mark it failed.
+  # =================================================================
+  # JOB 2: List the API's routes in the run summary
+  # =================================================================
+  # A separate job, so the package it downloads runs without the deploy job's
+  # AWS credentials or its permission to request an OIDC token.
+  list-routes:
+    name: List API routes
+    needs: deploy
+    # The deploy has already succeeded, so a problem here mustn't fail the run.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
       - name: Set up Python
-        continue-on-error: true
         uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
       - name: List API routes in the run summary
-        continue-on-error: true
         env:
-          API_URL: ${{ steps.get-api-url.outputs.API_URL }}
+          API_URL: ${{ needs.deploy.outputs.FACILITIES_API_URL }}
         run: |
-          pip install --quiet pyyaml
+          pip install --quiet --only-binary=:all: PyYAML==6.0.3
           python scripts/list_api_routes.py --base-url "$API_URL" >> "$GITHUB_STEP_SUMMARY"
