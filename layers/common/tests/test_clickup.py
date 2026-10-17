@@ -1,7 +1,7 @@
-import json
 import logging
 import os
 import sys
+import traceback
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -152,9 +152,10 @@ def test_make_clickup_request_http_error_logs_status_not_body(mock_requests_requ
     with pytest.raises(ValueError) as excinfo:
         clickup.get_task("pk_TOKEN_MARKER", "t1")
 
-    assert str(excinfo.value) == (
-        'ClickUp API HTTP Error: 401 Unauthorized - Details: {"err": "echo pk_BODY_MARKER", "ECODE": "OAUTH_025"}'
-    )
+    assert str(excinfo.value) == "ClickUp API HTTP Error: 401 Unauthorized - GET task/t1 (ECODE=OAUTH_025)"
+    assert "pk_BODY_MARKER" not in str(excinfo.value)
+    assert excinfo.value.__cause__ is None
+    assert excinfo.value.__suppress_context__ is True
     assert capsys.readouterr().out == ""
     errors = _clickup_errors(caplog)
     assert len(errors) == 1
@@ -187,7 +188,7 @@ def test_make_clickup_request_http_error_invalid_ecode_not_logged(mock_requests_
 
 @patch('common.clickup.requests.request')
 def test_make_clickup_request_http_error_non_json_body_not_logged(mock_requests_request, caplog, capsys):
-    """A non-JSON error body stays in the exception text but never reaches the log."""
+    """A non-JSON error body reaches neither the exception text nor the log."""
     caplog.set_level(logging.DEBUG, logger="common.clickup")
     error_response = _http_error_response(401, "Unauthorized", text="<html>pk_BODY_MARKER</html>")
     mock_requests_request.return_value.raise_for_status.side_effect = requests.exceptions.HTTPError(
@@ -197,7 +198,9 @@ def test_make_clickup_request_http_error_non_json_body_not_logged(mock_requests_
     with pytest.raises(ValueError) as excinfo:
         clickup.get_task("pk_TOKEN_MARKER", "t1")
 
-    assert str(excinfo.value) == "ClickUp API HTTP Error: 401 Unauthorized - Response body: <html>pk_BODY_MARKER</html>"
+    assert str(excinfo.value) == "ClickUp API HTTP Error: 401 Unauthorized - GET task/t1 (ECODE=None)"
+    assert "<html>" not in str(excinfo.value)
+    assert "pk_BODY_MARKER" not in str(excinfo.value)
     assert capsys.readouterr().out == ""
     assert len(_clickup_errors(caplog)) == 1
     assert "pk_BODY_MARKER" not in caplog.text
@@ -216,7 +219,10 @@ def test_make_clickup_request_network_error_logs_type_only(mock_requests_request
     with pytest.raises(ValueError) as excinfo:
         clickup.get_task("pk_TOKEN_MARKER", "t1")
 
-    assert str(excinfo.value) == "Network error during ClickUp API request: " + str(err)
+    assert str(excinfo.value) == "Network error during ClickUp API request: GET task/t1 (ConnectionError)"
+    assert str(err) not in str(excinfo.value)
+    assert "pk_URL_MARKER" not in str(excinfo.value)
+    assert "api.clickup.com" not in str(excinfo.value)
     assert capsys.readouterr().out == ""
     errors = _clickup_errors(caplog)
     assert len(errors) == 1
@@ -253,10 +259,9 @@ def test_update_task_mismatch_logs_ids_not_task_body(mock_make_request, caplog, 
     with pytest.raises(ValueError) as excinfo:
         clickup.update_task("token", "t1", {"status": "done"})
 
-    assert str(excinfo.value) == (
-        "ClickUp task update for t1 returned 200 OK but the response body indicates a failure. "
-        f"Response: {json.dumps(response_data)} | ClickUp Error: bad"
-    )
+    assert str(excinfo.value) == "ClickUp task update for t1 returned 200 OK but task ID other (ECODE=None)"
+    assert "Jane Member" not in str(excinfo.value)
+    assert "bad" not in str(excinfo.value)
     assert capsys.readouterr().out == ""
     errors = _clickup_errors(caplog)
     assert len(errors) == 1
@@ -274,9 +279,7 @@ def test_update_task_list_response_raises_same_value_error(mock_make_request, ca
     with pytest.raises(ValueError) as excinfo:
         clickup.update_task("token", "t1", {"status": "done"})
 
-    assert str(excinfo.value) == (
-        "ClickUp task update for t1 returned 200 OK but the response body indicates a failure. Response: []"
-    )
+    assert str(excinfo.value) == "ClickUp task update for t1 returned 200 OK but no task ID (ECODE=None)"
     assert capsys.readouterr().out == ""
     assert len(_clickup_errors(caplog)) == 1
 
@@ -291,10 +294,8 @@ def test_update_task_missing_id_logs_no_task_id(mock_make_request, caplog, capsy
     with pytest.raises(ValueError) as excinfo:
         clickup.update_task("token", "t1", {"status": "done"})
 
-    assert str(excinfo.value) == (
-        "ClickUp task update for t1 returned 200 OK but the response body indicates a failure. "
-        f"Response: {json.dumps(response_data)} | ClickUp Error: Team not authorized"
-    )
+    assert str(excinfo.value) == "ClickUp task update for t1 returned 200 OK but no task ID (ECODE=OAUTH_027)"
+    assert "Team not authorized" not in str(excinfo.value)
     assert capsys.readouterr().out == ""
     errors = _clickup_errors(caplog)
     assert len(errors) == 1
@@ -311,8 +312,11 @@ def test_update_task_mismatch_with_non_id_value_not_logged(mock_make_request, ca
     caplog.set_level(logging.DEBUG, logger="common.clickup")
     mock_make_request.return_value = {"id": "Jane Member jane@example.com"}
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as excinfo:
         clickup.update_task("token", "t1", {"status": "done"})
+
+    assert str(excinfo.value) == "ClickUp task update for t1 returned 200 OK but task ID <invalid> (ECODE=None)"
+    assert "jane@example.com" not in str(excinfo.value)
 
     assert capsys.readouterr().out == ""
     errors = _clickup_errors(caplog)
@@ -331,3 +335,206 @@ def test_task_id_for_log_rejects_trailing_newline():
     """A task ID with a trailing newline is not a valid ID and is replaced."""
     assert clickup._task_id_for_log("abc123\n") == "<invalid>"
     assert clickup._task_id_for_log("abc123") == "abc123"
+
+
+def _formatted_traceback(exc: BaseException) -> str:
+    return "".join(traceback.format_exception(exc))
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_http_error_traceback_has_no_body_or_url(mock_requests_request, caplog):
+    """Neither the message nor the formatted traceback carries the body or the requests URL."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    body = {
+        "err": "Assignee Jane Member jane.member@example.com 512-555-0142",
+        "ECODE": "ITEM_015",
+    }
+    error_response = _http_error_response(404, "Not Found", json_body=body)
+    mock_requests_request.return_value.raise_for_status.side_effect = requests.exceptions.HTTPError(
+        "404 Client Error: Not Found for url: https://api.clickup.com/api/v2/task/t1?token=pk_URL_MARKER",
+        response=error_response,
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.get_task("token", "t1")
+
+    assert str(excinfo.value) == "ClickUp API HTTP Error: 404 Not Found - GET task/t1 (ECODE=ITEM_015)"
+    formatted = _formatted_traceback(excinfo.value)
+    for forbidden in ("pk_URL_MARKER", "token=", "jane.member@example.com", "512-555-0142",
+                      "Jane Member", "HTTPError", "api.clickup.com"):
+        assert forbidden not in formatted
+        assert forbidden not in caplog.text
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_network_error_traceback_has_no_url(mock_requests_request, caplog):
+    """A network failure's traceback carries the exception class, not the URL or query string."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    mock_requests_request.side_effect = requests.exceptions.ConnectionError(
+        "HTTPSConnectionPool(host='api.clickup.com'): Max retries exceeded with url: /api/v2/task/t1?q=pk_URL_MARKER"
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.get_task("token", "t1")
+
+    assert excinfo.value.__cause__ is None
+    assert excinfo.value.__suppress_context__ is True
+    formatted = _formatted_traceback(excinfo.value)
+    assert "Network error during ClickUp API request: GET task/t1 (ConnectionError)" in formatted
+    for forbidden in ("pk_URL_MARKER", "?q=", "HTTPSConnectionPool", "api.clickup.com"):
+        assert forbidden not in formatted
+        assert forbidden not in caplog.text
+
+
+@patch('common.clickup._make_clickup_request')
+def test_update_task_message_has_no_task_fields(mock_make_request, caplog):
+    """A mismatched update names both task IDs and none of the returned task's fields."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    mock_make_request.return_value = {
+        "id": "other9",
+        "name": "Broken bandsaw",
+        "assignees": [{"username": "Jane Member", "email": "jane.member@example.com"}],
+        "creator": {"username": "Sam Staff", "email": "sam.staff@example.com"},
+        "description": "Reporter: Pat Doe, 512-555-0199",
+    }
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.update_task("token", "t1", {"status": "done"})
+
+    message = str(excinfo.value)
+    assert message == "ClickUp task update for t1 returned 200 OK but task ID other9 (ECODE=None)"
+    for forbidden in ("Broken bandsaw", "Jane Member", "jane.member@example.com", "Sam Staff",
+                      "sam.staff@example.com", "Pat Doe", "512-555-0199"):
+        assert forbidden not in message
+        assert forbidden not in caplog.text
+
+
+@patch('common.clickup._make_clickup_request')
+def test_update_task_none_response_raises_value_error(mock_make_request):
+    """A None response is 'no task ID', not a TypeError."""
+    mock_make_request.return_value = None
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.update_task("token", "t1", {"status": "done"})
+
+    assert str(excinfo.value) == "ClickUp task update for t1 returned 200 OK but no task ID (ECODE=None)"
+
+
+@patch('common.clickup._make_clickup_request')
+def test_update_task_matching_id_returns_response(mock_make_request):
+    """A response for the requested task is returned unchanged."""
+    response_data = {"id": "t1", "name": "Task"}
+    mock_make_request.return_value = response_data
+
+    assert clickup.update_task("token", "t1", {"status": "done"}) is response_data
+
+
+@patch('common.clickup._make_clickup_request')
+def test_update_task_invalid_requested_id_not_in_message_or_log(mock_make_request, caplog):
+    """A requested task ID that doesn't look like one is replaced in the message and the log."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    mock_make_request.return_value = {"id": "other9"}
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.update_task("token", "t1 jane@example.com\n", {"status": "done"})
+
+    assert str(excinfo.value) == "ClickUp task update for <invalid> returned 200 OK but task ID other9 (ECODE=None)"
+    assert "jane@example.com" not in caplog.text
+    errors = _clickup_errors(caplog)
+    assert len(errors) == 1
+    assert "<invalid>" in errors[0].getMessage()
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_invalid_endpoint_not_in_message_or_log(mock_requests_request, caplog):
+    """An endpoint with a query string or newline (from a crafted task ID) is replaced."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    error_response = _http_error_response(400, "Bad Request", json_body={"err": "x", "ECODE": "FIELD_001"})
+    mock_requests_request.return_value.raise_for_status.side_effect = requests.exceptions.HTTPError(
+        "400 Bad Request", response=error_response
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.set_custom_field_value("token", "t1?x=pk_QUERY_MARKER\n", "f1", "v")
+
+    message = str(excinfo.value)
+    assert message == "ClickUp API HTTP Error: 400 Bad Request - POST <invalid> (ECODE=FIELD_001)"
+    assert "\n" not in message
+    assert "pk_QUERY_MARKER" not in caplog.text
+    errors = _clickup_errors(caplog)
+    assert len(errors) == 1
+    assert "<invalid>" in errors[0].getMessage()
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_200_non_json_body_not_in_message(mock_requests_request, caplog):
+    """A 200 whose body isn't JSON raises without the body in the message or traceback."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    mock_requests_request.return_value.raise_for_status.return_value = None
+    mock_requests_request.return_value.json.side_effect = requests.exceptions.JSONDecodeError(
+        "Expecting value", "<html>pk_BODY_MARKER jane.member@example.com</html>", 0
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.get_task("token", "t1")
+
+    assert str(excinfo.value) == "Network error during ClickUp API request: GET task/t1 (JSONDecodeError)"
+    formatted = _formatted_traceback(excinfo.value)
+    assert "pk_BODY_MARKER" not in formatted
+    assert "jane.member@example.com" not in formatted
+    assert "pk_BODY_MARKER" not in caplog.text
+
+
+@pytest.mark.parametrize("endpoint, expected", [
+    ("task/t1", "task/t1"),
+    ("list/901/task", "list/901/task"),
+    ("task/abc-1_2/field/0f1e-22", "task/abc-1_2/field/0f1e-22"),
+    ("task/t1?x=1", "<invalid>"),
+    ("task/t1\n", "<invalid>"),
+    ("", "<invalid>"),
+    (None, "<invalid>"),
+    (123, "<invalid>"),
+])
+def test_endpoint_for_log_rejects_query_and_newline(endpoint, expected):
+    """Only path characters pass; a query string, a newline or a non-string is replaced."""
+    assert clickup._endpoint_for_log(endpoint) == expected
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_passes_default_timeout(mock_requests_request):
+    """Every ClickUp request gets the 8-second timeout by default."""
+    mock_requests_request.return_value.json.return_value = {"id": "t1"}
+
+    clickup.get_task("pk_TOKEN_MARKER", "t1")
+
+    assert clickup.DEFAULT_TIMEOUT_SECONDS == 8.0
+    assert mock_requests_request.call_args.kwargs["timeout"] == 8.0
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_caller_timeout_wins(mock_requests_request):
+    """A timeout passed to the request helper replaces the default."""
+    mock_requests_request.return_value.json.return_value = {}
+
+    clickup._make_clickup_request("pk_TOKEN_MARKER", "GET", "task/t1", timeout=3)
+
+    assert mock_requests_request.call_args.kwargs["timeout"] == 3
+
+
+@patch('common.clickup.requests.request')
+def test_make_clickup_request_timeout_raises_network_error(mock_requests_request, caplog):
+    """A timeout is raised as the usual network error, naming the endpoint and ReadTimeout."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    mock_requests_request.side_effect = requests.exceptions.ReadTimeout(
+        "HTTPSConnectionPool(host='api.clickup.com'): Read timed out. pk_URL_MARKER"
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.create_task("pk_TOKEN_MARKER", "L1", {"name": "Item"})
+
+    assert str(excinfo.value) == "Network error during ClickUp API request: POST list/L1/task (ReadTimeout)"
+    assert excinfo.value.__cause__ is None
+    errors = _clickup_errors(caplog)
+    assert len(errors) == 1
+    assert errors[0].getMessage() == "ClickUp POST list/L1/task request failed: ReadTimeout"
+    assert "pk_URL_MARKER" not in caplog.text

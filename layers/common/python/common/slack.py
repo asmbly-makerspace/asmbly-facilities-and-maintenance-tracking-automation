@@ -19,6 +19,10 @@ def _slack_error_for_log(response_data: Any) -> str | None:
         return error
     return "<invalid>"
 
+# Seconds per request (to connect, and between bytes of the answer): under the
+# 10-second limit of the shortest function that calls Slack through this module.
+DEFAULT_TIMEOUT_SECONDS = 8.0
+
 TEST_CHANNEL_OVERRIDE = os.environ.get('TEST_CHANNEL_OVERRIDE')
 
 
@@ -79,7 +83,7 @@ def send_slack_message(
         payload["thread_ts"] = thread_ts
 
     try:
-        response = requests.post(slack_api_url, headers=headers, json=payload)
+        response = requests.post(slack_api_url, headers=headers, json=payload, timeout=DEFAULT_TIMEOUT_SECONDS)
         response_data = response.json()
         if not response_data.get("ok"):
             logger.error(
@@ -88,7 +92,7 @@ def send_slack_message(
         return response_data
     except Exception as e:
         logger.error("Slack chat.postMessage to %s failed: %s", final_target_channel, type(e).__name__)
-        return {"ok": False, "error": "script_error", "error_message": str(e)}
+        return {"ok": False, "error": "script_error"}
 
 
 def get_slack_post_url(slack_workspace_url: str | None, channel_id: str, message_ts: str) -> str | None:
@@ -101,14 +105,18 @@ def get_slack_post_url(slack_workspace_url: str | None, channel_id: str, message
     return f"{slack_workspace_url}/archives/{channel_id}/p{ts_for_url}"
 
 
-def get_slack_user_info(api_token, user_id, http_session=None):
-    '''Retrieves user information from Slack.'''
+def get_slack_user_info(api_token: str, user_id: str, http_session: requests.Session | None = None) -> Any:
+    '''Retrieves user information from Slack. A failed request is logged and re-raised.'''
     url = "https://slack.com/api/users.info"
     headers = {"Authorization": f"Bearer {api_token}"}
     params = {"user": user_id}
 
     session = http_session or requests.Session()
 
-    response = session.get(url, headers=headers, params=params)
-    response.raise_for_status()
+    try:
+        response = session.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT_SECONDS)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logger.error("Slack users.info failed: %s", type(e).__name__)
+        raise
     return response.json()

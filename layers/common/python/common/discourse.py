@@ -1,12 +1,14 @@
 import requests
 import logging
 import re
+import urllib.parse
+from typing import Any
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
-def _make_discourse_request(method, url, api_key, api_username, **kwargs):
-    """Helper function to make requests to the Discourse API."""
+def _make_discourse_request(method: str, url: str, api_key: str, api_username: str, **kwargs: Any) -> Any:
+    """Helper function to make requests to the Discourse API. A failure is logged and re-raised."""
     headers = {
         "Api-Key": api_key,
         "Api-Username": api_username,
@@ -17,9 +19,12 @@ def _make_discourse_request(method, url, api_key, api_username, **kwargs):
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        logger.error(f"Discourse API request to {url} failed: {e}")
+        # The path only: no query string, no response body, no requests text.
+        path = urllib.parse.urlsplit(url).path
         if e.response is not None:
-            logger.error(f"Discourse API response: {e.response.text}")
+            logger.error("Discourse %s %s failed with HTTP %s", method, path, e.response.status_code)
+        else:
+            logger.error("Discourse %s %s failed: %s", method, path, type(e).__name__)
         raise
 
 def create_post(base_url, title, content, api_key, api_username, category_id):

@@ -1,7 +1,7 @@
 import json
 import os
 from unittest import TestCase
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 # The lambda_function import remains the same
 from functions.purchase_request.slack_reaction_webhook import lambda_function
@@ -144,6 +144,61 @@ class TestSlackReactionWebhook(TestCase):
         self.assertIn("ignored", results[0])
         self.assertIn("No ClickUp task URL found in the message.", results[0])
 
+    @patch.dict(os.environ, {
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "slack-maintenancebot-token",
+        "CLICKUP_SECRET_NAME": "clickup/api/token",
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
+    })
+    @patch(f"{LAMBDA_FUNCTION_PATH}.clickup")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_received_event_log_omits_token_and_body(self, mock_boto3_client, mock_reaction_processing, mock_aws, mock_clickup):
+        """The 'Received event' line carries the event's IDs, never Slack's token or the whole event."""
+        mock_ssm = MagicMock()
+        mock_boto3_client.return_value = mock_ssm
+        mock_ssm.get_parameter.return_value = {'Parameter': {'Value': json.dumps({"truck": "purchased"})}}
+        mock_aws.get_secret.return_value = 'fake-clickup-token'
+        mock_reaction_processing.process_base_reaction.return_value = {
+            "status": "ignored", "reason": "No ClickUp task URL found in the message.",
+        }
+        event_body = {
+            "token": "pk_VERIFY_MARKER",
+            "team_id": "T999",
+            "event_id": "Ev123ABC",
+            "type": "event_callback",
+            "event": {
+                "type": "reaction_added", "reaction": "truck", "user": "U555",
+                "item": {"type": "message", "channel": "C123", "ts": "123.456"},
+            },
+        }
+
+        with self.assertLogs(level="INFO") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
+
+        self.assertEqual(response["statusCode"], 200)
+        output = "\n".join(logs.output)
+        self.assertNotIn("pk_VERIFY_MARKER", output)
+        self.assertNotIn("T999", output)
+        received = [r.getMessage() for r in logs.records if r.getMessage().startswith("Received event")]
+        self.assertEqual(received, [
+            "Received event: type=reaction_added reaction=truck channel=C123 ts=123.456 event_id=Ev123ABC"
+        ])
+
+    def test_received_event_log_handles_non_dict_shapes(self):
+        """The log line never raises before the handler's try, whatever shape the event has."""
+        with self.assertLogs(level="INFO") as logs:
+            lambda_function._log_received_event("pk_STRING_MARKER")
+            lambda_function._log_received_event({"event": "not-a-dict", "token": "pk_VERIFY_MARKER"})
+            lambda_function._log_received_event({"event": {"type": "reaction_added", "item": ["x"]}})
+
+        self.assertEqual([r.getMessage() for r in logs.records], [
+            "Received event: not a dict",
+            "Received event: type=None reaction=None channel=None ts=None event_id=None",
+            "Received event: type=reaction_added reaction=None channel=None ts=None event_id=None",
+        ])
+        self.assertNotIn("pk_", "\n".join(logs.output))
+
     @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
     def test_lambda_handler_challenge(self, mock_boto3_client):
         # The router passes the body directly
@@ -183,11 +238,18 @@ class TestSlackReactionWebhook(TestCase):
 
         # Execute
         event_body = json.loads(event['body'])
-        response = lambda_function.lambda_handler(event_body, None)
+        event_body["event_id"] = "Ev500ERR"
+        with self.assertLogs(level="ERROR") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
 
-        # Assert that the handler caught the exception and returned a 500 error
+        # Assert that the handler caught the exception and returned a plain 500 error
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("Internal server error", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertNotIn("Something went wrong", response["body"])
+        errors = [r for r in logs.records if r.levelname == "ERROR"]
+        self.assertEqual(len(errors), 1)
+        self.assertIsNotNone(errors[0].exc_info)
+        self.assertIn("Ev500ERR", errors[0].getMessage())
 
     # Test cases for missing environment variables
     @patch.dict(os.environ, {
@@ -200,9 +262,11 @@ class TestSlackReactionWebhook(TestCase):
         Tests that the handler fails gracefully if REACTION_MAP_PARAMETER_NAME is missing.
         """
         event_body = {"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}}
-        response = lambda_function.lambda_handler(event_body, None) # noqa
+        with self.assertLogs(level="ERROR") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", "\n".join(logs.output))
 
     @patch.dict(os.environ, {
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
@@ -214,9 +278,11 @@ class TestSlackReactionWebhook(TestCase):
         Tests that the handler fails gracefully if SLACK_MAINTENANCE_BOT_SECRET_NAME is missing.
         """
         event_body = {"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}}
-        response = lambda_function.lambda_handler(event_body, None)
+        with self.assertLogs(level="ERROR") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("SLACK_MAINTENANCE_BOT_SECRET_NAME environment variable not set", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertIn("SLACK_MAINTENANCE_BOT_SECRET_NAME environment variable not set", "\n".join(logs.output))
 
     @patch.dict(os.environ, {
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param-name",
@@ -228,6 +294,8 @@ class TestSlackReactionWebhook(TestCase):
         Tests that the handler fails gracefully if CLICKUP_SECRET_NAME is missing.
         """
         event_body = {"event": {"type": "reaction_added", "reaction": "truck", "item": {"channel": "C123", "ts": "12345.678"}}}
-        response = lambda_function.lambda_handler(event_body, None)
+        with self.assertLogs(level="ERROR") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("CLICKUP_SECRET_NAME environment variable not set", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertIn("CLICKUP_SECRET_NAME environment variable not set", "\n".join(logs.output))

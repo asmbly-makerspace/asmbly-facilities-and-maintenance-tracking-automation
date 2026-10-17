@@ -267,10 +267,12 @@ class TestProblemReportReactionWebhook(TestCase):
         with patch.dict(os.environ, {}, clear=True):
             # The lambda now receives the raw body, not the full API Gateway event
             event = json.loads(self.base_event['body'])
-            response = lambda_function.lambda_handler(event, None)
+            with self.assertLogs(level="ERROR") as logs:
+                response = lambda_function.lambda_handler(event, None)
 
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertIn("REACTION_MAP_PARAMETER_NAME environment variable not set", "\n".join(logs.output))
 
     @patch.dict(os.environ, {
         "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param",
@@ -292,8 +294,115 @@ class TestProblemReportReactionWebhook(TestCase):
 
         # --- Execute ---
         event = json.loads(self.base_event['body'])
-        response = lambda_function.lambda_handler(event, None)
+        event["event_id"] = "Ev500ERR"
+        with self.assertLogs(level="ERROR") as logs:
+            response = lambda_function.lambda_handler(event, None)
 
         # --- Assertions ---
         self.assertEqual(response["statusCode"], 500)
-        self.assertIn("Internal server error: Something broke!", response["body"])
+        self.assertEqual(response["body"], json.dumps("Internal server error."))
+        self.assertNotIn("Something broke!", response["body"])
+        errors = [r for r in logs.records if r.levelname == "ERROR"]
+        self.assertEqual(len(errors), 1)
+        self.assertIsNotNone(errors[0].exc_info)
+        self.assertIn("Ev500ERR", errors[0].getMessage())
+
+    @patch.dict(os.environ, {
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param",
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake-slack-secret",
+        "CLICKUP_SECRET_NAME": "fake-clickup-secret",
+        "DISCOURSE_SECRET_NAME": "fake-discourse-secret"
+    })
+    @patch(f"{LAMBDA_FUNCTION_PATH}.clickup")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_received_event_log_omits_token_and_body(self, mock_boto3_client, mock_reaction_processing, mock_aws, mock_clickup):
+        """The 'Received event' line carries the event's IDs, never Slack's token or the whole event."""
+        mock_ssm = MagicMock()
+        mock_boto3_client.return_value = mock_ssm
+        mock_ssm.get_parameter.return_value = {'Parameter': {'Value': json.dumps(self.fake_reaction_map)}}
+        mock_aws.get_secret.return_value = 'fake-clickup-token'
+        mock_reaction_processing.process_base_reaction.return_value = {
+            "status": "ignored", "reason": "No ClickUp task URL found in the message.",
+        }
+        event_body = {
+            "token": "pk_VERIFY_MARKER",
+            "team_id": "T999",
+            "event_id": "Ev123ABC",
+            "type": "event_callback",
+            "event": {
+                "type": "reaction_added", "reaction": "white_check_mark", "user": "U555",
+                "item": {"type": "message", "channel": "C123", "ts": "123.456"},
+            },
+        }
+
+        with self.assertLogs(level="INFO") as logs:
+            response = lambda_function.lambda_handler(event_body, None)
+
+        self.assertEqual(response["statusCode"], 200)
+        output = "\n".join(logs.output)
+        self.assertNotIn("pk_VERIFY_MARKER", output)
+        self.assertNotIn("T999", output)
+        received = [r.getMessage() for r in logs.records if r.getMessage().startswith("Received event")]
+        self.assertEqual(received, [
+            "Received event: type=reaction_added reaction=white_check_mark channel=C123 ts=123.456 event_id=Ev123ABC"
+        ])
+
+    def test_received_event_log_handles_non_dict_shapes(self):
+        """The log line never raises before the handler's try, whatever shape the event has."""
+        with self.assertLogs(level="INFO") as logs:
+            lambda_function._log_received_event("pk_STRING_MARKER")
+            lambda_function._log_received_event({"event": "not-a-dict", "token": "pk_VERIFY_MARKER"})
+            lambda_function._log_received_event({"event": {"type": "reaction_added", "item": ["x"]}})
+
+        self.assertEqual([r.getMessage() for r in logs.records], [
+            "Received event: not a dict",
+            "Received event: type=None reaction=None channel=None ts=None event_id=None",
+            "Received event: type=reaction_added reaction=None channel=None ts=None event_id=None",
+        ])
+        self.assertNotIn("pk_", "\n".join(logs.output))
+
+    @patch.dict(os.environ, {
+        "REACTION_MAP_PARAMETER_NAME": "/fake/ssm/param",
+        "SLACK_MAINTENANCE_BOT_SECRET_NAME": "fake-slack-secret",
+        "CLICKUP_SECRET_NAME": "fake-clickup-secret",
+        "DISCOURSE_SECRET_NAME": "fake-discourse-secret"
+    })
+    @patch(f"{LAMBDA_FUNCTION_PATH}.discourse")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.clickup")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.reaction_processing")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+    def test_discourse_reply_log_has_post_id_only(self, mock_boto3_client, mock_reaction_processing, mock_aws, mock_clickup, mock_discourse):
+        """The Discourse reply is logged by its post ID, not its text or the bot's user record."""
+        mock_ssm = MagicMock()
+        mock_boto3_client.return_value = mock_ssm
+        mock_ssm.get_parameter.return_value = {'Parameter': {'Value': json.dumps(self.fake_reaction_map)}}
+        mock_aws.get_secret.side_effect = ['fake-clickup-token', 'fake-discourse-key', 'fake-discourse-user']
+        mock_reaction_processing.process_base_reaction.return_value = {
+            "status": "success",
+            "task_id": "abcde123",
+            "reaction": "white_check_mark",
+            "message_text": "ClickUp: https://app.clickup.com/t/abcde123\nDiscourse: https://yo.asmbly.org/t/slug/123/1",
+        }
+        mock_discourse.parse_discourse_url.return_value = {
+            "base_url": "https://yo.asmbly.org", "topic_id": "123", "post_number": "1"
+        }
+        mock_discourse.post_reply.return_value = {"id": 987, "raw": "pk_REPLY_MARKER", "username": "facilities-bot"}
+
+        with self.assertLogs(level="INFO") as logs:
+            response = lambda_function.lambda_handler(json.loads(self.base_event['body']), None)
+
+        self.assertEqual(response["statusCode"], 200)
+        output = "\n".join(logs.output)
+        self.assertNotIn("pk_REPLY_MARKER", output)
+        self.assertNotIn("facilities-bot", output)
+        posted = [r.getMessage() for r in logs.records if r.getMessage().startswith("Discourse reply posted")]
+        self.assertEqual(posted, ["Discourse reply posted: post_id=987"])
+        mock_discourse.mark_solution.assert_called_once_with(
+            base_url="https://yo.asmbly.org",
+            post_id=987,
+            api_key='fake-discourse-key',
+            api_username='fake-discourse-user'
+        )

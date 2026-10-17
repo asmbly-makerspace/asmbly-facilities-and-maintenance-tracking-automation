@@ -94,6 +94,14 @@ This diagram illustrates the secure, serverless workflow for the automated task 
     * **Destination:** Slack API
     * **Action:** The function sends formatted messages for each task to the appropriate Slack channels. It can also send a general "starter message" and post detailed descriptions in threaded replies.
 
+If the run fails, the function returns `500` with the fixed body
+`"Error: the PM reminder run failed."`. Progress and errors are log records (`[INFO]`
+and `[ERROR]`, a failure with its traceback) in the
+`/asmbly/lambda/PMReminderBotFunction-<stage>` log group. A ClickUp or Slack request
+that gets no answer gives up after 8 seconds and is handled like any other failure of that
+service. On stage, where `DRY_RUN` is `true`, the Slack helper prints each message it
+would have sent instead of posting it.
+
 ## AWS Infrastructure
 
 The core infrastructure consists of an IAM Role, two secrets in Secrets Manager, and the Lambda function itself. All related resources are tagged for cost allocation and organization.

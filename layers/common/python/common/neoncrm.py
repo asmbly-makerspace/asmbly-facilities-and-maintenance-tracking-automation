@@ -3,8 +3,11 @@ import base64
 import logging
 from typing import Any
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Seconds per account request (to connect, and between bytes of the answer), the same
+# limit as the ClickUp and Slack helpers. The events search keeps its own 10 seconds.
+DEFAULT_TIMEOUT_SECONDS = 8.0
 
 # Stop paginating after this many pages of an events search, so a bad
 # `totalPages` can't keep a function calling Neon until it times out.
@@ -37,7 +40,7 @@ class NeonCRM:
             "Authorization": f"Basic {auth_header}",
         }
 
-    def get_account_by_email(self, email: str) -> str | None:
+    def get_account_by_email(self, email: str, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> str | None:
         """
         Retrieves an account ID by email address.
 
@@ -56,7 +59,7 @@ class NeonCRM:
             "pagination": {"currentPage": 0, "pageSize": 1},
         }
         try:
-            response = requests.post(url, headers=self.headers, json=search_payload)
+            response = requests.post(url, headers=self.headers, json=search_payload, timeout=timeout)
             response.raise_for_status()
             results = response.json().get("searchResults", [])
             if results:
@@ -66,10 +69,13 @@ class NeonCRM:
             logger.warning("No NeonCRM account matches the searched email")
             return None
         except requests.exceptions.RequestException as e:
-            logger.error("Error searching for NeonCRM account: %s", type(e).__name__)
+            status = e.response.status_code if e.response is not None else "no response"
+            logger.error("Error searching for NeonCRM account: %s (status %s)", type(e).__name__, status)
             return None
 
-    def update_account_custom_field(self, account_id, field_id, field_value):
+    def update_account_custom_field(
+        self, account_id: str, field_id: str, field_value: str, timeout: float = DEFAULT_TIMEOUT_SECONDS
+    ) -> None:
         """
         Updates a custom field for a given account.
 
@@ -85,12 +91,12 @@ class NeonCRM:
             }
         }
         try:
-            response = requests.patch(url, headers=self.headers, json=update_payload)
+            response = requests.patch(url, headers=self.headers, json=update_payload, timeout=timeout)
             response.raise_for_status()
-            logger.info(f"Successfully updated custom field for account ID: {account_id}")
+            logger.info("Updated custom field %s for NeonCRM account %s", field_id, account_id)
         except requests.exceptions.RequestException as e:
-            body = e.response.text if e.response is not None else ""
-            logger.error(f"Error updating NeonCRM account {account_id}: {e} {body}")
+            status = e.response.status_code if e.response is not None else "no response"
+            logger.error("Error updating NeonCRM account %s: %s (status %s)", account_id, type(e).__name__, status)
 
     def search_events(
         self,

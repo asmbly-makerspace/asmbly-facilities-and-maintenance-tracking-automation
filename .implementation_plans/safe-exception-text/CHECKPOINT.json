@@ -1,0 +1,342 @@
+{
+  "plan_name": "safe-exception-text",
+  "feature_branch": "feature/safe-exception-text",
+  "epic": 141,
+  "source_issue": 95,
+  "status": "complete",
+  "phases": [
+    {
+      "id": 1,
+      "title": "ClickUp exception text and payload log lines",
+      "file": ".implementation_plans/safe-exception-text/phase-1-clickup-exception-text.md",
+      "status": "done",
+      "pre_sha": "c434c0d",
+      "review_rounds": 2,
+      "checks": {
+        "pytest": "1803 passed",
+        "cfn_lint": "skip (no template change)",
+        "sam_validate": "skip (no template change)",
+        "sam_build": "pass"
+      },
+      "squashed_sha": "9832047"
+    },
+    {
+      "id": 2,
+      "title": "Plain error replies and /reorder error modal",
+      "file": ".implementation_plans/safe-exception-text/phase-2-plain-error-replies.md",
+      "status": "done",
+      "pre_sha": "9832047",
+      "review_rounds": 2,
+      "checks": {
+        "pytest": "1808 passed",
+        "cfn_lint": "4 W3005 warnings in template.yaml:582/592/605, pre-existing (no template changed)",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      },
+      "squashed_sha": "0338dea"
+    },
+    {
+      "id": 3,
+      "title": "Logging cleanup and request timeouts",
+      "file": ".implementation_plans/safe-exception-text/phase-3-logging-cleanup-and-timeouts.md",
+      "status": "done",
+      "pre_sha": "0338dea",
+      "review_rounds": 2,
+      "checks": {
+        "pytest": "1831 passed",
+        "cfn_lint": "only the 4 pre-existing W3005 warnings",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      },
+      "squashed_sha": "2635f0b"
+    }
+  ],
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1831 passed, 8 subtests",
+      "cfn_lint": "exit 4: 4 W3005 warnings (template.yaml:582/592/605), same on origin/stage; no errors",
+      "sam_validate": "pass",
+      "sam_build": "pass"
+    },
+    "preexisting": [
+      "cfn-lint W3005 x4 in template.yaml:582/592/605 (same on origin/stage 4cb5158)",
+      "TEST_CHANNEL_OVERRIDE read by pm_bot_reminder:25 and common/slack.py:26 but set by no template (optional local override; same on stage)"
+    ],
+    "cross_checks": "no template/config change; env vars unchanged; 183 test patch targets resolve; ruff F clean on 18 changed .py files; no caller reads removed error_message or old ClickUp text; neoncrm's root setLevel removal loses no INFO logs (callers set INFO); 8 s timeout under every caller's 10 s Lambda timeout",
+    "skipped": [],
+    "commits": 0
+  },
+  "final_pr_number": 146,
+  "admin_actions": [],
+  "events": [
+    {
+      "ts": "2026-10-17",
+      "type": "preflight",
+      "python": "3.12.11",
+      "sam": "1.166.2",
+      "gh": "ok"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "branch",
+      "name": "feature/safe-exception-text",
+      "base": "4cb5158"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "planned",
+      "epic": 141,
+      "stories": [
+        142,
+        143,
+        144,
+        145
+      ],
+      "commit": "c434c0d",
+      "decisions": 14,
+      "notes": "Phases sequential (shared files). Kiln viewer test file untouched (#137). No route auth (#79). Final PR closes #142-#145, #141, #95, #83."
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "items": [
+        "/reorder views.open/views.update calls have no timeout",
+        "Discourse calls have no timeout",
+        "#99"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 1,
+      "review_rounds": 2,
+      "pytest": "1803 passed (baseline 1779)"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 1,
+      "items": [
+        "Added common.clickup._endpoint_for_log: endpoints must match [A-Za-z0-9_/-]{1,256} or log as <invalid>, because new_purchase_request_received builds endpoints from an unauthenticated webhook body",
+        "update_task validates the requested task_id; non-dict/None responses raise the same ValueError ('no task ID') instead of TypeError",
+        "ClickUp errors raised 'from None' so tracebacks don't carry the chained requests URL/query string",
+        "/reorder: non-JSON views.update answer takes the error-log branch and returns 200 empty body (before: raised)",
+        "No README/docs change needed for phase 1 (nothing documented the old text)"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 1,
+      "items": [
+        "Duplicated _log_received_event in both slack_reaction_webhook handlers (WARN, style); not moved to common because handler tests patch reaction_processing wholesale",
+        "problem_report/slack_reaction_webhook/lambda_function.py:118 reply_response.get('id') unguarded (pre-existing)",
+        "'Network error during ClickUp API request' also labels a 2xx with a non-JSON body (pre-existing label, now pinned by a test)",
+        "pm_bot_reminder/lambda_function.py:3 unused requests import (phase 3 touches the file)"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 1,
+      "sha": "9832047"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 2,
+      "review_rounds": 2,
+      "pytest": "1808 passed"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 2,
+      "items": [
+        "/reorder: only failures up to and including create_task show 'was not created'; the success-view post logs only, so users aren't invited to file a duplicate",
+        "Reaction functions log the Slack event_id on unexpected errors (#143 AC7)",
+        "/purchase-request/new logs the task ID with %r (it comes from an unauthenticated body)",
+        "Four reaction missing-variable tests changed to assert the fixed body and find the variable name in the logged traceback (updated, not deleted)",
+        "Dropped pm_bot_reminder's unused requests import; type hints on changed handlers",
+        "Prep NEEDS_REVISION (0 HIGH, 2 MED, 4 LOW): amendments applied in the phase doc"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 2,
+      "items": [
+        "new_purchase_request_received:42-45 missing-variable 500 body names the variables (config names, not secrets; plan Out of scope)",
+        "common.clickup.create_task doesn't check that ClickUp's 200 body has an id; /reorder could show Success! with no task (pre-existing)",
+        "/reorder error-modal posts inside the except blocks are unchecked; a failed post leaves the user on Loading (pre-existing)",
+        "new_purchase_request_received: Slack post ok then set_custom_field_value fails -> 500 -> ClickUp retries -> duplicate Slack post (pre-existing; plan keeps status codes)",
+        "docs/README.md:117 names the reorder function FacilitiesSlackPurchaseReorderFunction; template says SlackSlashReorderFunction-${Stage} (pre-existing doc drift)"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "preexisting",
+      "check": "cfn-lint",
+      "detail": "4 W3005 warnings in template.yaml:582/592/605 on the base templates"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 2,
+      "sha": "0338dea"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 3
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 3,
+      "review_rounds": 2,
+      "pytest": "1831 passed"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 3,
+      "items": [
+        "/reorder SUBMISSION_FAILURE_TEXT kept as 'was not created' (#143 AC2); a create slower than 8 s is rare and a duplicate is cheap to close; the /reorder README tells volunteers to check ClickUp before resubmitting after a slow failure (README Decision 15)",
+        "8-second timeout per request on ClickUp and Slack requests (README Decision 10: per request, not per function)",
+        "New Neon/Discourse tests went into the existing layers/common/python/tests/ files (a second same-named file would fail collection)",
+        "Neon root-logger check runs in a fresh interpreter, not importlib.reload (reload rebinds NeonCRMError and breaks other tests)",
+        "PM reminder banners reworded to 'PM reminder run started' / 'PM reminder run finished: %d tasks processed'",
+        "Prep NEEDS_REVISION: amendments applied in the phase doc"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 3,
+      "items": [
+        "new_waiver_completed: a Neon search that times out or fails returns None -> logs 'no account' -> 404; an update that times out or fails -> 200 'success'. Before, a hung Neon ran into the 30 s Lambda limit. Recommend adding the timeout/search case to #99's scope",
+        "Timeouts are per request: /reorder submission makes 3 calls in a 10 s function, and no async invoke sets MaximumRetryAttempts, so a Lambda timeout retry could run create_task twice. Follow-up: deadline from context.get_remaining_time_in_millis() or MaximumRetryAttempts: 0",
+        "A write that ClickUp or Slack commits after 8 s now counts as a failure (/reorder 'not created'; new purchase request 500 after Slack posted, so a ClickUp retry posts again; new problem report 'Error creating task'). Follow-up: treat ReadTimeout on a write differently",
+        "/reorder's own views.open and views.update posts have no timeout",
+        "Discourse requests have no timeout (README Decision 11)",
+        "Style: test_discourse.py repeats test_neoncrm.py's fresh-interpreter import check; could share a conftest.py"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 3,
+      "sha": "2635f0b"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "integration_start",
+      "pre_sha": "2635f0b"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "docs_start",
+      "pre_sha": "2635f0b"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "docs_done",
+      "regression_check": "no file shrank"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": "docs",
+      "items": [
+        "docs/README.md:117 names FacilitiesSlackPurchaseReorderFunction; template uses SlackSlashReorderFunction-${Stage} (pre-existing)",
+        "slack.py dry-run preview still uses print() (kept on purpose by #86; tests pin it)"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "manual_qa",
+      "steps": 12
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": "qa",
+      "items": [
+        "/waiver/new's 404 and 200 replies echo the submitted email, and 404-vs-200 tells a caller whether an email has a Neon account (pre-existing, waiver function untouched; candidate follow-up with #99)"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "pr",
+      "number": 146,
+      "result": "ready-for-review",
+      "checks": "green",
+      "rounds": 0,
+      "closes": [
+        83,
+        95,
+        141,
+        142,
+        143,
+        144,
+        145
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "complete"
+    }
+  ],
+  "stories": [
+    142,
+    143,
+    144,
+    145
+  ],
+  "closes_extra": [
+    95,
+    83
+  ],
+  "docs": {
+    "updated": [
+      "functions/problem_report/slack_reaction_webhook/README.md (131->136)",
+      "functions/purchase_request/slack_reaction_webhook/README.md (155->160)"
+    ],
+    "docs_readme": "unchanged (Decision 12 holds)",
+    "regression": false
+  },
+  "manual_qa": {
+    "stories_covered": [
+      142,
+      143,
+      144
+    ],
+    "stories_without_surface": [
+      145
+    ],
+    "total_steps": 12,
+    "notes": [
+      "Stage shares prod's Slack bot, channels, ClickUp token, Neon secret and Discourse bot: steps 1-10 use made-up IDs; steps 11-12 (real Neon test account, real Purchase Requests task) optional",
+      "Step 3 posts a test message with a made-up ClickUp link in C063LH7MB45 and C026YVA7TK3; delete afterwards",
+      "Steps 7-9 use aws lambda invoke on stage (the router invokes reaction functions async)",
+      "/reorder error modals, PM reminder failure reply and Discourse failure lines can't be triggered on stage; covered by tests"
+    ]
+  }
+}
