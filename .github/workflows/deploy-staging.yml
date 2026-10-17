@@ -61,3 +61,19 @@ jobs:
             exit 1
           fi
           echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
+
+      # The deploy has already succeeded, so a problem listing the routes
+      # mustn't mark it failed.
+      - name: Set up Python
+        continue-on-error: true
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: List API routes in the run summary
+        continue-on-error: true
+        env:
+          API_URL: ${{ steps.get-api-url.outputs.API_URL }}
+        run: |
+          pip install --quiet pyyaml
+          python scripts/list_api_routes.py --base-url "$API_URL" >> "$GITHUB_STEP_SUMMARY"
