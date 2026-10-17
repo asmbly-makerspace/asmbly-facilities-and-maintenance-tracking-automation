@@ -1,0 +1,90 @@
+{
+  "plan_name": "class-photo-loading",
+  "feature_branch": "feature/class-photo-loading",
+  "epic": 114,
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1,
+      "title": "Class-list cache, scheduled refresh and Neon timing",
+      "file": "phase-1-class-list-cache.md",
+      "status": "done",
+      "pre_sha": "571d05d",
+      "review_rounds": "build review + 3 cold review-lead rounds (round 2 BLOCK: botocore max_attempts -> total_max_attempts=1, fixed; all WARNs/NOTEs fixed)"
+    },
+    {
+      "id": 2,
+      "title": "Submit against the cache, time left and what was written",
+      "file": "phase-2-submit-against-cache.md",
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "title": "Page busy state, progress, retry and timeout messages",
+      "file": "phase-3-page-loading-and-progress.md",
+      "status": "pending"
+    }
+  ],
+  "integration": null,
+  "final_pr_number": null,
+  "admin_actions": [
+    "Before the PR reaches stage: redeploy AsmblyFacilitiesMaintTrackingStack-cicd (adds ClassPhotoClassListCache-{stage,prod} table and class-photo-class-list-refresh-{stage,prod} rule).",
+    "After prod deploy: one real prod submission; record 'Time left before the GitHub writes' on #114; close #114."
+  ],
+  "events": [
+    {
+      "type": "start",
+      "detail": "Branch from origin/stage a1479e6 (after #115, the #111 branding, merged)."
+    },
+    {
+      "type": "planned",
+      "detail": "Plan 571d05d; stories #116-#118; 18 decisions. Cache: one DynamoDB item (ClassPhotoClassListCache-${Stage}) refreshed by EventBridge (15 min prod, 60 min elsewhere) invoking the API function; >3 h old -> live read; Neon down -> stale copy marked."
+    },
+    {
+      "type": "decision",
+      "detail": "Busy indicator is native <progress> (token tests forbid animation units); submit progress = client-visible steps + elapsed seconds via XHR upload events; GITHUB_ERROR split into 'nothing was changed' vs 'submit again finishes the same PR'."
+    },
+    {
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "type": "owner_change",
+      "detail": "Owner: refresh once a day (not 15/60 min); cache max age ~26 h; add a 'Refresh class list' button (server: classes?refresh=1 with a ~60 s guard, phase 1; button: phase 3)."
+    },
+    {
+      "type": "owner_change",
+      "detail": "Owner: no scheduled refresh on stage (rule only on prod via IsProd; prod deploy policy only). Clean, decoupled design required: ClassListCache interface + DynamoDB implementation injected; pure freshness policy; shared service for schedule and route; in-memory fake + moto tests."
+    },
+    {
+      "type": "phase_done",
+      "phase": 1,
+      "checks": {
+        "pytest": "1638 passed",
+        "cfn_lint": "4 W3005 pre-existing",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      }
+    },
+    {
+      "type": "decision",
+      "phase": 1,
+      "detail": "Owner changes implemented: daily cron(0 10 * * ? *) on prod only (Condition IsProd); max age 26 h; GET classes?refresh=1 with 60 s guard; ClassListCache protocol + DynamoDB impl (only boto3 importer, lazy client) + pure FreshnessPolicy + ClassListService; modules beside the function (single user)."
+    },
+    {
+      "type": "decision",
+      "phase": 1,
+      "detail": "Deploy role gains exact-name table actions CloudFormation needs (DescribeContinuousBackups etc., found via CloudTrail/registry schema) and the prod-only rule; DynamoDB client 2 s timeouts, single attempt."
+    },
+    {
+      "type": "deferred",
+      "phase": 1,
+      "detail": "Scheduled refresh retried twice by Lambda on timeout (EventInvokeConfig would need a new deploy-role action) - accepted, documented. Unconditional cache write may overwrite a newer manual refresh by one read - accepted."
+    }
+  ],
+  "stories": [
+    116,
+    117,
+    118
+  ]
+}

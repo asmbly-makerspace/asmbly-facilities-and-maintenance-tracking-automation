@@ -191,6 +191,8 @@ The change adds `ClassPhotoUploadApiFunction-{stage,prod}`, `ClassPhotoUploadPag
 2.  From the branch that holds the change, follow [How to Manage the Deployer Role](#how-to-manage-the-deployer-role), steps 2 to 4: look up both REST API IDs, preview with `--no-execute-changeset`, check nothing shows `Replacement: True`, then deploy `AsmblyFacilitiesMaintTrackingStack-cicd`.
 3.  Merge the pull request to `stage`, or re-run its failed deploy. After the `stage` deploy, open the stage page address from step 1, sign in, and submit a photo: the answer says "Dry run" and nothing is opened on `asmbly-classes`.
 
+The class list cache (epic #114) later added the DynamoDB table `ClassPhotoClassListCache-{stage,prod}` to both deploy policies (with the `Describe…`, `GetResourcePolicy` and `ListTagsOfResource` reads CloudFormation's table handler makes, on that table only), and the EventBridge rule `class-photo-class-list-refresh-prod` (with its tagging and `ListTargetsByRule`) to the prod policy only, because stage has no scheduled refresh. Redeploy the role as in item 2 before that change reaches `stage`. Nothing else needs setting up: the cache fills itself on the first visit.
+
 To stop new pull requests at once (for example if the key leaks), suspend the App or uninstall it from `asmbly-classes`, then rotate the key as in step 3.
 
 ## Automated Production Deployment (via GitHub Actions)

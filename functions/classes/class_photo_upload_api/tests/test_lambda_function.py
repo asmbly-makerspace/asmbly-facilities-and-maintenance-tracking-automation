@@ -1,18 +1,25 @@
 import base64
 import copy
+import datetime
 import importlib
 import json
+import re
 import logging
 import sys
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from moto import mock_aws
+
+import boto3
 import pytest
 from common.github_app import GitHubConflict, GitHubError
 from common.neoncrm import NeonCRMError
 
 from functions.classes.class_photo_upload_api import lambda_function, photo_checks, submission
+from functions.classes.class_photo_upload_api.class_list_cache import ClassListRecord, ListSource
+from functions.classes.class_photo_upload_api.dynamodb_class_list_cache import DynamoDBClassListCache
 from functions.classes.class_photo_upload_api.submission import (
     ACTION_OPENED,
     ACTION_UPDATED,
@@ -21,6 +28,7 @@ from functions.classes.class_photo_upload_api.submission import (
     SubmissionPlan,
     SubmissionResult,
 )
+from functions.classes.class_photo_upload_api.tests.fake_class_list_cache import InMemoryClassListCache
 from functions.classes.class_photo_upload_api.tests.jpeg_builder import make_jpeg
 
 MODULE = "functions.classes.class_photo_upload_api.lambda_function"
@@ -47,6 +55,7 @@ ENV = {
     "CLASS_PHOTO_CONFIG_PARAM_NAME": "/stage/config/class-photo-upload",
     "CLASS_PHOTO_APP_CLIENT_ID": CLIENT_ID,
     "CLASS_PHOTO_DRY_RUN": "true",
+    "CLASS_CACHE_TABLE_NAME": "ClassPhotoClassListCache-test",
 }
 CLASS_NAME = "Ceramics: Glazing Workshop"
 NEON_EVENTS = [
@@ -111,7 +120,15 @@ def env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def mocks(env: None) -> Any:
+def fake_cache(monkeypatch: pytest.MonkeyPatch) -> InMemoryClassListCache:
+    """The handler's cache for this test: in memory, empty (so a request reads Neon, as before)."""
+    cache = InMemoryClassListCache()
+    monkeypatch.setattr(lambda_function, "_class_list_cache", cache)
+    return cache
+
+
+@pytest.fixture
+def mocks(env: None, fake_cache: InMemoryClassListCache) -> Any:
     """aws, NeonCRM, github_app and the submission calls, patched where the handler uses them."""
     with (
         patch(f"{MODULE}.aws") as aws,
@@ -135,6 +152,7 @@ def mocks(env: None) -> Any:
             github_app=github_app,
             plan_submission=plan_submission,
             apply_submission=apply_submission,
+            cache=fake_cache,
         )
 
 
@@ -288,6 +306,9 @@ def test_classes_returns_names_problems_and_warnings(mocks: Any) -> None:
     search = mocks.neon.return_value.search_events
     assert search.call_args.kwargs == {"timeout": 4.0, "max_pages": 8}
     mocks.github_app.installation_token.assert_not_called()
+    assert payload["stale"] is False
+    assert payload["refresh"] is None
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", payload["refreshed_at"])
 
 
 def test_classes_reports_prod_as_not_a_dry_run(mocks: Any, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -318,6 +339,258 @@ def test_classes_secret_failure_returns_502(mocks: Any, caplog: pytest.LogCaptur
     assert body_of(response) == {"error": lambda_function.NEON_ERROR}
     assert "Couldn't read the Neon secret: KeyError" in caplog.text
     mocks.neon.assert_not_called()
+
+
+# --- The class list cache (class-photo-loading phase 1) ---
+
+CACHED_NAMES = ("Ceramics: Glazing Workshop", "Woodshop Safety")
+
+
+def cached_copy(age: datetime.timedelta, source: ListSource = ListSource.SCHEDULE) -> ClassListRecord:
+    now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+    return ClassListRecord(CACHED_NAMES, now - age, source)
+
+
+def refresh_event(value: Any = "1") -> dict[str, Any]:
+    event = classes_event()
+    event["queryStringParameters"] = {"refresh": value}
+    return event
+
+
+def scheduled_event() -> dict[str, Any]:
+    return json.loads((FIXTURES / "scheduled_event.json").read_text())
+
+
+def test_classes_second_call_is_served_from_cache(mocks: Any, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        first = body_of(lambda_function.lambda_handler(classes_event(), FakeContext()))
+        second = body_of(lambda_function.lambda_handler(classes_event(), FakeContext()))
+
+    assert mocks.neon.return_value.search_events.call_count == 1
+    assert second["classes"] == first["classes"]
+    assert second["refreshed_at"] == first["refreshed_at"]
+    assert re.search(r"Class list from neon \(age [01] s\): 5 classes", caplog.text)
+    assert "Class list from cache (age " in caplog.text
+    assert mocks.cache.puts[0].source is ListSource.LIVE_READ
+
+
+def test_classes_fresh_cache_reads_no_neon_secret(mocks: Any) -> None:
+    mocks.cache.record = cached_copy(datetime.timedelta(hours=25))
+
+    response = lambda_function.lambda_handler(classes_event(), FakeContext())
+
+    assert response["statusCode"] == 200
+    assert [entry["name"] for entry in body_of(response)["classes"]] == list(CACHED_NAMES)
+    assert body_of(response)["stale"] is False
+    mocks.aws.get_secret.assert_not_called()
+    mocks.neon.assert_not_called()
+
+
+def test_classes_cached_list_survives_neon_failure(mocks: Any) -> None:
+    mocks.cache.record = cached_copy(datetime.timedelta(hours=27))
+    mocks.neon.return_value.search_events.side_effect = NeonCRMError("events/search failed (status 500)")
+
+    response = lambda_function.lambda_handler(classes_event(), FakeContext())
+
+    assert response["statusCode"] == 200
+    payload = body_of(response)
+    assert [entry["name"] for entry in payload["classes"]] == list(CACHED_NAMES)
+    assert payload["stale"] is True
+    assert payload["refresh"] is None
+    assert payload["refreshed_at"] == lambda_function.format_time(mocks.cache.record.refreshed_at)
+
+
+def test_classes_neon_failure_without_cache_returns_502(mocks: Any) -> None:
+    assert mocks.cache.record is None
+    mocks.neon.return_value.search_events.side_effect = NeonCRMError("events/search failed (status 500)")
+
+    response = lambda_function.lambda_handler(classes_event(), FakeContext())
+
+    assert response["statusCode"] == 502
+    assert body_of(response) == {"error": lambda_function.NEON_ERROR}
+    assert mocks.cache.puts == []
+
+
+def test_classes_logs_neon_time(mocks: Any, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        lambda_function.lambda_handler(classes_event(), FakeContext())
+
+    assert "Neon read 5 events (1 pages) in " in caplog.text
+    assert " ms: 5 classes" in caplog.text
+
+
+def test_classes_neon_failure_logs_elapsed_time(mocks: Any, caplog: pytest.LogCaptureFixture) -> None:
+    mocks.neon.return_value.search_events.side_effect = NeonCRMError("events/search failed (status 500)")
+
+    with caplog.at_level(logging.ERROR):
+        lambda_function.lambda_handler(classes_event(), FakeContext())
+
+    assert re.search(r"Couldn't read the class list from Neon after \d+ ms: NeonCRMError", caplog.text)
+
+
+def test_classes_refresh_reads_neon_and_logs_sub(mocks: Any, caplog: pytest.LogCaptureFixture) -> None:
+    mocks.cache.record = cached_copy(datetime.timedelta(minutes=10))
+
+    with caplog.at_level(logging.INFO):
+        response = lambda_function.lambda_handler(refresh_event(), FakeContext())
+
+    payload = body_of(response)
+    assert response["statusCode"] == 200
+    assert payload["refresh"] == "refreshed"
+    assert payload["stale"] is False
+    assert len(payload["classes"]) == 5
+    mocks.neon.return_value.search_events.assert_called_once()
+    assert mocks.cache.record.source is ListSource.MANUAL_REFRESH
+    assert f"Class list refresh by sub {SUB}: refreshed" in caplog.text
+    assert "USERMARKER" not in caplog.text
+
+
+def test_classes_refresh_twice_in_a_minute_is_too_soon(mocks: Any, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        first = body_of(lambda_function.lambda_handler(refresh_event(), FakeContext()))
+        second = body_of(lambda_function.lambda_handler(refresh_event(), FakeContext()))
+
+    assert first["refresh"] == "refreshed"
+    assert second["refresh"] == "too_soon"
+    assert second["stale"] is False
+    assert second["classes"] == first["classes"]
+    assert mocks.neon.return_value.search_events.call_count == 1
+    assert f"Class list refresh by sub {SUB}: too_soon" in caplog.text
+
+
+def test_classes_refresh_neon_failure_serves_copy_stale(mocks: Any) -> None:
+    mocks.cache.record = cached_copy(datetime.timedelta(minutes=10))
+    mocks.neon.return_value.search_events.side_effect = NeonCRMError("events/search failed (status 500)")
+
+    response = lambda_function.lambda_handler(refresh_event(), FakeContext())
+
+    payload = body_of(response)
+    assert response["statusCode"] == 200
+    assert payload["refresh"] == "failed"
+    assert payload["stale"] is True
+    assert [entry["name"] for entry in payload["classes"]] == list(CACHED_NAMES)
+
+
+def test_classes_refresh_without_copy_and_neon_failure_returns_502(mocks: Any) -> None:
+    mocks.neon.return_value.search_events.side_effect = NeonCRMError("events/search failed (status 500)")
+
+    response = lambda_function.lambda_handler(refresh_event(), FakeContext())
+
+    assert response["statusCode"] == 502
+    assert body_of(response) == {"error": lambda_function.NEON_ERROR}
+
+
+@pytest.mark.parametrize("parameters", [{"refresh": "0"}, {"refresh": "true"}, {"refresh": ""}, {}, None])
+def test_classes_refresh_param_other_values_are_a_normal_load(mocks: Any, parameters: Any) -> None:
+    mocks.cache.record = cached_copy(datetime.timedelta(minutes=10))
+    event = classes_event()
+    event["queryStringParameters"] = parameters
+
+    payload = body_of(lambda_function.lambda_handler(event, FakeContext()))
+
+    assert payload["refresh"] is None
+    mocks.neon.assert_not_called()
+
+
+def test_classes_refresh_needs_claims(mocks: Any) -> None:
+    event = _with_claims(refresh_event(), aud=None)
+
+    response = lambda_function.lambda_handler(event, FakeContext())
+
+    assert_forbidden(response, mocks)
+    assert mocks.cache.gets == 0
+    assert mocks.cache.puts == []
+
+
+def test_scheduled_event_refreshes_cache_without_github(mocks: Any, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        result = lambda_function.lambda_handler(scheduled_event(), FakeContext())
+
+    assert result == {"refreshed": True}
+    assert mocks.cache.record is not None
+    assert mocks.cache.record.source is ListSource.SCHEDULE
+    assert len(mocks.cache.record.names) == 5
+    mocks.github_app.installation_token.assert_not_called()
+    mocks.aws.get_secret_json.assert_not_called()
+    mocks.aws.get_json_parameter.assert_not_called()
+    mocks.plan_submission.assert_not_called()
+    assert "Scheduled class list refresh: done" in caplog.text
+
+
+def test_scheduled_refresh_neon_failure_keeps_cache(mocks: Any, caplog: pytest.LogCaptureFixture) -> None:
+    old = cached_copy(datetime.timedelta(hours=3))
+    mocks.cache.record = old
+    mocks.neon.return_value.search_events.side_effect = NeonCRMError("events/search failed (status 500)")
+
+    with caplog.at_level(logging.INFO):
+        result = lambda_function.lambda_handler(scheduled_event(), FakeContext())
+
+    assert result == {"refreshed": False}
+    assert mocks.cache.record is old
+    assert "Scheduled class list refresh failed (Refusal); kept the cached list, 180 minutes old" in caplog.text
+    assert "Scheduled class list refresh: kept the cached list" in caplog.text
+
+
+def test_scheduled_refresh_unexpected_error_returns_normally(
+    mocks: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    class BrokenService:
+        def refresh_on_schedule(self) -> bool:
+            raise RuntimeError("secret detail")
+
+    monkeypatch.setattr(lambda_function, "class_list_service", BrokenService)
+
+    with caplog.at_level(logging.INFO):
+        result = lambda_function.lambda_handler(scheduled_event(), FakeContext())
+
+    assert result == {"refreshed": False}
+    assert "Scheduled class list refresh failed: RuntimeError" in caplog.text
+    assert "secret detail" not in caplog.text
+
+
+def test_http_event_with_scheduled_keys_still_needs_claims(mocks: Any) -> None:
+    event = _with_claims(classes_event(), aud=None)
+    event["source"] = "aws.events"
+    event["detail-type"] = "Scheduled Event"
+
+    response = lambda_function.lambda_handler(event, FakeContext())
+
+    assert_forbidden(response, mocks)
+    assert mocks.cache.gets == 0
+    assert mocks.cache.puts == []
+
+
+def test_scheduled_refresh_logs_no_names(mocks: Any, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.DEBUG):
+        lambda_function.lambda_handler(scheduled_event(), FakeContext())
+
+    for event in NEON_EVENTS:
+        assert event["Event Name"] not in caplog.text
+    for name in ("Glazing", "Woodshop", "Pat", "USERMARKER", "neonkey", TOKEN):
+        assert name not in caplog.text
+
+
+def test_default_cache_is_the_dynamodb_table_from_env(mocks: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(lambda_function, "_class_list_cache", None)
+    monkeypatch.setenv("AWS_REGION", "us-east-2")
+    with mock_aws():
+        boto3.client("dynamodb", region_name="us-east-2").create_table(
+            TableName=ENV["CLASS_CACHE_TABLE_NAME"],
+            AttributeDefinitions=[{"AttributeName": "cache_key", "AttributeType": "S"}],
+            KeySchema=[{"AttributeName": "cache_key", "KeyType": "HASH"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        first = lambda_function.lambda_handler(classes_event(), FakeContext())
+        cache = lambda_function.class_list_cache()
+        second = lambda_function.lambda_handler(classes_event(), FakeContext())
+
+        assert isinstance(cache, DynamoDBClassListCache)
+        assert lambda_function.class_list_cache() is cache
+        assert first["statusCode"] == second["statusCode"] == 200
+        assert mocks.neon.return_value.search_events.call_count == 1
+        stored = cache.get()
+        assert stored is not None and stored.source is ListSource.LIVE_READ
 
 
 # --- Submit: the request ---
@@ -763,7 +1036,16 @@ def test_handler_imports_as_top_level_module(monkeypatch: pytest.MonkeyPatch) ->
     """Under Lambda the function's folder is on the path and there is no parent package."""
     folder = Path(lambda_function.__file__).parent
     monkeypatch.syspath_prepend(str(folder))
-    names = ("lambda_function", "class_names", "photo_checks", "submission")
+    names = (
+        "lambda_function",
+        "class_names",
+        "photo_checks",
+        "submission",
+        "class_list_cache",
+        "class_list_freshness",
+        "class_list_service",
+        "dynamodb_class_list_cache",
+    )
     saved = {name: sys.modules.pop(name) for name in names if name in sys.modules}
     try:
         module = importlib.import_module("lambda_function")
@@ -773,6 +1055,11 @@ def test_handler_imports_as_top_level_module(monkeypatch: pytest.MonkeyPatch) ->
         assert module.photo_checks.__name__ == "photo_checks"
         assert module.submission.__name__ == "submission"
         assert module.submission.class_names is module.class_names
+        assert module.ClassListService.__module__ == "class_list_service"
+        assert module.DynamoDBClassListCache.__module__ == "dynamodb_class_list_cache"
+        service_module = sys.modules["class_list_service"]
+        assert service_module.ClassListRecord is sys.modules["class_list_cache"].ClassListRecord
+        assert service_module.FreshnessPolicy is sys.modules["class_list_freshness"].FreshnessPolicy
     finally:
         for name in names:
             sys.modules.pop(name, None)

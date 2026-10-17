@@ -1,4 +1,5 @@
 import datetime
+import inspect
 import json
 import re
 from pathlib import Path
@@ -11,6 +12,7 @@ from common.neoncrm import NeonCRM, NeonCRMError
 
 from functions.classes.class_photo_upload_api.class_names import (
     CLASS_LOOKBACK_MONTHS,
+    NEON_PAGE_SIZE,
     branch_name,
     class_name_from_event_name,
     class_names_from_events,
@@ -157,8 +159,26 @@ def test_fetch_classes_logs_counts_not_names(caplog: pytest.LogCaptureFixture) -
     with caplog.at_level("INFO"):
         fetch_classes(neon, datetime.date(2026, 10, 16))
 
-    assert "Read 1 events, 1 classes" in caplog.text
+    assert "Neon read 1 events (1 pages) in " in caplog.text
+    assert " ms: 1 classes" in caplog.text
     assert "Pat" not in caplog.text
+
+
+def test_page_size_matches_the_helper_default() -> None:
+    assert NEON_PAGE_SIZE == inspect.signature(NeonCRM.search_events).parameters["page_size"].default
+
+
+@pytest.mark.parametrize("count, pages", [(0, 1), (200, 1), (201, 2), (400, 2), (401, 3)])
+def test_fetch_classes_logs_pages_from_the_event_count(
+    count: int, pages: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    neon = MagicMock(spec=NeonCRM)
+    neon.search_events.return_value = [{"Event ID": str(i), "Event Name": f"Class {i}"} for i in range(count)]
+
+    with caplog.at_level("INFO"):
+        fetch_classes(neon, datetime.date(2026, 10, 16))
+
+    assert f"Neon read {count} events ({pages} pages) in " in caplog.text
 
 
 @pytest.mark.parametrize(

@@ -17,8 +17,12 @@ estimated_size: M
 - This plan's README (Decisions 2, 5, 10; Security, "Server-side validation").
 - #118's acceptance criteria 1, 2, 3 and 6 (this phase delivers the server's part; phase 3
   the page's).
-- Phase 1's hand-off: `class_cache.get_class_list`, `ClassList`, `_cache_table()`,
-  `read_classes_from_neon()`, the `cache_table` fixture.
+- Phase 1's hand-off: `class_list_service()` and `ClassListService.for_request()`,
+  `ClassListResult`, `service.age_seconds(result)`, `read_classes_from_neon()`, the
+  `fake_cache` fixture (`InMemoryClassListCache`), and the README's **Design** (the
+  handler uses the service, never the cache's implementation). The phase 1 prep
+  amendments (owner Decisions 19–22) renamed the hand-off; this document was updated to
+  match.
 - `functions/classes/class_photo_upload_api/lambda_function.py`: `handle_submit()`,
   `remaining_ms()`, `WRITE_MIN_REMAINING_MS`, the `Refusal` reasons.
 - `functions/classes/class_photo_upload_api/submission.py`: `plan_submission(repo, config,
@@ -73,15 +77,17 @@ GITHUB_UNFINISHED_ERROR = (
 2. The class list:
 
    ```python
-   now = datetime.datetime.now(datetime.timezone.utc)
-   class_list = class_cache.get_class_list(_cache_table(), read_classes_from_neon, now)
-   logger.info("Class list from %s (age %d s): %d classes", class_list.source, class_list.age_seconds(now), len(class_list.names))
-   classes = class_list.names
+   service = class_list_service()
+   result = service.for_request()
+   logger.info("Class list from %s (age %d s): %d classes", result.served_from, service.age_seconds(result), len(result.names))
+   classes = result.names
    ```
 
-   Same rule as `/classes`: a copy under 3 hours old is used without Neon; a miss or an
+   Same rule as `/classes`: a copy under 26 hours old is used without Neon; a miss or an
    older copy reads Neon live (and writes the cache); Neon failing with a copy uses the
-   copy; no copy and Neon failing → `Refusal(502, NEON_ERROR, …)` as today.
+   copy; no copy and Neon failing → `Refusal(502, NEON_ERROR, …)` as today. A class added
+   in Neon since the last refresh is refused ("Pick a class from the list.") until someone
+   presses **Refresh class list** (owner Decision 21), which rewrites the same cache.
 3. `class_name not in classes` → `Refusal(400, NOT_IN_LIST_ERROR, "class_not_in_list")`;
    then `file_name_problem` → `Refusal(400, problem, "file_name")`. Unchanged, now against
    the cached list. `plan_submission` gets the same `classes` for its shared-photo
@@ -148,7 +154,7 @@ actions 3). No username, token, photo or body in any of them.
 API `README.md`:
 
 - "How It Works", submission step 3: "Read the class list from the cache (phase 1's rule:
-  under 3 hours old without Neon; otherwise Neon live, falling back to the cached copy);
+  under 26 hours old without Neon; otherwise Neon live, falling back to the cached copy);
   refuse a class that isn't in it, or whose name can't be a file name."
 - "Responses": the three rows above replace the old GitHub row and the Neon row; the
   sentence under the table says the "nothing was changed" message means a retry starts
@@ -159,15 +165,15 @@ API `README.md`:
 
 ## Tests
 
-In `tests/test_lambda_function.py` (all with phase 1's `cache_table` fixture; a helper
-`put_cache(names, age_seconds=0)` writes the item through `class_cache.write_cache`):
+In `tests/test_lambda_function.py` (all with phase 1's `fake_cache` fixture; a helper
+`put_cache(names, age_seconds=0)` puts a `ClassListRecord` into the fake):
 
 - `test_submit_uses_cached_list_without_neon`: cache holds `CLASS_NAME` and two others →
   200; `mocks.neon` not called; `plan_submission` received the cached names as
   `all_classes` (#118 AC1, #114 "submit validation against it").
 - `test_submit_works_while_neon_is_down_with_cache`: fresh cache, Neon raises
   `NeonCRMError` → 200 (#118 AC1).
-- `test_submit_with_old_cache_and_neon_down_uses_the_copy`: copy over 3 hours old, Neon
+- `test_submit_with_old_cache_and_neon_down_uses_the_copy`: copy over 26 hours old, Neon
   raises → 200, validated against the copy.
 - `test_submit_class_not_in_cached_list_400`: cache without the class (Neon would have it)
   → 400 "Pick a class from the list.", Neon not called, `installation_token`,
@@ -196,7 +202,7 @@ In `tests/test_lambda_function.py` (all with phase 1's `cache_table` fixture; a 
 
 ## Acceptance criteria
 
-1. With a cached list under 3 hours old, a submission doesn't call Neon or read the Neon
+1. With a cached list under 26 hours old, a submission doesn't call Neon or read the Neon
    secret, and works while Neon is down (#118 AC1).
 2. A class not in the server's list answers 400 "Pick a class from the list." and a class
    whose name can't be a file name answers its message; neither calls GitHub (#118 AC2).

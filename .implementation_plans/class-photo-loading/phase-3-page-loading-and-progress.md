@@ -14,7 +14,8 @@ estimated_size: L
 
 ## Required reading
 
-- This plan's README (Decisions 9, 11–17; Security, "The page").
+- This plan's README (Decisions 9, 11–17, 21; Security, "The page"). Decision 21 (owner,
+  2026-10-16) adds the **Refresh class list** button below.
 - #117 (all criteria) and #118 criteria 4, 5 and 6.
 - `.implementation_plans/photo-upload-branding/README.md`, "Design rule" and Decisions
   10–13: every value is a token on `:root`, defined once, used by `var()`; no literal
@@ -33,8 +34,9 @@ estimated_size: L
   (no `tabindex` anywhere), `test_served_page_is_small` (100 KB; the page is about 58 KB).
 - `functions/classes/class_photo_upload_page/lambda_function.py`: the page config keys
   (`authDomain`, `clientId`, `pageUrl`, `dryRun`).
-- Phase 1's hand-off (`refreshed_at`, `stale` in `/classes`) and phase 2's (the two GitHub
-  messages; the page shows them as given).
+- Phase 1's hand-off (`refreshed_at`, `stale` and `refresh` in `/classes`;
+  `GET /classes?refresh=1`) and phase 2's (the two GitHub messages; the page shows them
+  as given).
 - `functions/classes/class_photo_upload_api/tests/jpeg_builder.py` (`make_jpeg`), reused
   for a valid photo in the script tests.
 
@@ -44,7 +46,10 @@ While the class list loads, the class field shows a native busy indicator and is
 busy; "Loading classes…" is announced once and, after 5 s, "Still loading classes from
 Neon…". A failed load shows the message and **Try again**, which reloads the list in
 place. A loaded list says when it was read from Neon, and that it may be out of date when
-the server marks it stale. While a submission runs, every input is disabled and the page
+the server marks it stale. A loaded list has a **Refresh class list** button that reads
+the list from Neon again in place (owner Decision 21), with the same busy state, and says
+when it was refreshed, when it was too soon to refresh again, or when Neon didn't answer.
+While a submission runs, every input is disabled and the page
 shows the step it is on (preparing, sending, waiting) with the seconds elapsed. A failure
 keeps the class and photo for a one-click retry. An answer the page can't confirm says
 plainly that a pull request may or may not have been opened (or, on a dry run, that
@@ -66,6 +71,8 @@ The page's script gets automated tests through `node` (README Decision 12).
   for the new markup, messages and styles.
 - `functions/classes/class_photo_upload_page/README.md`: "The Page", "How It Looks",
   "Testing".
+- `docs/README.md` and `functions/classes/class_photo_upload_api/README.md`: name the
+  **Refresh class list** button (see "docs").
 
 ## Implementation details
 
@@ -82,6 +89,7 @@ The page's script gets automated tests through `node` (README Decision 12).
     <p id="class-status" class="message" role="status" aria-live="polite"></p>
     <button type="button" id="class-retry" hidden>Try again</button>
     <p id="class-freshness" class="message note" hidden></p>
+    <button type="button" id="class-refresh" hidden>Refresh class list</button>
     ...
     <button type="button" id="submit" disabled>Submit</button>
     <progress id="submit-progress" class="busy" aria-label="Submitting" hidden></progress>
@@ -137,6 +145,10 @@ and stay word for word):
   const ELAPSED_MESSAGE = "{seconds} s";
   const UNCONFIRMED_MESSAGE = "The server didn't confirm the result in time. A pull request may or may not have been opened on GitHub. Submitting the same class again is safe: it updates the same pull request instead of opening a second one.";
   const DRY_RUN_TIMEOUT_MESSAGE = "The server didn't answer in time. This is a dry run, so nothing was opened on GitHub. Try again.";
+  const REFRESHING_CLASSES_MESSAGE = "Refreshing the class list from Neon…";
+  const REFRESHED_MESSAGE = "Class list refreshed from Neon.";
+  const REFRESH_TOO_SOON_MESSAGE = "The class list was refreshed less than a minute ago, so this is that list. Try again in a minute.";
+  const REFRESH_FAILED_MESSAGE = "Neon didn't answer, so the class list wasn't refreshed. The list shown is the last one read.";
 ```
 
 "Submitting…" is replaced by the three steps (README Decision 11); it is pinned by no test
@@ -185,7 +197,29 @@ answer:
    doesn't parse.
 5. A second `loadClasses()` while one is running does nothing (`state.loadingClasses`).
 
-`wire()` adds `class-retry` → `loadClasses`.
+`wire()` adds `class-retry` → `loadClasses` and `class-refresh` → `refreshClasses`.
+
+**Script: refreshing the class list** (`refreshClasses()`, owner Decision 21):
+
+1. Shown (`class-refresh.hidden = false`) only after a list has loaded; hidden while the
+   first load runs or after it failed (**Try again** covers that). Its accessible name is
+   its visible text, "Refresh class list" (no `aria-label`).
+2. Ignored while a load, a refresh or a submission runs (`state.loadingClasses`,
+   `state.submitting`); `setBusy(true)` disables it during a submission.
+3. Busy on, as a load: the select disabled with `aria-busy="true"`, `class-progress` shown,
+   the button disabled; `setMessage(class-status, REFRESHING_CLASSES_MESSAGE)`. Same
+   `CLASS_SLOW_MS` "still loading" timer and `REQUEST_TIMEOUT_MS` abort.
+4. `apiFetch("/classes?refresh=1", …, NEON_ERROR)`.
+5. A 200: re-fill the options as a load does, **keeping the chosen class** when it is still
+   in the new list (otherwise the placeholder, and `updateSubmit()`); update
+   `class-freshness`; then by `body.refresh`: `"refreshed"` → `REFRESHED_MESSAGE`;
+   `"too_soon"` → `REFRESH_TOO_SOON_MESSAGE`; `"failed"` → `REFRESH_FAILED_MESSAGE` with
+   the `error` kind (the stale sentence also shows in `class-freshness`). Each is one
+   live-region change.
+6. An error answer or no answer: the message (`error` kind) as a load shows it, **the
+   existing options stay** (a failed refresh never empties a working list), the select and
+   the button enabled again.
+7. Busy off in every case; focus stays on the button (see Accessibility).
 
 **Script: submitting** (`submit()`):
 
@@ -210,10 +244,15 @@ answer:
    `onClassChange()` can't fire (the select is disabled); a second click is ignored by
    `state.submitting` and the disabled button (#118 AC4).
 
-**Accessibility**: `aria-busy` on the select while loading and on `#result` while
-submitting; the two `role="status"` regions announce each step once; elapsed seconds are
+**Accessibility**: `aria-busy` on the select while loading or refreshing and on `#result`
+while submitting; the two `role="status"` regions announce each step once; elapsed seconds are
 `aria-hidden`; every new control is a native `button` or `progress` (no `tabindex`);
-**Try again** has the 3px focus ring of every button.
+**Try again** and **Refresh class list** have the 3px focus ring of every button.
+**Focus while busy** (prep for this phase must check): HTML's focus fixup rule moves focus
+to `<body>` when a focused button becomes `disabled` in current browsers. If that is so,
+**Try again** and **Refresh class list** use `aria-disabled="true"` while busy (clicks
+ignored by the script) instead of `disabled`, with the same disabled look and no new
+allowlist word, so focus is never lost (Decision 17).
 
 ### Script tests (README Decision 12)
 
@@ -265,6 +304,12 @@ submitting; the two `role="status"` regions announce each step once; elapsed sec
 | `submit_timeout_on_dry_run_says_nothing_opened` | `dryRun: true`, no answer: at 35 s the result is `DRY_RUN_TIMEOUT_MESSAGE` (#118 AC6) |
 | `submit_server_says_nothing_changed` | A 502 with phase 2's "Nothing was changed on GitHub" message: shown as given (#118 AC6) |
 | `submit_success_shows_result` | A 200 `opened` answer: "Opened pull request #12" with the link; busy state gone (no regression) |
+| `classes_refresh_button_shown_after_load` | Hidden while loading and after a failure; shown once the list loads; its text is "Refresh class list" |
+| `classes_refresh_reloads_from_neon` | Clicking it: `GET /classes?refresh=1`, busy state (select `aria-busy`, progress, button disabled), then `REFRESHED_MESSAGE` and the new time; no navigation |
+| `classes_refresh_too_soon_says_so` | `refresh: "too_soon"`: `REFRESH_TOO_SOON_MESSAGE`; the list is the answer's |
+| `classes_refresh_failed_keeps_list` | `refresh: "failed"`, `stale: true`: `REFRESH_FAILED_MESSAGE` (`error` kind) and the stale sentence; a 502 with `NEON_ERROR` instead: the message, and the earlier options still listed and selectable |
+| `classes_refresh_keeps_chosen_class` | A class chosen before the refresh stays chosen when it is in the new list; a class gone from it resets to the placeholder and Submit is disabled |
+| `submit_disables_refresh` | During a submission the Refresh button is disabled and a click sends nothing |
 
 **`tests/test_page_script.py`**:
 
@@ -288,8 +333,10 @@ submitting; the two `role="status"` regions announce each step once; elapsed sec
 - `test_submit_has_progress_and_silent_elapsed`: `submit-progress` (`<progress`, labelled,
   hidden) and `submit-elapsed` with `aria-hidden="true"`; `submit-status` keeps
   `role="status"`.
-- `test_loading_and_progress_messages_are_in_the_page` (parametrized over the eleven new
+- `test_loading_and_progress_messages_are_in_the_page` (parametrized over the fifteen new
   constants): each appears as `"<text>"` in the script.
+- `test_class_field_has_refresh_button`: `<button type="button" id="class-refresh"` with
+  the text "Refresh class list", `hidden`, and no `aria-label`.
 - `test_busy_indicator_uses_tokens`: `.busy` uses `var(--progress-height)` and
   `accent-color: var(--progress-fill)`; `.busy[hidden]` has `display: none`.
 - `test_disabled_photo_button_differs_beyond_colour`: `.drop-zone input:disabled + label`
@@ -304,8 +351,9 @@ submitting; the two `role="status"` regions announce each step once; elapsed sec
 Page `README.md`:
 
 - "The Page", item 2: the busy indicator, "Loading classes…", "Still loading classes from
-  Neon…" after 5 s, **Try again**, and the "Class list from Neon at HH:MM." line (with the
-  stale sentence).
+  Neon…" after 5 s, **Try again**, the "Class list from Neon at HH:MM." line (with the
+  stale sentence), and **Refresh class list** (what it does, its three outcomes, the
+  once-a-minute guard).
 - Item 5: the three steps with elapsed seconds, the controls disabled while it runs, and
   the class and photo kept after a failure.
 - Item 6: the unconfirmed message (prod) and the dry-run message, and when each shows;
@@ -315,6 +363,14 @@ Page `README.md`:
 - "Testing": the script tests (`test_page_script.py` runs `page_script_harness.mjs` with
   Node; skipped without Node locally, required in CI), and what they cover. Replace #73's
   statement that the page's JavaScript has no automated tests.
+
+Once the button exists (phase 1's review kept the docs from naming it early):
+
+- `docs/README.md`, Class Photo Upload entry: "when staff ask for a refresh
+  (`GET /class-photo-upload/classes?refresh=1` …)" and "ask for a refresh with
+  `?refresh=1`" become "when staff press **Refresh class list** on the page (…)".
+- API `README.md`: the `?refresh=1` row and "Emptying it by hand" name the page's
+  **Refresh class list** button.
 
 ## Acceptance criteria
 
@@ -335,6 +391,11 @@ Page `README.md`:
 8. `test_csp_header` and every token test pass unedited, with the two new tokens; the
    page stays under 100 KB; no `style=`, `innerHTML` or `tabindex` (#117 AC5, AC6).
 9. Every scenario in the table passes under `node`, run by pytest.
+10. A loaded list has **Refresh class list** (accessible name = its text): it reloads the
+    list from Neon in place with the busy state, keeps the chosen class when it is still
+    listed, says "Class list refreshed from Neon.", the too-soon message, or the Neon
+    failure message, and a failed refresh never empties the list (owner Decision 21, #117
+    AC7).
 
 ## Verification
 
@@ -356,6 +417,9 @@ After the stage deploy, in a desktop browser and on a phone (or a 320px-wide win
   **Try again**; go back online and press it: the list loads, focus lands on the list.
 - Submit a 3:2 JPEG: the steps change, the seconds count, and the class list, **Choose a
   photo** and **Submit** are disabled until the dry-run result shows.
+- Press **Refresh class list**: the busy state, then "Class list refreshed from Neon." and
+  a new time; press it again within a minute: the too-soon message. Keyboard only: Tab to
+  it, press Enter; focus stays on it.
 - With a screen reader (VoiceOver), each step is read once and the seconds aren't read.
 - At 320px and 200% zoom nothing scrolls sideways.
 
@@ -367,4 +431,4 @@ None.
 
 _Filled in when the phase is done._ The page's loading, progress, retry and timeout
 behaviour is complete; `/offshore`'s manual QA doc can use the stage checks above by
-story (#117: the first two; #118: the last three).
+story (#117: the first two and the Refresh check; #118: the last three).

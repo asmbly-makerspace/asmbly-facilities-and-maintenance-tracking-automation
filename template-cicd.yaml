@@ -353,7 +353,19 @@ Resources:
               - dynamodb:UpdateTimeToLive
               - dynamodb:TagResource
               - dynamodb:UntagResource
-            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-stage"
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-stage"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-stage"
+          # CloudFormation's table handler reads these after CreateTable (seen in CloudTrail).
+          - Sid: AllowClassListCacheTableReads
+            Effect: Allow
+            Action:
+              - dynamodb:DescribeContinuousBackups
+              - dynamodb:DescribeContributorInsights
+              - dynamodb:DescribeKinesisStreamingDestination
+              - dynamodb:GetResourcePolicy
+              - dynamodb:ListTagsOfResource
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-stage"
           - Sid: AllowSSMParameterWrite
             Effect: Allow
             Action:
@@ -488,7 +500,19 @@ Resources:
               - dynamodb:UpdateTimeToLive
               - dynamodb:TagResource
               - dynamodb:UntagResource
-            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-prod"
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-prod"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-prod"
+          # CloudFormation's table handler reads these after CreateTable (seen in CloudTrail).
+          - Sid: AllowClassListCacheTableReads
+            Effect: Allow
+            Action:
+              - dynamodb:DescribeContinuousBackups
+              - dynamodb:DescribeContributorInsights
+              - dynamodb:DescribeKinesisStreamingDestination
+              - dynamodb:GetResourcePolicy
+              - dynamodb:ListTagsOfResource
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-prod"
           - Sid: AllowSSMParameterWrite
             Effect: Allow
             Action:
@@ -516,4 +540,16 @@ Resources:
               - events:DescribeRule
               - events:PutTargets
               - events:RemoveTargets
-            Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/pm-reminder-bot-schedule-prod"
+            Resource:
+              - !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/pm-reminder-bot-schedule-prod"
+              - !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/class-photo-class-list-refresh-prod"
+          # The class-list refresh rule exists on prod only and has Tags; CloudFormation's
+          # rule handler tags it on create and lists its targets on delete (a rollback).
+          - Sid: AllowClassListRefreshRuleTagging
+            Effect: Allow
+            Action:
+              - events:TagResource
+              - events:UntagResource
+              - events:ListTagsForResource
+              - events:ListTargetsByRule
+            Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/class-photo-class-list-refresh-prod"

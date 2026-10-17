@@ -50,6 +50,24 @@ Resources:
         Workspace: classes
         Stage: !Ref Stage
 
+  # One item: the class names read from Neon and when. Refreshed daily on prod by
+  # ClassPhotoClassListRefreshRule, on a miss or an expired copy, and by the page's
+  # Refresh button; no TTL, so a copy outlives a Neon outage.
+  ClassPhotoClassListCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "ClassPhotoClassListCache-${Stage}"
+      AttributeDefinitions:
+        - AttributeName: cache_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: cache_key
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      Tags:
+        - Key: Project
+          Value: classes:class-photo-upload
+
   ClassPhotoUploadApiLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -63,7 +81,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "ClassPhotoUploadApiFunction-${Stage}"
-      Description: "Lists classes from Neon and turns a checked class photo into a pull request on asmbly-classes (dry run outside prod)."
+      Description: "Lists classes from Neon (cached per stage) and turns a checked class photo into a pull request on asmbly-classes (dry run outside prod)."
       CodeUri: ../functions/classes/class_photo_upload_api/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
@@ -84,6 +102,7 @@ Resources:
           CLASS_PHOTO_APP_CLIENT_ID: !Ref ClassPhotoAppClientId
           # Only prod writes to asmbly-classes; every other stage is a dry run.
           CLASS_PHOTO_DRY_RUN: !If [IsProd, 'false', 'true']
+          CLASS_CACHE_TABLE_NAME: !Ref ClassPhotoClassListCacheTable
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -95,8 +114,39 @@ Resources:
               Resource:
                 - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${NeonSecretName}-*'
                 - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ClassPhotoGitHubAppSecretName}-*'
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt ClassPhotoClassListCacheTable.Arn
       Tags:
         Project: classes:class-photo-upload
+
+  # Prod only: refreshes the cached class list once a day, before Austin's day starts.
+  # Other stages fill the cache on a visit or from the page's Refresh button.
+  ClassPhotoClassListRefreshRule:
+    Type: AWS::Events::Rule
+    Condition: IsProd
+    Properties:
+      Name: !Sub "class-photo-class-list-refresh-${Stage}"
+      Description: "Refreshes the class photo upload page's cached class list from Neon once a day."
+      ScheduleExpression: "cron(0 10 * * ? *)"
+      State: "ENABLED"
+      Targets:
+        - Arn: !GetAtt ClassPhotoUploadApiFunction.Arn
+          Id: "ClassPhotoClassListRefreshTarget"
+      Tags:
+        - Key: Project
+          Value: classes:class-photo-upload
+
+  ClassPhotoClassListRefreshPermission:
+    Type: AWS::Lambda::Permission
+    Condition: IsProd
+    Properties:
+      FunctionName: !GetAtt ClassPhotoUploadApiFunction.Arn
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt ClassPhotoClassListRefreshRule.Arn
 
   ClassPhotoUploadPageLogGroup:
     Type: AWS::Logs::LogGroup

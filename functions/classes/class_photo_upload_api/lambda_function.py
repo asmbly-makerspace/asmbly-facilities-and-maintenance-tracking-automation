@@ -2,8 +2,9 @@
 
 Routes (both behind the staff pool's Cognito authorizer in template.yaml):
 
-- ``GET /class-photo-upload/classes``: the class list, with each class's file name, any
-  problem with that name, and any warning that another class shares its photo.
+- ``GET /class-photo-upload/classes``: the class list (from the per-stage cache, or Neon),
+  with each class's file name, any problem with that name, and any warning that another
+  class shares its photo. ``?refresh=1`` reads Neon again (at most once a minute).
 - ``POST /class-photo-upload/submit``: ``{"class_name": ..., "photo_base64": ...}``. Checks
   the photo and the class, then opens or updates the class's pull request on
   asmbly-classes, or, when ``CLASS_PHOTO_DRY_RUN`` isn't ``false`` (every stage but
@@ -13,6 +14,10 @@ The authorizer accepts an ID token from any app client of the pool, so the handl
 requires this page's client ID in ``aud`` and ``token_use`` ``id``. Logs carry the route,
 the caller's ``sub``, the class name and the outcome; never the username, a token, the
 request body or the photo.
+
+On prod an EventBridge rule also invokes it once a day to refresh the cached class list
+(``is_scheduled_refresh``). This module is the composition root of the cache: it alone
+picks the DynamoDB implementation (plan README, "Design").
 """
 
 import base64
@@ -23,6 +28,7 @@ import json
 import logging
 import math
 import os
+import time
 import traceback
 from pathlib import Path
 from typing import Any
@@ -33,10 +39,16 @@ from common.neoncrm import NeonCRM
 
 try:
     from . import class_names, photo_checks, submission
+    from .class_list_cache import ClassListCache, format_time
+    from .class_list_service import ClassListService
+    from .dynamodb_class_list_cache import DynamoDBClassListCache
 except ImportError:  # Under Lambda this module is top-level, beside its helpers.
     import class_names  # type: ignore[no-redef]
     import photo_checks  # type: ignore[no-redef]
     import submission  # type: ignore[no-redef]
+    from class_list_cache import ClassListCache, format_time  # type: ignore[no-redef]
+    from class_list_service import ClassListService  # type: ignore[no-redef]
+    from dynamodb_class_list_cache import DynamoDBClassListCache  # type: ignore[no-redef]
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -55,11 +67,16 @@ REQUIRED_ENV = (
     "GITHUB_APP_SECRET_NAME",
     "CLASS_PHOTO_CONFIG_PARAM_NAME",
     "CLASS_PHOTO_APP_CLIENT_ID",
+    "CLASS_CACHE_TABLE_NAME",
 )
 GITHUB_SECRET_KEYS = ("app_id", "installation_id", "private_key")
 
 CLASSES_ROUTE = ("GET", "/class-photo-upload/classes")
 SUBMIT_ROUTE = ("POST", "/class-photo-upload/submit")
+
+# GET /class-photo-upload/classes?refresh=1 asks for a fresh read from Neon.
+REFRESH_PARAMETER = "refresh"
+REFRESH_VALUE = "1"
 
 MAX_CLASS_NAME_LENGTH = 200
 # The longest base64 a photo within the size limit can take, plus slack for padding.
@@ -148,8 +165,8 @@ def photo_problem_kind(message: str) -> str:
     return "other"
 
 
-def load_classes() -> list[str]:
-    """The class list from Neon; Refusal(502) when the secret or Neon fails."""
+def read_classes_from_neon() -> list[str]:
+    """The class list read live from Neon; Refusal(502) when the secret or Neon fails."""
     secret_name = os.environ["NEON_SECRET_NAME"]
     try:
         org_id = aws.get_secret(secret_name, "NEON_ORG_ID")
@@ -157,12 +174,66 @@ def load_classes() -> list[str]:
     except Exception as e:
         logger.error("Couldn't read the Neon secret: %s", type(e).__name__)
         raise Refusal(502, NEON_ERROR, "neon_secret") from None
+    started = time.monotonic()
     try:
         today = datetime.datetime.now(datetime.timezone.utc).date()
         return class_names.fetch_classes(NeonCRM(org_id, api_key), today)
     except Exception as e:
-        logger.error("Couldn't read the class list from Neon: %s", type(e).__name__)
+        logger.error(
+            "Couldn't read the class list from Neon after %d ms: %s",
+            int((time.monotonic() - started) * 1000),
+            type(e).__name__,
+        )
         raise Refusal(502, NEON_ERROR, "neon") from None
+
+
+def load_classes() -> list[str]:
+    """Submit's live read until it moves to the cache (class-photo-loading phase 2)."""
+    return read_classes_from_neon()
+
+
+_class_list_cache: ClassListCache | None = None
+
+
+def class_list_cache() -> ClassListCache:
+    """This container's cache: the stage's DynamoDB table, created on first use."""
+    global _class_list_cache
+    if _class_list_cache is None:
+        _class_list_cache = DynamoDBClassListCache.from_environment()
+    return _class_list_cache
+
+
+def class_list_service() -> ClassListService:
+    """The class-list service for this request, on this container's cache and Neon."""
+    return ClassListService(class_list_cache(), read_classes_from_neon)
+
+
+def is_scheduled_refresh(event: Any) -> bool:
+    """The EventBridge rule's event. API Gateway always sends httpMethod and requestContext."""
+    return (
+        isinstance(event, dict)
+        and event.get("source") == "aws.events"
+        and event.get("detail-type") == "Scheduled Event"
+        and "httpMethod" not in event
+        and "requestContext" not in event
+    )
+
+
+def handle_scheduled_refresh(service: ClassListService) -> dict[str, Any]:
+    """Refreshes the cached list. Returns normally even on failure, so Lambda doesn't retry."""
+    try:
+        refreshed = service.refresh_on_schedule()
+    except Exception as e:  # A bug in the refresh path must not make Lambda retry.
+        logger.error("Scheduled class list refresh failed: %s", type(e).__name__)
+        refreshed = False
+    logger.info("Scheduled class list refresh: %s", "done" if refreshed else "kept the cached list")
+    return {"refreshed": refreshed}
+
+
+def wants_refresh(event: dict[str, Any]) -> bool:
+    """``?refresh=1`` exactly; anything else is a normal load."""
+    parameters = event.get("queryStringParameters")
+    return isinstance(parameters, dict) and parameters.get(REFRESH_PARAMETER) == REFRESH_VALUE
 
 
 def class_list_entries(classes: list[str]) -> list[dict[str, Any]]:
@@ -185,10 +256,30 @@ def class_list_entries(classes: list[str]) -> list[dict[str, Any]]:
     return entries
 
 
-def handle_classes(dry_run: bool) -> dict[str, Any]:
-    classes = load_classes()
-    logger.info("Answered %d classes", len(classes))
-    return _response(200, {"dry_run": dry_run, "classes": class_list_entries(classes)})
+def handle_classes(
+    event: dict[str, Any], sub: str, dry_run: bool, service: ClassListService
+) -> dict[str, Any]:
+    if wants_refresh(event):
+        result = service.refresh_on_request()
+        logger.info("Class list refresh by sub %s: %s", sub, result.refresh)
+    else:
+        result = service.for_request()
+    logger.info(
+        "Class list from %s (age %d s): %d classes",
+        result.served_from,
+        service.age_seconds(result),
+        len(result.names),
+    )
+    return _response(
+        200,
+        {
+            "dry_run": dry_run,
+            "classes": class_list_entries(result.names),
+            "refreshed_at": format_time(result.record.refreshed_at),
+            "stale": result.stale,
+            "refresh": result.refresh,
+        },
+    )
 
 
 def parse_submission(event: dict[str, Any]) -> tuple[str, str]:
@@ -342,6 +433,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             return _error(500, GENERIC_ERROR)
     dry_run = is_dry_run()
 
+    if is_scheduled_refresh(event):
+        return handle_scheduled_refresh(class_list_service())
+
     event = event if isinstance(event, dict) else {}
     claims, reason = caller_claims(event, os.environ["CLASS_PHOTO_APP_CLIENT_ID"])
     if claims is None:
@@ -352,7 +446,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     logger.info("%s %s from sub %s (dry run: %s)", route[0], route[1], claims["sub"], dry_run)
     try:
         if route == CLASSES_ROUTE:
-            return handle_classes(dry_run)
+            return handle_classes(event, claims["sub"], dry_run, class_list_service())
         if route == SUBMIT_ROUTE:
             return handle_submit(event, context, claims["cognito:username"], dry_run)
         return _error(404, NOT_FOUND_ERROR)
