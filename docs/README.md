@@ -10,6 +10,7 @@ This repository contains serverless AWS Lambda functions that automate various t
 
 - [What's in this Repository?](#whats-in-this-repository)
 - [Core Architecture: API Gateway & Custom Domain](#core-architecture-api-gateway--custom-domain)
+- [API Routes](#api-routes)
 - [Core Services](#core-services)
 - [How It's Managed (The Important Part!)](#how-its-managed-the-important-part)
 - [Supporting Documentation](#supporting-documentation)
@@ -42,6 +43,30 @@ This IaC (Infrastructure as Code) approach makes the production environment robu
 
 1.  **Stable Endpoint:** All third-party webhooks (from Slack, ClickUp, Smartwaiver, etc.) are pointed to this single, permanent URL (e.g., `https://facilities.asmbly.org/slack/events`).
 2.  **Simplified Deployments:** This setup makes the deployment pipeline much more reliable. We no longer need the GitHub Action to dynamically update webhook URLs on every deployment. The custom URL never changes.
+
+## API Routes
+
+Every route is a path under one base URL:
+
+* **prod:** `https://facilities.asmbly.org`
+* **stage:** `https://4s626uu7q5.execute-api.us-east-2.amazonaws.com/stage` (the stage stack's `FacilitiesApiUrl` output)
+
+The repository's **Deployments** page links to each environment's base URL, and each deploy's run summary lists every route below with its full URL for that environment. Only the two pages open in a browser; the other routes expect a signed request from their caller, so a browser gets an error. A test checks that this table lists exactly the routes in `template.yaml`, so add a row when you add a route.
+
+| URL (prod) | Method | Called by | Service |
+| --- | --- | --- | --- |
+| `https://facilities.asmbly.org/class-photo-upload` | GET | Staff, in a browser (a page) | [Class Photo Upload](#classes) |
+| `https://facilities.asmbly.org/class-photo-upload/classes` | GET | The class photo upload page, with a staff sign-in | [Class Photo Upload](#classes) |
+| `https://facilities.asmbly.org/class-photo-upload/submit` | POST | The class photo upload page, with a staff sign-in | [Class Photo Upload](#classes) |
+| `https://facilities.asmbly.org/KilnOpsDropoffRecentEntriesViewer` | GET | Members, in a browser (a page), sent by the ClickUp form | [Kiln Drop-Off Viewer](#ceramics) |
+| `https://facilities.asmbly.org/nic/update` | GET | The UniFi Dream Machine's Dynamic DNS client | [Dynamic DNS Update](../functions/networking/dynamic_dns_update/README.md) |
+| `https://facilities.asmbly.org/problem-report/new` | POST | The Google Apps Script on the Problem Report form | [New Problem Report Handler](#facilities--maintenance) |
+| `https://facilities.asmbly.org/problem-report/slack-reaction` | POST | Nothing in this repository: the Slack Event Router invokes the function directly | [Problem Report Reaction Handler](#facilities--maintenance) |
+| `https://facilities.asmbly.org/purchase-request/new` | POST | A ClickUp webhook | [New Purchase Request Handler](#facilities--maintenance) |
+| `https://facilities.asmbly.org/purchase-request/slack-reaction` | POST | Nothing in this repository: the Slack Event Router invokes the function directly | [Purchase Request Reaction Handler](#facilities--maintenance) |
+| `https://facilities.asmbly.org/slack/events` | POST | Slack Event Subscriptions (Maintenance Bot) | [Slack Event Router](#infrastructure) |
+| `https://facilities.asmbly.org/SlackSlashReorder` | POST | Slack's `/reorder` command and its modal | [Slack Reorder Item](#facilities--maintenance) |
+| `https://facilities.asmbly.org/waiver/new` | POST | A Smartwaiver webhook | [New Waiver Completed Handler](#administrative) |
 
 ## Core Services
 
