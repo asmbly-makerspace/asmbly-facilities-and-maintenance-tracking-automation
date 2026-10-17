@@ -41,7 +41,7 @@ their own plans and pull requests, and build on this one.
 
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [Shared style-check module](phase-1-shared-style-check-module.md) | lambda, docs | L | [ ] Pending |
+| 1 | [Shared style-check module](phase-1-shared-style-check-module.md) | lambda, docs | L | [x] Complete |
 
 ## Dependencies
 
@@ -159,5 +159,6 @@ Made without asking, inside `/offshore`:
    phase 1's verification runs `sam build` and searches `.aws-sam/build` for the module.
 10. **Docs:** both function READMEs (their style-test sections say where the shared
     checks live), `docs/CONTRIBUTING.md` (the Tests bullet), and one row in `CLAUDE.md`'s
-    map. `docs/README.md` doesn't change: no service's behavior, trigger or URL changes.
+    map. (Prep amendment: the `CLAUDE.md` row is proposed in the pull request for the
+    person to add, not committed by the unattended run.) `docs/README.md` doesn't change: no service's behavior, trigger or URL changes.
 11. **Closing keywords:** the final pull request says `Closes #137` and `Refs #136`.

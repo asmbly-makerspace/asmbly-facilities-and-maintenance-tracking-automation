@@ -197,7 +197,9 @@ The full list, with the reasons, is under [Rules](../CLAUDE.md#rules). In short:
 - **Slack.** Answer within 3 seconds. Run longer work asynchronously.
 - **Tests.** Tests go next to the function, in `functions/<area>/<name>/tests/`. They never
   call the network: patch the module where it is used, or use `moto` for AWS. Don't skip
-  or delete a failing test, and don't use `--no-verify`.
+  or delete a failing test, and don't use `--no-verify`. An HTML page's colour, contrast,
+  token and logo checks come from `tests/page_style.py`: a new page's tests call it with
+  the page's own data, as the kiln viewer's and the class photo upload page's tests do.
 - **IAM.** Grant the least privilege that works: name exact parameter and secret ARNs, and
   use `Resource: "*"` only for actions that have no resource-level permissions.
 - **Scope.** Keep a pull request to its task, and open an issue for any unrelated problem

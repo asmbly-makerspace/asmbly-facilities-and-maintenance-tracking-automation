@@ -10,7 +10,7 @@ estimated_size: L
 
 # Phase 1: Shared style-check module
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-17 on branch feature/shared-style-checks
 
 ## Required reading
 
@@ -73,7 +73,10 @@ READMEs, and nothing in `.aws-sam/build` contains the module.
 - `docs/CONTRIBUTING.md`: the **Tests** bullet (around line 198) gains a sentence: an HTML
   page's colour, contrast, token and logo checks come from `tests/page_style.py`; a new
   page's tests call it with the page's own data.
-- `CLAUDE.md`: one row in the map table: `| Style checks for the HTML pages | tests/page_style.py | Its tests in tests/test_page_style.py |`.
+- `CLAUDE.md`: **not edited in this phase** (prep amendment). `CLAUDE.md` is agent
+  configuration, and an unattended run doesn't change it on its own say-so. The proposed
+  map row, `| Style checks for the HTML pages | tests/page_style.py | Its tests in tests/test_page_style.py |`,
+  goes in the pull request description for the person to add or decline.
 
 `.implementation_plans/shared-style-checks/CHECKPOINT.json` is untracked on purpose: never
 edit or stage it. Add files by explicit path.
@@ -172,12 +175,46 @@ value at fault, as today's assert messages do.
 
 Each page test keeps the lines that are its own: the kiln test's footer and band
 placement, `page.count('<svg class="logo"') == 1`, and the `.logo` rule checks; the photo
-test's header placement and "logo before the banner and the sign-in" checks; the markup
+test's `PAGE_HTML.count(logo) == 1` (`logo_problems` doesn't count logos), its header
+placement and "logo before the banner and the sign-in" checks; the markup
 forbidden-string loops; the `--space-N` step checks; `test_breakpoint_matches_token`,
-`test_page_has_no_pure_white_or_black` and every test that isn't in the table, which
-switch from `_rule`/`_tokens`/`_css`/`_markup`/`_rem_to_px`/`_colour` to `SHEET.rule`,
-`SHEET.tokens()`, `SHEET.css`, `page_style.markup(...)` (computed once as a module
-constant `MARKUP` is fine), `page_style.rem_to_px` and `SHEET.colour`.
+`test_page_has_no_pure_white_or_black` and every test that isn't in the table.
+
+Rewrite mapping for every line that stays (prep amendment):
+
+| Today | Now |
+| --- | --- |
+| `_rule(...)` | `SHEET.rule(...)` |
+| `_rules()` | `SHEET.rules()` |
+| `_tokens()` | `SHEET.tokens()` |
+| `_css()` | `SHEET.css` |
+| `_style()` (photo `test_page_loads_no_fonts_or_outside_assets`) | `SHEET.style` |
+| `_rules_after_root()` (both no-pure-white tests, kiln width check) | `SHEET.rules_after_root()` |
+| `_colour(...)` | `SHEET.colour(...)` |
+| `_markup()` | `MARKUP` (module constant, `page_style.markup(PAGE_HTML, STYLE_BLOCK[, SCRIPT_BLOCKS])`) |
+| `_rem_to_px(...)` | `page_style.rem_to_px(...)` |
+| `GLYPH_TOKEN` (kiln `test_error_box_differs_beyond_colour`, photo `test_message_kinds_differ_beyond_colour`) | `page_style.GLYPH_TOKEN` |
+| `HOVER_MEDIA` (kiln `test_hover_only_where_hover_exists`, photo `test_controls_have_hover`, `test_busy_buttons_keep_the_disabled_look`) | `page_style.HOVER_MEDIA` |
+| `PURE_WHITE_OR_BLACK` (both no-pure-white tests) | `page_style.PURE_WHITE_OR_BLACK` |
+
+Check semantics the builder must keep (prep amendments):
+
+- `contrast_problems` compares the unrounded ratio with `>=` (as today) and rounds only
+  in the message, so 4.496 still fails a 4.5 minimum.
+- `tokens_only_problems` with an empty `string_words` reports any `"` in a value outside
+  `var()` (today's kiln check, which also catches an unbalanced quote); with a non-empty
+  `string_words` it checks each `"…"` string's words, then strips them (today's photo
+  check).
+- `font_shorthand`: match `font:` with the kiln's lookbehind `(?<![\w-])font:` on both
+  pages (the photo page's `font(-family)?:` has no lookbehind; no rule today is affected).
+- `glyph_exempt` is a prefix match (`name.startswith(glyph_exempt)`), as the photo test
+  is today; say so in the docstring.
+- `SHEET` is built at import. A malformed style block then fails collection of that page
+  file instead of only its style tests. Accepted: the kiln file's `EXPECTED_CSP` already
+  indexes `STYLE_BLOCK.findall(PAGE_HTML)[0]` at import. Note it in the module docstring.
+- Leave each page file's sections where they are: the style constants stay below the
+  tests above them (module globals resolve at call time), so the diff isn't inflated by
+  moves.
 
 The kiln file's `STYLE_BLOCK` stays: its CSP tests use it directly. The kiln tests that
 loop over `_pages()` (each served page) call `page_style.find_logo` and
@@ -213,8 +250,8 @@ comments, updated to say the helpers come from `tests/page_style.py`.
 
 ### docs
 
-The two README sentences, the `docs/CONTRIBUTING.md` sentence and the `CLAUDE.md` row
-listed under "Files to modify". No change to `docs/README.md`: no service's behavior,
+The two README sentences and the `docs/CONTRIBUTING.md` sentence listed under "Files to
+modify" (the `CLAUDE.md` row is proposed in the pull request, not committed). No change to `docs/README.md`: no service's behavior,
 trigger, URL or caller changes.
 
 ## Tests
@@ -246,7 +283,7 @@ rules) unless stated.
    with no `var()` gives a problem.
 9. `test_logo_with_a_missing_path_is_reported` (story criterion 4): the kiln page's logo
    (`find_logo` on its committed `page.html`) gives no problems; the same logo with one
-   `<path …/>` removed gives a problem naming the count; with the icon path removed,
+   `<path …/>` other than the icon path removed gives exactly one problem, naming the count; with the icon path removed,
    a problem naming the icon path; `logo_problems("")` gives a problem.
 10. `test_logo_with_a_forbidden_attribute_is_reported`: the logo with ` fill="#000"` added
     to a path gives a problem naming `fill`.
@@ -267,7 +304,12 @@ rules) unless stated.
     regex (they are plain relative paths), resolve each against its template's folder,
     and check that `tests/page_style.py` and `tests/test_page_style.py` are inside none;
     also check that at least one path was found (so a regex that matches nothing fails),
-    and that the module is not under `layers/common/` or `functions/`.
+    that the number of `CodeUri:`/`ContentUri:` values equals the number of
+    `Type: AWS::Serverless::Function` and `Type: AWS::Serverless::LayerVersion` resources
+    (SAM defaults a missing `CodeUri` to the template's folder, which for `template.yaml`
+    is the repository root), that each resolved path is an existing directory (a quoted or
+    mistyped value would otherwise contain nothing and pass), and that the module is not
+    under `layers/common/` or `functions/`. (Prep amendment.)
 
 ### The two page test files
 
@@ -284,7 +326,9 @@ either file and `.venv/bin/python -m pytest -rs` reports no skips.
    `rule`, `declaration_values`) and logo (`find_logo`, `logo_problems`) helpers.
    `grep -nE '^def _(style|css|root_block|rules_after_root|tokens|colour|channels|mix|luminance|contrast|declaration_values|rules|rule|markup|rem_to_px)\b'`
    and `grep -nE '^(CSS_COMMENT|TOKEN|VAR_REFERENCE|HEX_COLOUR|PURE_WHITE_OR_BLACK|FONT_STACK|GLYPH_TOKEN|MEDIA_BLOCK|RULE) ='`
-   print nothing for either page test file. (#137 criterion 1)
+   print nothing for either page test file, and neither do the alias and moved-constant
+   greps `grep -nE '^_(style|css|root_block|rules_after_root|tokens|colour|channels|mix|luminance|contrast|declaration_values|rules|rule|markup|rem_to_px) ='`
+   and `grep -nE '^(HOVER_MEDIA|ROOT_FONT_PX) ='` (prep amendment). (#137 criterion 1)
 2. Each page test file defines only its own data constants and page-specific helpers
    (the lists under "What stays in each page's file" and "stays"). (#137 criterion 2)
 3. Every test ID collected from the two page files at b96cac3 (73 and 113) is collected
@@ -315,7 +359,8 @@ either file and `.venv/bin/python -m pytest -rs` reports no skips.
 comm -23 "$SCRATCH/kiln-before.txt" "$SCRATCH/kiln-after.txt"     # prints nothing
 comm -23 "$SCRATCH/photo-before.txt" "$SCRATCH/photo-after.txt"   # prints nothing
 .venv/bin/python -m pytest                                        # whole suite, > 1831 passed
-sam build                                                         # no template change, but proves criterion 5
+sam build; echo "exit $?"                                          # must print exit 0 (no template change, but proves criterion 5)
+find .aws-sam/build -name test_kiln_dropoff_viewer_lambda_function.py  # positive control: must print a path (test folders are packaged)
 find .aws-sam/build -name 'page_style*'                           # prints nothing
 grep -rl 'def logo_problems' .aws-sam/build                       # prints nothing
 git diff --stat origin/stage...HEAD                               # criterion 6
@@ -324,11 +369,22 @@ git diff --stat origin/stage...HEAD                               # criterion 6
 `cfn-lint` and `sam validate` aren't required (no template changes); run them anyway if
 cheap and report the result.
 
-Mutation spot-check, by hand, then revert (proves the shared checks still bite on the
-real pages): change one hex value in the kiln `page.html`'s `:root` block to a low
-contrast colour and confirm `test_colour_pairs_meet_contrast` fails; delete one `<path`
-from the photo page's logo and confirm `test_page_shows_official_logo_in_header` fails.
-Restore both files (`git diff` on `page.html` must be empty afterwards).
+Mutation check (prep amendment: the test-ID comparison proves every test still runs, not
+that every check still bites). With a throwaway script in the scratchpad that edits a
+`page.html` and restores it (write the mutation, run the one test, write the original
+back in a `finally`), make one mutation per replaced check on **each** page
+and confirm the named test fails: a brand colour value changed
+(`test_brand_tokens_match_the_guide`); a derived token off by one channel
+(`test_derived_tokens_follow_the_formula`); a low-contrast `--text`
+(`test_colour_pairs_meet_contrast` / `test_brand_colour_pairs_meet_contrast`); an
+unread token added to `:root` (`test_every_token_is_used`); a `var(--missing)` in a rule
+(`test_every_token_used_is_defined`); `color: red;` added to `:root`
+(`test_token_block_holds_only_tokens`); a duplicate colour token
+(`test_tokens_are_defined_once`); a hex colour in a rule and a `font: 1rem serif` in a
+rule (`test_styles_use_tokens_only`); an extra attribute on an inline `<svg>`
+(`test_styles_use_tokens_only`); one non-icon `<path` deleted from the logo
+(`test_footer_shows_asmbly_logo` / `test_page_shows_official_logo_in_header`). Afterwards
+`git diff -- '*.html'` must be empty. Report the table of mutation, page, test, result.
 
 On the stage stack after deploy: nothing to see. Open the kiln viewer and the class
 photo upload page and confirm they look as before; no function code changed, so their
@@ -340,8 +396,29 @@ None.
 
 ## Hand-off
 
-_Filled in when the phase is done._ #138 can rely on: `tests/page_style.py` with the
+#138 can rely on: `tests/page_style.py` with the
 API above; `from tests import page_style` working from any test file; both page test
 files calling `page_style.Stylesheet.from_page(PAGE_HTML, STYLE_BLOCK)` and the `*_problems`
 checks with their own data; `logo_problems` checking the official Asmbly logo on both
-pages.
+pages. Note for #138: `test_logo_with_a_missing_path_is_reported` and
+`test_logo_with_a_forbidden_attribute_is_reported` in `tests/test_page_style.py` read the
+kiln `page.html`'s logo (through `_kiln_logo()`), so moving the logo out of that file
+means updating their source too.
+
+What was built (2026-10-17):
+
+- `tests/page_style.py`: `Stylesheet` (`from_page`, `css`, `style`, `root_block()`,
+  `rules_after_root()`, `tokens()`, `colour()`, `used_tokens()`, `rules()`, `rule()`);
+  `channels`, `mix`, `luminance`, `contrast`, `rem_to_px`, `declaration_values`,
+  `markup`, `find_logo`; the checks `brand_colour_problems`, `derived_colour_problems`,
+  `contrast_problems`, `unused_token_problems`, `undefined_token_problems`,
+  `token_block_problems`, `defined_once_problems`, `tokens_only_problems`,
+  `svg_attribute_problems`, `logo_problems`; the constants `CSS_COMMENT`, `TOKEN`,
+  `VAR_REFERENCE`, `HEX_COLOUR`, `PURE_WHITE_OR_BLACK`, `FONT_STACK`, `GLYPH_TOKEN`,
+  `MEDIA_BLOCK`, `RULE`, `HOVER_MEDIA`, `ROOT_FONT_PX`, `LOGO_START`, `LOGO_PATH_COUNT`,
+  `LOGO_ICON_PATH`, `LOGO_FORBIDDEN`.
+- `tests/test_page_style.py`: 16 tests, including the packaging guard (test 16).
+- Each page file defines `SHEET` and `MARKUP` next to its `STYLE_BLOCK`.
+- Test IDs: kiln 73 and photo 113, unchanged; the suite has 1847 (1831 + 16). A mutation
+  check of 23 mutations (11 kiln, 12 photo) made each named test fail.
+- Deferred: the `CLAUDE.md` map row (proposed in the pull request for the person).

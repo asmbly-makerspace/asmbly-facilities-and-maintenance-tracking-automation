@@ -345,6 +345,14 @@ These tests enforce the rule:
   check the colour values, and `test_brand_colour_pairs_meet_contrast` checks the WCAG
   2.1 contrast of the colour pairs the page uses.
 
+The logic of these checks, and of the logo check in
+`test_page_shows_official_logo_in_header`, is in `tests/page_style.py` at the
+repository root, shared with the kiln drop-off viewer. This page's test file holds its
+data (`STYLE_BLOCK`, `SCRIPT_BLOCKS`, `BRAND_COLOURS`, `DERIVED_COLOURS`,
+`CONTRAST_PAIRS`, `ALLOWED_VALUE_WORDS`, `GRID_AREAS`, `TOKEN_VALUE`, `RESERVED_TOKENS`,
+`SHARED_LITERALS`, `SVG_ATTRIBUTES`, `MEDIA_RULE`, `MESSAGE_KINDS`, `LOADING_MESSAGES`)
+and the tests that only this page has.
+
 To change a colour or a size, change its token. To add a style, use the existing
 tokens, or add a token to the block first. Add a word to `ALLOWED_VALUE_WORDS` only if
 it is a CSS keyword that can't carry a colour or a size.
