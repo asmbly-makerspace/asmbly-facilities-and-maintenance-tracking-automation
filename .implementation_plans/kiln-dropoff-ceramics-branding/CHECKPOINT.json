@@ -2,7 +2,7 @@
   "plan_name": "kiln-dropoff-ceramics-branding",
   "feature_branch": "feature/kiln-dropoff-ceramics-branding",
   "epic": 132,
-  "status": "in-progress",
+  "status": "complete",
   "phases": [
     {
       "id": "1",
@@ -27,7 +27,7 @@
     "skipped": [],
     "commits": 0
   },
-  "final_pr_number": null,
+  "final_pr_number": 135,
   "admin_actions": [],
   "events": [
     {
@@ -141,6 +141,18 @@
     {
       "ts": "2026-10-17T00:00:00Z",
       "type": "pr_start"
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "pr_ready",
+      "pr": 135,
+      "checks": "green",
+      "rounds": 0,
+      "merge_state": "CLEAN"
+    },
+    {
+      "ts": "2026-10-17T00:00:00Z",
+      "type": "complete"
     }
   ]
 }
