@@ -1,0 +1,121 @@
+{
+  "plan_name": "photo-upload-branding",
+  "feature_branch": "feature/photo-upload-branding",
+  "epic": 111,
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1,
+      "title": "Brand tokens, header, logo and type",
+      "file": "phase-1-brand-tokens-and-header.md",
+      "status": "done",
+      "pre_sha": "c0ae42f",
+      "review_rounds": "build independent review + 3 independent review-lead rounds (1 BLOCK, WARNs fixed; rounds 2-3 APPROVED)",
+      "squashed_sha": "3e5eb81"
+    },
+    {
+      "id": 2,
+      "title": "Controls, messages, result and layout",
+      "file": "phase-2-controls-messages-and-layout.md",
+      "status": "done",
+      "pre_sha": "3e5eb81",
+      "review_rounds": "build cold review-lead + round 1 inline + round 2 cold review-lead (APPROVED; 2 WARN fixed)",
+      "squashed_sha": "57a24ab"
+    }
+  ],
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1550 passed",
+      "cfn_lint": "4 W3005 pre-existing on stage",
+      "sam_validate": "pass",
+      "sam_build": "pass",
+      "ci_test_job": "1550 passed in a fresh venv and a clean export"
+    },
+    "cross_checks": "no infra seams touched; script and lambda_function.py byte-identical to stage; design-token rule holds; page 58 KB < 100 KB; CSP unchanged"
+  },
+  "final_pr_number": null,
+  "admin_actions": [],
+  "events": [
+    {
+      "type": "start",
+      "detail": "Run on the owner's Mac; branch created from origin/stage (ae2957c) because the session's claude/* branch was already merged."
+    },
+    {
+      "type": "planned",
+      "detail": "Plan c0ae42f; stories #112 #113 under epic #111; 16 decisions. Owner rules relayed: design tokens only (no hardcoded colors), #114 owns loading UX."
+    },
+    {
+      "type": "decision",
+      "detail": "PP Gosha not embedded (licence for facilities.asmbly.org unconfirmed); bold system stack for headings. Roboto first in body stack, not self-hosted."
+    },
+    {
+      "type": "decision",
+      "detail": "Logo: official vector from asmbly-classes app/src/lib/components/logo.svelte @9a534a6, inline SVG currentColor. Pattern strip redrawn as inline SVG (no official vector found). CSP unchanged."
+    },
+    {
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "type": "decision",
+      "detail": "Owner confirmed: keep the system heading font (no PP Gosha). Found: the kiln page hotlinks PP Gosha from asmbly.org, but asmbly.org sends no Access-Control-Allow-Origin, so cross-origin fonts likely never load there. Option for later: CORS rule on asmbly.org fonts folder, then hotlink for both pages."
+    },
+    {
+      "type": "phase_done",
+      "phase": 1,
+      "pytest": "1529 passed",
+      "page_kb": 53
+    },
+    {
+      "type": "decision",
+      "phase": 1,
+      "detail": "Logo colored once via .logo{fill:currentColor}; header grid layout; token tests are allowlists (SHARED_LITERALS, RESERVED_TOKENS) catching 44 hand-written violations; script and CSP untouched."
+    },
+    {
+      "type": "deferred",
+      "phase": 1,
+      "detail": "Owner may confirm: shared literals between token kinds (1px, 2px, 1rem) are listed in SHARED_LITERALS with reasons."
+    },
+    {
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "type": "phase_done",
+      "phase": 2,
+      "pytest": "1550 passed",
+      "page_kb": 57.9
+    },
+    {
+      "type": "decision",
+      "phase": 2,
+      "detail": "Style block only; script and markup byte-identical. Hover only under @media (hover: hover); buttons radius 4px weight 600; result card purple top edge; banner edge --brand (woodwork 1.6:1 too low); glyphs as tokens."
+    },
+    {
+      "type": "deferred",
+      "phase": 2,
+      "detail": "Safari native select may ignore 44px min-height (not checked, no Safari); dragleave flicker (script frozen, belongs with #114)."
+    },
+    {
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "type": "docs",
+      "detail": "page README: one line fixed (url( refers only in-page); docs/README.md and CLAUDE.md unchanged"
+    },
+    {
+      "type": "manual_qa",
+      "stories_covered": [
+        112,
+        113
+      ],
+      "total_steps": 27
+    }
+  ],
+  "stories": [
+    112,
+    113
+  ]
+}
