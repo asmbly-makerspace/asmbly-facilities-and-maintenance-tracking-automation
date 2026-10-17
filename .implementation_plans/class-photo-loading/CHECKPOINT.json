@@ -28,10 +28,22 @@
       "file": "phase-3-page-loading-and-progress.md",
       "status": "done",
       "pre_sha": "3922b18",
-      "review_rounds": "build review + 3 cold review-lead rounds (all APPROVED, no BLOCK; WARNs fixed or answered)"
+      "review_rounds": "build review + 3 cold review-lead rounds (all APPROVED, no BLOCK; WARNs fixed or answered)",
+      "squashed_sha": "cc08f9e"
     }
   ],
-  "integration": null,
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1701 passed",
+      "cfn_lint": "4 W3005 pre-existing on stage",
+      "sam_validate": "pass",
+      "sam_build": "pass (table, env var, IsProd rule+permission in build)",
+      "ci_test_job": "1701 passed in clean export, CI=true",
+      "node_tests_in_ci": "27 run under node 24; fail (not skip) without node in CI; node 20 not tested locally, static scan clean"
+    },
+    "cross_checks": "env vars both ways OK; table in both deploy policies, rule prod only; no new wildcards; function IAM GetItem/PutItem on exact table; IsProd on rule+permission, SourceArn matches; routes unchanged, authorizer covers ?refresh=1; page tokens/CSP intact, 70 KB; only dynamodb module imports boto3"
+  },
   "final_pr_number": null,
   "admin_actions": [
     "Before the PR reaches stage: redeploy AsmblyFacilitiesMaintTrackingStack-cicd (adds ClassPhotoClassListCache-{stage,prod} table and class-photo-class-list-refresh-{stage,prod} rule).",
@@ -136,6 +148,27 @@
       "type": "deferred",
       "phase": 3,
       "detail": "Empty class list (Neon empty, nothing cached) shows no message (pre-existing); 429 on /classes shows submit wording (pre-existing); Sign out usable during submit (pre-existing); 401 after a minutes-long upload with ~60 s token left (covered by re-sign-in). Recommend a follow-up issue for the empty-list message."
+    },
+    {
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "type": "owner_approval",
+      "detail": "Owner: 'you can merge when it's ready'. Order: PR green -> briefing -> deploy-role redeploy -> merge to stage -> watch stage deploy -> smoke test."
+    },
+    {
+      "type": "docs",
+      "detail": "API README gained cache clear (delete-item) and undo steps; other docs already matched"
+    },
+    {
+      "type": "manual_qa",
+      "stories_covered": [
+        116,
+        117,
+        118
+      ],
+      "total_steps": 24
     }
   ],
   "stories": [
