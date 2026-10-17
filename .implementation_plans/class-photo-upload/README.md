@@ -111,7 +111,7 @@ needs it; the summary:
    (the stage stack's `FacilitiesApiUrl` output plus `/class-photo-upload`). Put its ID
    in `/config/cognito/staff/class-photo-app-client-id`.
 4. **A GitHub organization owner, before stage testing:** create the GitHub App
-   `Asmbly Class Photos` (owned by `asmbly-makerspace`). Repository permissions:
+   `Asmbly Class Photos Upload` (owned by `asmbly-makerspace`). Repository permissions:
    **Contents: Read and write**, **Pull requests: Read and write**, **Metadata:
    Read-only** (required); nothing else, no organization or account permissions.
    Webhook: off (uncheck "Active"). "Where can this GitHub App be installed?": Only on
@@ -131,7 +131,7 @@ needs it; the summary:
 
    `private_key` is the whole `.pem` file with its line breaks as `\n`. One way that
    gets the escaping right:
-   `aws secretsmanager create-secret --region us-east-2 --name github/class-photo-upload-app --secret-string "$(jq -n --arg app_id 1234567 --arg installation_id 87654321 --rawfile private_key ./asmbly-class-photos.private-key.pem '{app_id:$app_id, installation_id:$installation_id, private_key:$private_key}')"`.
+   `aws secretsmanager create-secret --region us-east-2 --name github/class-photo-upload-app --secret-string "$(jq -n --arg app_id 1234567 --arg installation_id 87654321 --rawfile private_key ./asmbly-class-photos-upload.<date>.private-key.pem '{app_id:$app_id, installation_id:$installation_id, private_key:$private_key}')"`.
    Then delete the local `.pem`. Both stages read this one secret; stage asks GitHub for
    a read-only token (see Security).
 6. **After prod deploy:** nothing to configure; the prod URL is

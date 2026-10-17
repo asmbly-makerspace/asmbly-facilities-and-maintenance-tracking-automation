@@ -140,7 +140,7 @@ A GitHub **organization owner** of `asmbly-makerspace` does this.
 2.  **Note the App ID.** It is under **About** on the App's settings page (`https://github.com/organizations/asmbly-makerspace/settings/apps/asmbly-class-photos-upload`).
 3.  **Generate the private key.** On the same page, under **Private keys**, click **Generate a private key**. The browser downloads a `.pem` file (for example `asmbly-class-photos-upload.<date>.private-key.pem`). Keep it only until step 3 is done.
 4.  **Install it on `asmbly-classes` only.** In the App's settings, **Install App → Install** next to `asmbly-makerspace`, choose **Only select repositories**, pick **`asmbly-classes`**, and click **Install**.
-5.  **Note the installation ID.** After installing, GitHub opens the installation's settings page, `https://github.com/organizations/asmbly-makerspace/settings/installations/<installation id>`. The number at the end of that address is the installation ID. (Later: **organization Settings → GitHub Apps → Asmbly Class Photos → Configure** opens the same page.)
+5.  **Note the installation ID.** After installing, GitHub opens the installation's settings page, `https://github.com/organizations/asmbly-makerspace/settings/installations/<installation id>`. The number at the end of that address is the installation ID. (Later: **organization Settings → GitHub Apps → Asmbly Class Photos Upload → Configure** opens the same page.)
 
 The function never needs more than this: every request asks for a token limited to `asmbly-classes` and to the permissions it needs (read-only on stage).
 
@@ -160,7 +160,7 @@ The secret is a JSON object with exactly three keys, and all three values must b
 
 ```bash
 aws secretsmanager create-secret --region us-east-2 --name github/class-photo-upload-app \
-  --description "Asmbly Class Photos GitHub App credentials (class photo upload)" \
+  --description "Asmbly Class Photos Upload GitHub App credentials (class photo upload)" \
   --secret-string "$(jq -n --arg app_id 1234567 --arg installation_id 87654321 \
     --rawfile private_key ./asmbly-class-photos-upload.<date>.private-key.pem \
     '{app_id: $app_id, installation_id: $installation_id, private_key: $private_key}')"
