@@ -144,6 +144,11 @@
       "ts": "2026-10-17",
       "type": "docs_done",
       "regression_check": "no file shrank"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "manual_qa",
+      "steps": 14
     }
   ],
   "docs": {
@@ -156,5 +161,12 @@
       "docs/README.md"
     ],
     "regression": false
+  },
+  "manual_qa": {
+    "stories_covered": [
+      137
+    ],
+    "stories_without_surface": [],
+    "total_steps": 14
   }
 }
