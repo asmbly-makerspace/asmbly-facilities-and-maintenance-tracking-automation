@@ -278,3 +278,28 @@ def test_class_photo_data_routes_require_the_staff_authorizer() -> None:
     ]
     for path, method in CLASS_PHOTO_DATA_ROUTES:
         assert body["paths"][path][method]["security"] == [{"StaffCognitoAuthorizer": []}], path
+
+
+def test_class_photo_page_route_is_the_only_unauthorized_class_photo_route() -> None:
+    # The page is the sign-in entry point (a browser navigation can't carry a token) and
+    # serves fixed HTML; every other class photo route must use the staff authorizer.
+    paths = _load(ROOT / "template.yaml")["Resources"]["FacilitiesApi"]["Properties"]["DefinitionBody"]["paths"]
+    unauthorized = [
+        (path, method)
+        for path, methods in paths.items()
+        if path == "/class-photo-upload" or path.startswith("/class-photo-upload/")
+        for method, operation in methods.items()
+        if not operation.get("security")
+    ]
+    assert unauthorized == [("/class-photo-upload", "get")]
+
+
+def test_class_photo_page_function_reads_nothing() -> None:
+    # The page function holds no secrets and calls nothing, so it gets no policies or layers.
+    function = _load(ROOT / "templates" / "classes.yaml")["Resources"]["ClassPhotoUploadPageFunction"]["Properties"]
+    assert "Policies" not in function and "Layers" not in function
+    assert set(function["Environment"]["Variables"]) == {
+        "STAFF_AUTH_DOMAIN",
+        "CLASS_PHOTO_APP_CLIENT_ID",
+        "CLASS_PHOTO_DRY_RUN",
+    }

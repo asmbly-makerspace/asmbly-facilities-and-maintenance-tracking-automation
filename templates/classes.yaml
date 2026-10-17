@@ -23,6 +23,10 @@ Parameters:
   ClassPhotoAppClientId:
     Type: String
     Description: The staff pool's app client ID for the class photo upload page (the ID token's aud).
+  StaffAuthDomain:
+    Type: String
+    AllowedPattern: '^[A-Za-z0-9.-]+$'
+    Description: Host name of the staff pool's hosted sign-in (no scheme), for the page's sign-in.
 
 Conditions:
   IsProd: !Equals [!Ref Stage, 'prod']
@@ -94,7 +98,40 @@ Resources:
       Tags:
         Project: classes:class-photo-upload
 
+  ClassPhotoUploadPageLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/asmbly/lambda/ClassPhotoUploadPageFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: classes:class-photo-upload
+
+  # Serves fixed HTML and reads nothing, so it has no layers and no policies.
+  ClassPhotoUploadPageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "ClassPhotoUploadPageFunction-${Stage}"
+      Description: "Serves the class photo upload page (static sign-in shell; data comes from the authorized API routes)."
+      CodeUri: ../functions/classes/class_photo_upload_page/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Timeout: 5
+      LoggingConfig:
+        LogGroup: !Ref ClassPhotoUploadPageLogGroup
+      Environment:
+        Variables:
+          STAFF_AUTH_DOMAIN: !Ref StaffAuthDomain
+          CLASS_PHOTO_APP_CLIENT_ID: !Ref ClassPhotoAppClientId
+          # Only for the page's dry-run banner; the API function decides what a submit does.
+          CLASS_PHOTO_DRY_RUN: !If [IsProd, 'false', 'true']
+      Tags:
+        Project: classes:class-photo-upload
+
 Outputs:
   ClassPhotoUploadApiFunctionArn:
     Description: "ARN of the class photo upload API function"
     Value: !GetAtt ClassPhotoUploadApiFunction.Arn
+  ClassPhotoUploadPageFunctionArn:
+    Description: "ARN of the class photo upload page function"
+    Value: !GetAtt ClassPhotoUploadPageFunction.Arn

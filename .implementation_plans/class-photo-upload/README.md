@@ -47,7 +47,7 @@ which closes them all.
 | 3 | [GitHub App client](phase-3-github-app-client.md) | layer | M | [x] Complete |
 | 4 | [Pull request flow and dry run](phase-4-pull-request-flow.md) | lambda | M | [x] Complete |
 | 5 | [API function, routes and Cognito authorizer](phase-5-api-and-infra.md) | lambda, infra | L | [x] Complete |
-| 6 | [The upload page and docs](phase-6-upload-page.md) | lambda, infra, docs | L | [ ] Pending |
+| 6 | [The upload page and docs](phase-6-upload-page.md) | lambda, infra, docs | L | [x] Complete |
 
 ## Dependencies
 

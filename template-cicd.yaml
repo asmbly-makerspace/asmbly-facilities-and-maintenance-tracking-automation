@@ -182,6 +182,7 @@ Resources:
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/route53/asmbly/hosted-zone-id"
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/cognito/staff/user-pool-id"
               - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/cognito/staff/class-photo-app-client-id"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/config/cognito/staff/auth-domain"
           # The facilities API's Cognito authorizer names the staff pool (owned by
           # AsmblyMCPs). Read-only lookup of that one pool, in case API Gateway checks
           # it with the deployer's credentials when it creates the authorizer.
@@ -305,6 +306,7 @@ Resources:
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:facilities-slack-event-router-stage"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DynamicDnsUpdateFunction-stage"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ClassPhotoUploadApiFunction-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ClassPhotoUploadPageFunction-stage"
           - Sid: AllowLambdaLayerManagement
             Effect: Allow
             Action:
@@ -339,6 +341,7 @@ Resources:
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/facilities-slack-event-router-stage*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/DynamicDnsUpdateFunction-stage*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadApiFunction-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadPageFunction-stage*"
           - Sid: AllowDynamoDBTableManagement
             Effect: Allow
             Action:
@@ -438,6 +441,7 @@ Resources:
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:facilities-slack-event-router-prod"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DynamicDnsUpdateFunction-prod"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ClassPhotoUploadApiFunction-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ClassPhotoUploadPageFunction-prod"
           - Sid: AllowLambdaLayerManagement
             Effect: Allow
             Action:
@@ -472,6 +476,7 @@ Resources:
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/facilities-slack-event-router-prod*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/DynamicDnsUpdateFunction-prod*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadApiFunction-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ClassPhotoUploadPageFunction-prod*"
           - Sid: AllowDynamoDBTableManagement
             Effect: Allow
             Action:

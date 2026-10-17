@@ -10,7 +10,7 @@ estimated_size: L
 
 # Phase 6: The upload page and docs
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-17 on branch claude/inspiring-bell-o4i5t9
 
 ## Required reading
 
@@ -54,6 +54,9 @@ request, or, on stage, the dry-run report. `docs/README.md` lists the page.
   auth-domain parameter in `AllowSSMParameterRead`.
 - `docs/README.md`: a "Classes" group under Core Services.
 - `functions/classes/class_photo_upload_api/README.md`: link to the page's README.
+- `CLAUDE.md`: the "Shared helpers" row of the map lists GitHub (phase 3 added
+  `common/github_app.py`). (Prep amendment.)
+- `tests/test_templates.py`: the route test below.
 
 ## Implementation details
 
@@ -96,7 +99,6 @@ in `templates/classes.yaml` (`Type: String`, `AllowedPattern: '^[A-Za-z0-9.-]+$'
         LogGroup: !Ref ClassPhotoUploadPageLogGroup
       Environment:
         Variables:
-          STAGE: !Ref Stage
           STAFF_AUTH_DOMAIN: !Ref StaffAuthDomain
           CLASS_PHOTO_APP_CLIENT_ID: !Ref ClassPhotoAppClientId
           CLASS_PHOTO_DRY_RUN: !If [IsProd, 'false', 'true']
@@ -165,7 +167,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]: ...
    `<page_url>/submit`); it must equal a callback URL on the app client.
 3. `nonce = secrets.token_urlsafe(16)`. Config:
    `{"authDomain", "clientId", "pageUrl", "dryRun"}` → `json.dumps`, then replace `<`,
-   `>`, `&` with `<`, `>`, `&`; substitute for `__PAGE_CONFIG__` inside
+   `>`, `&` with `\u003c`, `\u003e`, `\u0026`; substitute for `__PAGE_CONFIG__` inside
    `<script type="application/json" id="page-config">`. Substitute `__CSP_NONCE__`.
    Read `page.html` once per container (module-level cache).
 4. Headers:
@@ -255,6 +257,28 @@ Plain HTML, CSS and JavaScript, no libraries or outside fonts. Everything from o
    - an error: the response's `error` text as given; a network failure: "Couldn't reach
      the server. Check your connection and try again."
 
+Prep amendments (16 October 2026), for the build:
+
+- **Sign-in failures never loop.** A `state` mismatch, a failed token exchange, or a second
+  401 in the same tab after a fresh sign-in clears `sessionStorage`, strips the query with
+  `history.replaceState`, and shows "Sign-in didn't finish. Sign in again." with a button;
+  the page redirects to sign-in on its own only when it holds no token at all.
+- **Responses without our `error`.** API Gateway answers 401/403/429/504 itself with
+  `{"message": ...}`. Show the response's `error` only when it is a string; otherwise 429
+  → "Too many submissions at once. Wait a minute and try again.", anything else →
+  "Something went wrong on our side. Try again later." (`GENERIC_ERROR`).
+- **Location the page can't remove.** If the cleaned bytes still have location by the
+  server's rules (for example GPS in a second EXIF segment's thumbnail, or the XMP GPS
+  pattern between the main SOS and EOI), show the page-only "can't remove" message, not
+  `LOCATION_MESSAGE` (which tells the person to use this page). Every EXIF APP1 segment
+  is cleaned, not only the first.
+- **CSP and styles.** `style-src 'nonce-…'` blocks `style="…"` attributes: use classes and
+  the `hidden` attribute.
+- **No `STAGE` variable** on the page function (nothing reads it), as phase 5 did.
+- **Browser check (not in CI, Decision 19):** run the page's JPEG code in headless
+  Chromium against `photo_checks.check_photo` on the `jpeg_builder` images, and record the
+  result in the hand-off.
+
 Keep the script readable: small named functions (`parseJpeg`, `removeLocation`,
 `checkPhoto`, `ratioText`, `signIn`, `apiFetch`, `renderResult`), `const`/`let`, no
 globals beyond one `state` object.
@@ -296,7 +320,7 @@ globals beyond one `state` object.
   `/stage/class-photo-upload` → that URL.
 - `test_config_json_cannot_close_the_script`: a client ID of
   `x</script><script>alert(1)</script>` (from a patched environment) appears only as
-  `</script>…`; the page contains exactly one `</script>` for the JSON block
+  `\u003c/script\u003e…`; the page contains exactly one `</script>` for the JSON block
   and one for the program.
 - `test_csp_header`: exact directives above; `connect-src` has the auth domain;
   no `unsafe-inline`.
@@ -382,3 +406,40 @@ second photo for the same class updates it.
 Feature complete: the page, its two data routes, docs. The pull request that lands this
 phase says `Closes #104, #105, #106, #107, #108, #109`, and `Closes #73` once every item in
 #73's "Done when" is checked.
+
+As built:
+
+- `ClassPhotoUploadPageFunction-${Stage}` (`functions/classes/class_photo_upload_page/`),
+  log group `/asmbly/lambda/ClassPhotoUploadPageFunction-${Stage}`, output
+  `ClassPhotoUploadPageFunctionArn`, nested parameter `StaffAuthDomain` (from SSM
+  `/config/cognito/staff/auth-domain` in `template.yaml`), route `GET /class-photo-upload`
+  without an authorizer, `ClassPhotoUploadPageInvokePermission`. Both deploy-role
+  policies list the function and log group; the shared read lists the auth-domain
+  parameter. The function reads `STAFF_AUTH_DOMAIN`, `CLASS_PHOTO_APP_CLIENT_ID`,
+  `CLASS_PHOTO_DRY_RUN` (no `STAGE`).
+- A 401 on a token that was just issued (or a wrong `state`, or a failed exchange) shows
+  "Sign-in didn't finish. Sign in again." at once; a 401 on a token that worked before
+  signs in again once. The first sign-in of a tab counts as the fresh one.
+- Answers without an `error` string: 403 → `FORBIDDEN_ERROR`, 429 → "Too many submissions
+  at once. Wait a minute and try again.", otherwise the caller's fallback (`NEON_ERROR`
+  for the class list, `GENERIC_ERROR` for a submission).
+- `ratioText` matches Python's `{:.2f}` on the double `w / h` (a headless-Chromium fuzz
+  run caught 1535×1000: Python "1.53", exact rounding "1.54").
+- Browser check (Decision 19 still holds: nothing in CI). In headless Chromium, the
+  page's JPEG code agreed with `photo_checks.check_photo` on 5,062 photos (synthetic,
+  Pillow-made real JPEGs incl. progressive and GPS rationals, the three asmbly-classes
+  headers, 1,500 random mutations, a ratio sweep): same message on every original; every
+  cleaned photo got the server's answer (or the page-only "can't remove" message where
+  the server would say location), its bytes from SOS to EOI unchanged, orientation
+  unchanged, Pillow pixels identical and no GPS IFD. An end-to-end run of the
+  Lambda-rendered page under its CSP (sign-in with PKCE, class list with markup in a
+  name, photo checks, drag and drop, dry-run and prod results, error answers, the 401
+  rules, sign out) passed 54 checks with no CSP violation or page error.
+- For `MANUAL_QA.md`: the stage URL must be a callback and sign-out URL on the app
+  client exactly as `<FacilitiesApiUrl>/class-photo-upload`; opening prod through its
+  execute-api URL fails at sign-in (not a registered callback), by design. A 401 during a
+  submission sends the person to sign in again and they choose the photo again.
+- Unconfirmed until stage: that `requestContext.path` on the custom domain is
+  `/class-photo-upload` (no base path mapping key); if it isn't, the page answers 400.
+- CLAUDE.md says every new route checks its caller; `GET /class-photo-upload` doesn't
+  (Decision 7). The owner should confirm the exception in the pull request.

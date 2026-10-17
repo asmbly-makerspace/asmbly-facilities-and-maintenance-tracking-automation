@@ -46,13 +46,16 @@
       "file": "phase-5-api-and-infra.md",
       "status": "done",
       "pre_sha": "7247336",
-      "review_rounds": "3 inline + 1 independent (APPROVED, no findings)"
+      "review_rounds": "3 inline + 1 independent (APPROVED, no findings)",
+      "squashed_sha": "937e379"
     },
     {
       "id": 6,
       "title": "The upload page and docs",
       "file": "phase-6-upload-page.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "937e379",
+      "review_rounds": "3 inline + 1 independent (APPROVED, 1 docs WARN fixed)"
     }
   ],
   "integration": null,
@@ -216,6 +219,36 @@
       "type": "deferred",
       "phase": 5,
       "detail": "Pre-existing: template.yaml MethodSettings ResourcePath '/nic/update' probably needs '/~1nic~1update'. Not fixed (out of scope)."
+    },
+    {
+      "type": "phase_start",
+      "phase": 6
+    },
+    {
+      "type": "phase_done",
+      "phase": 6,
+      "checks": {
+        "pytest": "1499 passed",
+        "cfn_lint": "4 W3005 pre-existing",
+        "sam_validate": "pass",
+        "sam_build": "pass",
+        "browser_test": "page JS vs server check_photo parity on 5,062 photos, 0 mismatches; end-to-end page under real CSP 54/54"
+      }
+    },
+    {
+      "type": "decision",
+      "phase": 6,
+      "detail": "NEEDS OWNER ACK: GET /class-photo-upload (static sign-in shell) has no caller check (plan Decision 7), an exception to CLAUDE.md's 'a new route must check its caller'. A browser navigation can't carry a bearer token; the page embeds only public values (hosted-UI host, public client ID). Both data routes use the Cognito authorizer plus aud/token_use checks. Independent review judged it acceptable."
+    },
+    {
+      "type": "decision",
+      "phase": 6,
+      "detail": "ID token kept in sessionStorage on the shared facilities.asmbly.org origin (#74 already escapes the kiln page). Sign out returns straight to hosted sign-in. 'README.md Core Services' interpreted as docs/README.md (no root README)."
+    },
+    {
+      "type": "deferred",
+      "phase": 6,
+      "detail": "Confirm on stage that requestContext.path is /class-photo-upload on the custom domain (page answers 400 otherwise)."
     }
   ],
   "stories": [

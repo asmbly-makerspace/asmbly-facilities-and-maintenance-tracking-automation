@@ -22,6 +22,10 @@ that adds the photo under the exact file name the class pages look for and remov
 older images the class list would match instead. Nothing is stored: the photo goes
 straight into the pull request.
 
+Its caller is the [Class Photo Upload Page](../class_photo_upload_page/README.md), which
+signs the person in, removes location data and runs the same photo checks in the browser
+before it submits.
+
 ## Routes
 
 Both routes are on `FacilitiesApi` (`https://facilities.asmbly.org` in prod, the stage

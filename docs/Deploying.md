@@ -22,6 +22,8 @@ This project uses a **multi-stack architecture**. The root `template.yaml` file 
 
 Each nested stack is defined in its own template file within the `/templates` directory. This structure helps organize resources and allows for independent deployments of different parts of the application.
 
+`template.yaml` reads these shared SSM parameters (us-east-2) whenever any stage deploys; they are created by hand, not by a stack, and a missing one fails the deploy: `/config/route53/asmbly/hosted-zone-id`, and the staff sign-in pool's `/config/cognito/staff/user-pool-id`, `/config/cognito/staff/auth-domain` and `/config/cognito/staff/class-photo-app-client-id` (the pool is owned by AsmblyMCPs).
+
 ## CI/CD Infrastructure (The Deployer Role)
 
 Before the application can be deployed, the **deployer itself** must exist. This infrastructure is defined in `template-cicd.yaml`.

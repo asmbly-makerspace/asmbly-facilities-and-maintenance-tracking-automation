@@ -63,6 +63,16 @@ These services provide core functionality used by other parts of the system.
     * **Webhook URL:** `https://facilities.asmbly.org/KilnOpsDropoffRecentEntriesViewer`
     * **Config Location:** This URL is used as the "Redirect URL" in the ClickUp Form settings for "Ceramics - Drop Off Requests".
 
+#### Classes
+
+* **Class Photo Upload** (`ClassPhotoUploadPageFunction`, `ClassPhotoUploadApiFunction`)
+    * **What it does:** Signed-in staff pick a class (from Neon, read only) and upload a 3:2 JPEG. Location data is removed in the browser; the server checks the photo again, and a GitHub App opens or updates one pull request per class on `asmbly-classes` with the photo under the exact file name the site looks for, removing other images the class list would match. Stage is a dry run: it shows the file name, the files it would remove and the pull request it would open, and opens nothing.
+    * **How it's triggered:** A person opens the page (HTTP `GET /class-photo-upload`, a sign-in shell with no authorizer). The page signs them in through the staff pool's hosted sign-in, then calls `GET /class-photo-upload/classes` and `POST /class-photo-upload/submit`, both behind the staff Cognito authorizer.
+    * **URL:** `https://facilities.asmbly.org/class-photo-upload` (stage: `<FacilitiesApiUrl>/class-photo-upload`)
+    * **Config Location:** The staff pool's `class-photo-upload` app client in AsmblyMCPs (callback and sign-out URLs, prod and stage); the GitHub App "Asmbly Class Photos", installed on `asmbly-classes` only; the secret `github/class-photo-upload-app`; SSM `/config/cognito/staff/*` and `/${Stage}/config/class-photo-upload` (from `configs/class_photo_upload.json`).
+    * **How to undo a change:** Before it is merged, close the pull request on `asmbly-classes` (the photo stays visible in it, as the page warns). After it is merged, revert the merge commit on `asmbly-classes`. To stop new pull requests at once, suspend the App or uninstall it from `asmbly-classes`.
+    * **Docs:** [the page](../functions/classes/class_photo_upload_page/README.md), [the API](../functions/classes/class_photo_upload_api/README.md)
+
 #### Administrative
 
 These services automate administrative tasks, such as member data synchronization.

@@ -51,6 +51,10 @@ Parameters:
     Type: 'AWS::SSM::Parameter::Value<String>'
     Default: /config/cognito/staff/class-photo-app-client-id
     Description: The staff pool's app client for the class photo upload page. Fetched from SSM.
+  StaffAuthDomain:
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: /config/cognito/staff/auth-domain
+    Description: Host name of the staff pool's hosted sign-in (no scheme). Fetched from SSM.
   ClassPhotoGitHubAppSecretName:
     Type: String
     Default: "github/class-photo-upload-app"
@@ -213,6 +217,16 @@ Resources:
                 type: aws_proxy
                 uri:
                   Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NetworkingStack.Outputs.DynamicDnsUpdateFunctionArn}/invocations"
+              responses: {}
+          # The page is the sign-in entry point: a browser navigation can't carry a token.
+          # It serves fixed HTML and reads nothing; its data routes below use the authorizer.
+          /class-photo-upload:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ClassesStack.Outputs.ClassPhotoUploadPageFunctionArn}/invocations"
               responses: {}
           /class-photo-upload/classes:
             get:
@@ -436,6 +450,7 @@ Resources:
         NeonSecretName: !Ref NeonSecretName
         ClassPhotoGitHubAppSecretName: !Ref ClassPhotoGitHubAppSecretName
         ClassPhotoAppClientId: !Ref ClassPhotoAppClientId
+        StaffAuthDomain: !Ref StaffAuthDomain
       Tags:
         Application: facilities-automation-hub
         Workspace: classes
@@ -522,6 +537,14 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/*/class-photo-upload/*"
+
+  ClassPhotoUploadPageInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ClassesStack.Outputs.ClassPhotoUploadPageFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FacilitiesApi}/*/GET/class-photo-upload"
 
   # --- Custom Domain Infrastructure (PROD-ONLY) ---
   # These resources are only created when the Stage parameter is 'prod'
