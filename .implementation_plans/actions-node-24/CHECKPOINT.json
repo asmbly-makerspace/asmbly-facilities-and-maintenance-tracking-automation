@@ -11,10 +11,19 @@
       "status": "done",
       "pre_phase_sha": "13689bc331e83f3109cab715c6ddac330583f16f",
       "review_rounds": 1,
-      "files_changed": 6
+      "files_changed": 6,
+      "squashed_sha": "7a6da71"
     }
   ],
-  "integration": null,
+  "integration": {
+    "result": "clean",
+    "pytest": "1721 passed",
+    "cfn_lint": "4 W3005 warnings, same on origin/stage (pre-existing)",
+    "sam_validate": "pass",
+    "sam_build": "pass",
+    "actionlint": "pass",
+    "commits": 0
+  },
   "final_pr_number": null,
   "admin_actions": [],
   "events": [
@@ -62,6 +71,19 @@
       "type": "deferred",
       "phase": 1,
       "note": "Post-merge only: #124 AC 2 (no Node 20 warning on the PR's test run; check both push and pull_request runs) and AC 4-6 (stage deploy, next prod deploy, no promote after a failed stage deploy). For MANUAL_QA.md."
+    },
+    {
+      "ts": "2026-10-17T17:16:21+00:00",
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "ts": "2026-10-17T17:17:53+00:00",
+      "type": "docs",
+      "updated": [
+        "docs/Deploying.md (279 -> 281)"
+      ],
+      "note": "One paragraph on tests/test_workflows.py in The Deployment Pipeline; no other doc names action versions."
     }
   ]
 }

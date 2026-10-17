@@ -222,6 +222,8 @@ Each workflow has two jobs. The first, **Deploy to AWS**:
 
 The second, **List API routes**, runs after it and writes every route's full URL to the run's summary (`scripts/list_api_routes.py`, which reads the routes from `template.yaml`). The README's [API Routes](README.md#api-routes) table lists the same routes with what calls each one. It is a separate job because it installs a package from PyPI (PyYAML, pinned to an exact version): it gets only read access to the repository, no AWS credentials, and no permission to request the OIDC token the deploy role trusts. A failure in it doesn't fail the run.
 
+`tests/test_workflows.py` checks the workflows in `.github/workflows/`. Each action must be pinned by major tag (`@v7`) and be at least the first major that runs on Node.js 24, which the table `MIN_NODE24_MAJOR` in the test lists. The `test` check fails on an older major, on a commit SHA or branch pin, and on an action that isn't in the table. When you add a step that uses a new action, check which Node.js version it runs on and add it to the table. When you bump an action, the test passes as long as the new major is at least the listed one. The test also checks that each deploy job keeps the environment name and the OIDC sign-in the deploy role trusts, and that the **List API routes** job has neither an environment nor permission to request the OIDC token.
+
 Slack, ClickUp and the other services call the permanent `https://facilities.asmbly.org` address, so nothing has to be updated after a prod deploy. (`scripts/update_slack_manifest.py` is no longer run by a workflow.)
 
 ### What a Deploy Changes
