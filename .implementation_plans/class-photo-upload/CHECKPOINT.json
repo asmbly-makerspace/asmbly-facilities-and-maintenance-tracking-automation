@@ -276,6 +276,18 @@
         "both function READMEs"
       ],
       "admin_procedure": "docs/Deploying.md#one-time-admin-setup-class-photo-upload"
+    },
+    {
+      "type": "manual_qa",
+      "stories_covered": [
+        104,
+        105,
+        106,
+        107,
+        108,
+        109
+      ],
+      "total_steps": 37
     }
   ],
   "stories": [
