@@ -346,9 +346,14 @@ def test_classes_secret_failure_returns_502(mocks: Any, caplog: pytest.LogCaptur
 CACHED_NAMES = ("Ceramics: Glazing Workshop", "Woodshop Safety")
 
 
-def cached_copy(age: datetime.timedelta, source: ListSource = ListSource.SCHEDULE) -> ClassListRecord:
+def cached_copy(
+    age: datetime.timedelta,
+    source: ListSource = ListSource.SCHEDULE,
+    *,
+    names: tuple[str, ...] = CACHED_NAMES,
+) -> ClassListRecord:
     now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
-    return ClassListRecord(CACHED_NAMES, now - age, source)
+    return ClassListRecord(names, now - age, source)
 
 
 def refresh_event(value: Any = "1") -> dict[str, Any]:
@@ -777,6 +782,140 @@ def test_submit_neon_failure_returns_502(mocks: Any) -> None:
     mocks.github_app.installation_token.assert_not_called()
 
 
+# --- Submit: the class, against the cached list (class-photo-loading phase 2) ---
+
+SUBMIT_CACHED_NAMES = (CLASS_NAME, "Woodshop Safety", "Laser Cutter Basics")
+
+
+def assert_no_neon_read(mocks: Any) -> None:
+    """Neither the Neon secret nor Neon itself was touched."""
+    mocks.aws.get_secret.assert_not_called()
+    mocks.neon.assert_not_called()
+    mocks.neon.return_value.search_events.assert_not_called()
+
+
+def test_submit_uses_cached_list_without_neon(mocks: Any, caplog: pytest.LogCaptureFixture) -> None:
+    mocks.cache.record = cached_copy(datetime.timedelta(hours=1), names=SUBMIT_CACHED_NAMES)
+
+    with caplog.at_level(logging.INFO):
+        response = lambda_function.lambda_handler(submit_event(), FakeContext())
+
+    assert response["statusCode"] == 200
+    assert_no_neon_read(mocks)
+    assert mocks.plan_submission.call_args.args[3] == list(SUBMIT_CACHED_NAMES)
+    assert re.search(r"Class list from cache \(age 360[01] s\): 3 classes", caplog.text)
+    assert mocks.cache.puts == []
+
+
+def test_submit_works_while_neon_is_down_with_cache(mocks: Any) -> None:
+    # A fresh copy means Neon is never asked, so a Neon (and secret) outage can't matter.
+    mocks.cache.record = cached_copy(datetime.timedelta(hours=25), names=SUBMIT_CACHED_NAMES)
+    mocks.aws.get_secret.side_effect = RuntimeError("the Neon secret is unreachable")
+    mocks.neon.return_value.search_events.side_effect = NeonCRMError("events/search failed (status 500)")
+
+    response = lambda_function.lambda_handler(submit_event(), FakeContext())
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["action"] == "would_open"
+    assert_no_neon_read(mocks)
+
+
+def test_submit_with_old_cache_and_neon_down_uses_the_copy(
+    mocks: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    mocks.cache.record = cached_copy(datetime.timedelta(hours=27), names=SUBMIT_CACHED_NAMES)
+    mocks.neon.return_value.search_events.side_effect = NeonCRMError("events/search failed (status 500)")
+
+    with caplog.at_level(logging.INFO):
+        response = lambda_function.lambda_handler(submit_event(), FakeContext())
+
+    assert response["statusCode"] == 200
+    mocks.neon.return_value.search_events.assert_called_once()
+    assert mocks.plan_submission.call_args.args[3] == list(SUBMIT_CACHED_NAMES)
+    assert "Class list from stale_cache (age " in caplog.text
+    assert mocks.cache.puts == []
+
+
+def test_submit_class_not_in_cached_list_400(mocks: Any) -> None:
+    # Neon has "Woodshop Safety" (NEON_EVENTS); a fresh copy without it wins.
+    mocks.cache.record = cached_copy(datetime.timedelta(hours=1), names=(CLASS_NAME,))
+
+    response = lambda_function.lambda_handler(submit_event(class_name="Woodshop Safety"), FakeContext())
+
+    assert response["statusCode"] == 400
+    assert body_of(response) == {"error": "Pick a class from the list."}
+    assert_nothing_outside_called(mocks)
+    mocks.aws.get_secret.assert_not_called()
+    mocks.aws.get_secret_json.assert_not_called()
+
+
+def test_submit_forbidden_character_from_cache_400(mocks: Any) -> None:
+    mocks.cache.record = cached_copy(datetime.timedelta(hours=1), names=(CLASS_NAME, "AC/DC Basics"))
+
+    response = lambda_function.lambda_handler(submit_event(class_name="AC/DC Basics"), FakeContext())
+
+    assert response["statusCode"] == 400
+    assert body_of(response) == {
+        "error": 'The class name "AC/DC Basics" contains "/", which can\'t be in a file name. '
+        "Rename the class in Neon first."
+    }
+    assert_nothing_outside_called(mocks)
+    mocks.aws.get_secret_json.assert_not_called()
+
+
+def test_submit_cache_miss_reads_neon_and_fills_cache(mocks: Any) -> None:
+    assert mocks.cache.record is None
+
+    response = lambda_function.lambda_handler(submit_event(), FakeContext())
+
+    assert response["statusCode"] == 200
+    mocks.neon.return_value.search_events.assert_called_once()
+    assert len(mocks.cache.puts) == 1
+    stored = mocks.cache.puts[0]
+    assert stored.source is ListSource.LIVE_READ
+    assert CLASS_NAME in stored.names
+    assert mocks.plan_submission.call_args.args[3] == list(stored.names)
+
+
+def test_submit_empty_neon_list_without_a_copy_400(mocks: Any, caplog: pytest.LogCaptureFixture) -> None:
+    assert mocks.cache.record is None
+    mocks.neon.return_value.search_events.return_value = []
+
+    with caplog.at_level(logging.INFO):
+        response = lambda_function.lambda_handler(submit_event(), FakeContext())
+
+    assert response["statusCode"] == 400
+    assert body_of(response) == {"error": "Pick a class from the list."}
+    mocks.neon.return_value.search_events.assert_called_once()
+    mocks.github_app.installation_token.assert_not_called()
+    mocks.plan_submission.assert_not_called()
+    mocks.apply_submission.assert_not_called()
+    assert mocks.cache.puts == []
+    assert re.search(r"Class list from neon \(age [01] s\): 0 classes", caplog.text)
+
+
+def test_submit_with_the_cache_down_reads_neon_and_still_writes(
+    mocks: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("CLASS_PHOTO_DRY_RUN", "false")
+    mocks.cache.fail_get = "ProvisionedThroughputExceededException"
+    mocks.cache.fail_put = "ProvisionedThroughputExceededException"
+
+    with caplog.at_level(logging.INFO):
+        response = lambda_function.lambda_handler(submit_event(), FakeContext(remaining_ms=20_000))
+
+    assert response["statusCode"] == 200
+    assert body_of(response)["action"] == "opened"
+    mocks.neon.return_value.search_events.assert_called_once()
+    all_classes = mocks.plan_submission.call_args.args[3]
+    assert CLASS_NAME in all_classes and len(all_classes) == len(NEON_EVENTS)
+    mocks.apply_submission.assert_called_once()
+    assert "Class list cache: read failed: ProvisionedThroughputExceededException" in caplog.text
+    assert "Class list cache: write failed: ProvisionedThroughputExceededException" in caplog.text
+    assert re.search(r"Class list from neon \(age [01] s\): 5 classes", caplog.text)
+    assert "Time left before the GitHub writes: 20000 ms" in caplog.text
+
+
 # --- Submit: GitHub ---
 
 
@@ -886,27 +1025,101 @@ def test_values_other_than_false_are_dry_runs(value: str, monkeypatch: pytest.Mo
     assert lambda_function.is_dry_run() is True
 
 
+NOTHING_CHANGED_TEXT = "Couldn't open the pull request. Nothing was changed on GitHub. Try again in a minute."
+UNFINISHED_TEXT = (
+    "Couldn't finish the pull request on GitHub. Submit the same class again: "
+    "it finishes the same pull request instead of opening a second one."
+)
+
+
+@pytest.mark.parametrize(
+    "failing, error, message, logged",
+    [
+        ("installation_token", GitHubError("installation_token", 500), NOTHING_CHANGED_TEXT, "(before any write)"),
+        ("plan_submission", GitHubError("list_directory", None), NOTHING_CHANGED_TEXT, "(before any write)"),
+        (
+            "apply_submission",
+            GitHubConflict("create_pull_request", 422),
+            UNFINISHED_TEXT,
+            "(during the writes, after ",
+        ),
+        ("apply_submission", GitHubError("create_blob", 502), UNFINISHED_TEXT, "(during the writes, after "),
+    ],
+)
+def test_submit_github_error_502_without_details(
+    mocks: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    failing: str,
+    error: GitHubError,
+    message: str,
+    logged: str,
+) -> None:
+    monkeypatch.setenv("CLASS_PHOTO_DRY_RUN", "false")
+    target = mocks.github_app.installation_token if failing == "installation_token" else getattr(mocks, failing)
+    target.side_effect = error
+
+    with caplog.at_level(logging.INFO):
+        response = lambda_function.lambda_handler(submit_event(), FakeContext())
+
+    assert response["statusCode"] == 502
+    assert body_of(response) == {"error": message}
+    assert error.operation not in response["body"]
+    assert str(error.status) not in response["body"]
+    assert f"GitHub {error.operation} failed for class {CLASS_NAME}: status {error.status} {logged}" in caplog.text
+    assert "GitHub writes took" not in caplog.text
+
+
+def test_submit_github_messages_are_the_module_constants() -> None:
+    assert lambda_function.GITHUB_NOTHING_CHANGED_ERROR == NOTHING_CHANGED_TEXT
+    assert lambda_function.GITHUB_UNFINISHED_ERROR == UNFINISHED_TEXT
+    assert not hasattr(lambda_function, "GITHUB_ERROR")
+    assert not hasattr(lambda_function, "load_classes")
+
+
 @pytest.mark.parametrize(
     "failing, error",
     [
         ("installation_token", GitHubError("installation_token", 500)),
-        ("plan_submission", GitHubError("list_directory", None)),
-        ("apply_submission", GitHubConflict("create_pull_request", 422)),
-        ("apply_submission", GitHubError("create_blob", 502)),
+        ("plan_submission", GitHubError("get_branch_sha", 502)),
     ],
 )
-def test_submit_github_error_502_without_details(
-    mocks: Any, monkeypatch: pytest.MonkeyPatch, failing: str, error: GitHubError
-) -> None:
-    monkeypatch.setenv("CLASS_PHOTO_DRY_RUN", "false")
+def test_submit_dry_run_github_error_says_nothing_changed(mocks: Any, failing: str, error: GitHubError) -> None:
     target = mocks.github_app.installation_token if failing == "installation_token" else getattr(mocks, failing)
     target.side_effect = error
 
     response = lambda_function.lambda_handler(submit_event(), FakeContext())
 
     assert response["statusCode"] == 502
-    assert body_of(response) == {"error": "Couldn't open the pull request. Try again in a minute."}
-    assert error.operation not in response["body"]
+    assert body_of(response) == {"error": NOTHING_CHANGED_TEXT}
+    mocks.apply_submission.assert_not_called()
+
+
+def test_submit_logs_time_left_before_the_writes(
+    mocks: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("CLASS_PHOTO_DRY_RUN", "false")
+    mocks.cache.record = cached_copy(datetime.timedelta(hours=1), names=SUBMIT_CACHED_NAMES)
+
+    with caplog.at_level(logging.INFO):
+        response = lambda_function.lambda_handler(submit_event(), FakeContext(remaining_ms=20_000))
+
+    assert response["statusCode"] == 200
+    assert re.search(r"Class list from cache \(age 360[01] s\): 3 classes", caplog.text)
+    assert "Time left before the GitHub writes: 20000 ms" in caplog.text
+    assert re.search(r"GitHub writes took \d+ ms", caplog.text)
+    assert "Time left after planning" not in caplog.text
+
+
+def test_submit_dry_run_logs_time_left_after_planning(mocks: Any, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO):
+        response = lambda_function.lambda_handler(submit_event(), FakeContext(remaining_ms=20_000))
+
+    assert response["statusCode"] == 200
+    assert "Time left after planning (dry run): 20000 ms" in caplog.text
+    assert "Time left before the GitHub writes" not in caplog.text
+    assert "GitHub writes took" not in caplog.text
+    mocks.apply_submission.assert_not_called()
 
 
 def test_submit_conflict_409(mocks: Any, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -926,7 +1139,7 @@ def test_submit_with_too_little_time_left_writes_nothing(mocks: Any, monkeypatch
         response = lambda_function.lambda_handler(submit_event(), FakeContext(remaining_ms=7_999))
 
     assert response["statusCode"] == 502
-    assert body_of(response) == {"error": lambda_function.GITHUB_ERROR}
+    assert body_of(response) == {"error": NOTHING_CHANGED_TEXT}
     mocks.plan_submission.assert_called_once()
     mocks.apply_submission.assert_not_called()
     assert "Not enough time left to write: 7999 ms" in caplog.text
@@ -1014,8 +1227,13 @@ def test_unexpected_error_500_without_its_text(mocks: Any, caplog: pytest.LogCap
     assert KEY_MARKER not in response["body"]
 
 
-def test_logs_hold_no_username_token_or_photo(mocks: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+@pytest.mark.parametrize("warm_cache", [False, True], ids=["live_read", "warm_cache"])
+def test_logs_hold_no_username_token_or_photo(
+    mocks: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, warm_cache: bool
+) -> None:
     monkeypatch.setenv("CLASS_PHOTO_DRY_RUN", "false")
+    if warm_cache:
+        mocks.cache.record = cached_copy(datetime.timedelta(hours=1), names=SUBMIT_CACHED_NAMES)
     event = submit_event(photo=make_jpeg(1500, 1000, pad_to=4096))
     photo_base64 = json.loads(event["body"])["photo_base64"]
 

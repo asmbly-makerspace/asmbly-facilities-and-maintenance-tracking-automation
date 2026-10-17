@@ -40,14 +40,14 @@ from common.neoncrm import NeonCRM
 try:
     from . import class_names, photo_checks, submission
     from .class_list_cache import ClassListCache, format_time
-    from .class_list_service import ClassListService
+    from .class_list_service import ClassListResult, ClassListService
     from .dynamodb_class_list_cache import DynamoDBClassListCache
 except ImportError:  # Under Lambda this module is top-level, beside its helpers.
     import class_names  # type: ignore[no-redef]
     import photo_checks  # type: ignore[no-redef]
     import submission  # type: ignore[no-redef]
     from class_list_cache import ClassListCache, format_time  # type: ignore[no-redef]
-    from class_list_service import ClassListService  # type: ignore[no-redef]
+    from class_list_service import ClassListResult, ClassListService  # type: ignore[no-redef]
     from dynamodb_class_list_cache import DynamoDBClassListCache  # type: ignore[no-redef]
 
 logger = logging.getLogger()
@@ -55,7 +55,15 @@ logger.setLevel(logging.INFO)
 
 GENERIC_ERROR = "Something went wrong on our side. Try again later."
 NEON_ERROR = "Couldn't load the class list. Try again in a minute."
-GITHUB_ERROR = "Couldn't open the pull request. Try again in a minute."
+# A GitHub failure before any write (and every one on a dry run): a retry starts clean.
+GITHUB_NOTHING_CHANGED_ERROR = (
+    "Couldn't open the pull request. Nothing was changed on GitHub. Try again in a minute."
+)
+# A GitHub failure once the writes began: a retry finishes the same branch and pull request.
+GITHUB_UNFINISHED_ERROR = (
+    "Couldn't finish the pull request on GitHub. Submit the same class again: "
+    "it finishes the same pull request instead of opening a second one."
+)
 CONFLICT_ERROR = "Someone else just submitted a photo for this class. Try again."
 FORBIDDEN_ERROR = "You're not allowed to use this page."
 NOT_IN_LIST_ERROR = "Pick a class from the list."
@@ -165,6 +173,11 @@ def photo_problem_kind(message: str) -> str:
     return "other"
 
 
+def elapsed_ms(started: float) -> int:
+    """Milliseconds since ``started``, a ``time.monotonic()`` reading."""
+    return int((time.monotonic() - started) * 1000)
+
+
 def read_classes_from_neon() -> list[str]:
     """The class list read live from Neon; Refusal(502) when the secret or Neon fails."""
     secret_name = os.environ["NEON_SECRET_NAME"]
@@ -181,15 +194,10 @@ def read_classes_from_neon() -> list[str]:
     except Exception as e:
         logger.error(
             "Couldn't read the class list from Neon after %d ms: %s",
-            int((time.monotonic() - started) * 1000),
+            elapsed_ms(started),
             type(e).__name__,
         )
         raise Refusal(502, NEON_ERROR, "neon") from None
-
-
-def load_classes() -> list[str]:
-    """Submit's live read until it moves to the cache (class-photo-loading phase 2)."""
-    return read_classes_from_neon()
 
 
 _class_list_cache: ClassListCache | None = None
@@ -256,6 +264,16 @@ def class_list_entries(classes: list[str]) -> list[dict[str, Any]]:
     return entries
 
 
+def log_class_list(service: ClassListService, class_list: ClassListResult) -> None:
+    """Where the class list came from and how old it was, for /classes and submit alike."""
+    logger.info(
+        "Class list from %s (age %d s): %d classes",
+        class_list.served_from,
+        service.age_seconds(class_list),
+        len(class_list.names),
+    )
+
+
 def handle_classes(
     event: dict[str, Any], sub: str, dry_run: bool, service: ClassListService
 ) -> dict[str, Any]:
@@ -264,12 +282,7 @@ def handle_classes(
         logger.info("Class list refresh by sub %s: %s", sub, result.refresh)
     else:
         result = service.for_request()
-    logger.info(
-        "Class list from %s (age %d s): %d classes",
-        result.served_from,
-        service.age_seconds(result),
-        len(result.names),
-    )
+    log_class_list(service, result)
     return _response(
         200,
         {
@@ -379,11 +392,15 @@ def submission_payload(result: "submission.SubmissionResult", dry_run: bool) -> 
     }
 
 
-def handle_submit(event: dict[str, Any], context: Any, username: str, dry_run: bool) -> dict[str, Any]:
+def handle_submit(
+    event: dict[str, Any], context: Any, username: str, dry_run: bool, service: ClassListService
+) -> dict[str, Any]:
     class_name, photo_base64 = parse_submission(event)
     data = decode_photo(photo_base64)
 
-    classes = load_classes()
+    class_list = service.for_request()
+    log_class_list(service, class_list)
+    classes = class_list.names
     if class_name not in classes:
         raise Refusal(400, NOT_IN_LIST_ERROR, "class_not_in_list")
     logger.info("Class photo submitted for class %s", class_name)
@@ -393,6 +410,7 @@ def handle_submit(event: dict[str, Any], context: Any, username: str, dry_run: b
 
     config, app = load_github_settings()
     permissions = READ_PERMISSIONS if dry_run else WRITE_PERMISSIONS
+    # Before the writes: the token and the read-only planning calls change nothing.
     try:
         token = github_app.installation_token(
             app["app_id"],
@@ -406,23 +424,43 @@ def handle_submit(event: dict[str, Any], context: Any, username: str, dry_run: b
             token, config.owner, config.repo, config.branch_prefix, timeout=GITHUB_TIMEOUT_SECONDS
         )
         plan = submission.plan_submission(repo, config, class_name, classes, username)
-        if dry_run:
-            result = submission.dry_run_result(plan)
-            logger.info("Dry run for class %s: %s on branch %s", class_name, result.action, plan.branch)
-        else:
-            left = remaining_ms(context)
-            if left is not None and left < WRITE_MIN_REMAINING_MS:
-                logger.error("Not enough time left to write: %d ms", left)
-                raise Refusal(502, GITHUB_ERROR, "time")
-            result = submission.apply_submission(
-                repo, config, plan, base64.b64encode(data).decode("ascii"), username
-            )
+    except GitHubError as e:
+        logger.error(
+            "GitHub %s failed for class %s: status %s (before any write)", e.operation, class_name, e.status
+        )
+        raise Refusal(502, GITHUB_NOTHING_CHANGED_ERROR, "github_read") from None
+
+    left = remaining_ms(context)
+    if dry_run:
+        result = submission.dry_run_result(plan)
+        logger.info("Dry run for class %s: %s on branch %s", class_name, result.action, plan.branch)
+        if left is not None:
+            logger.info("Time left after planning (dry run): %d ms", left)
+        return _response(200, submission_payload(result, dry_run))
+
+    if left is not None and left < WRITE_MIN_REMAINING_MS:
+        logger.error("Not enough time left to write: %d ms", left)
+        raise Refusal(502, GITHUB_NOTHING_CHANGED_ERROR, "time")
+    if left is not None:
+        logger.info("Time left before the GitHub writes: %d ms", left)
+    started = time.monotonic()
+    try:
+        result = submission.apply_submission(
+            repo, config, plan, base64.b64encode(data).decode("ascii"), username
+        )
     except submission.SubmissionConflict:
         logger.warning("Class photo for class %s lost a race for its branch", class_name)
         raise Refusal(409, CONFLICT_ERROR, "conflict") from None
     except GitHubError as e:
-        logger.error("GitHub %s failed for class %s: status %s", e.operation, class_name, e.status)
-        raise Refusal(502, GITHUB_ERROR, "github") from None
+        logger.error(
+            "GitHub %s failed for class %s: status %s (during the writes, after %d ms)",
+            e.operation,
+            class_name,
+            e.status,
+            elapsed_ms(started),
+        )
+        raise Refusal(502, GITHUB_UNFINISHED_ERROR, "github_write") from None
+    logger.info("GitHub writes took %d ms", elapsed_ms(started))
     return _response(200, submission_payload(result, dry_run))
 
 
@@ -448,7 +486,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         if route == CLASSES_ROUTE:
             return handle_classes(event, claims["sub"], dry_run, class_list_service())
         if route == SUBMIT_ROUTE:
-            return handle_submit(event, context, claims["cognito:username"], dry_run)
+            return handle_submit(event, context, claims["cognito:username"], dry_run, class_list_service())
         return _error(404, NOT_FOUND_ERROR)
     except Refusal as refusal:
         logger.info("Answered %d: %s", refusal.status, refusal.reason)

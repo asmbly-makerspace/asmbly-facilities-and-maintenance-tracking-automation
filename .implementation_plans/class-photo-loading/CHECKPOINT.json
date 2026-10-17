@@ -10,13 +10,16 @@
       "file": "phase-1-class-list-cache.md",
       "status": "done",
       "pre_sha": "571d05d",
-      "review_rounds": "build review + 3 cold review-lead rounds (round 2 BLOCK: botocore max_attempts -> total_max_attempts=1, fixed; all WARNs/NOTEs fixed)"
+      "review_rounds": "build review + 3 cold review-lead rounds (round 2 BLOCK: botocore max_attempts -> total_max_attempts=1, fixed; all WARNs/NOTEs fixed)",
+      "squashed_sha": "80d9a7f"
     },
     {
       "id": 2,
       "title": "Submit against the cache, time left and what was written",
       "file": "phase-2-submit-against-cache.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "80d9a7f",
+      "review_rounds": "build review + 2 cold review-lead rounds (all APPROVED; WARNs fixed)"
     },
     {
       "id": 3,
@@ -80,6 +83,34 @@
       "type": "deferred",
       "phase": 1,
       "detail": "Scheduled refresh retried twice by Lambda on timeout (EventInvokeConfig would need a new deploy-role action) - accepted, documented. Unconditional cache write may overwrite a newer manual refresh by one read - accepted."
+    },
+    {
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "type": "owner_approval",
+      "detail": "Owner approved: orchestrator redeploys AsmblyFacilitiesMaintTrackingStack-cicd with AWS_PROFILE=asmbly once the #114 PR is green (after the sentinel is removed). No merge approval for #114."
+    },
+    {
+      "type": "phase_done",
+      "phase": 2,
+      "checks": {
+        "pytest": "1652 passed",
+        "cfn_lint": "4 W3005 pre-existing",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      }
+    },
+    {
+      "type": "decision",
+      "phase": 2,
+      "detail": "Submit reads the class list via injected ClassListService; still refuses unknown class and bad file name. GITHUB_ERROR split: 'Nothing was changed on GitHub' (pre-write and all dry-run failures) vs 'Submit the same class again' (failure during writes). Logs time left before writes and write duration."
+    },
+    {
+      "type": "decision",
+      "phase": 2,
+      "detail": "Accepted: blob/tree/commit failure moves no ref but says 'submit again' (safe). Neon down -> submit uses a cached copy of any age."
     }
   ],
   "stories": [

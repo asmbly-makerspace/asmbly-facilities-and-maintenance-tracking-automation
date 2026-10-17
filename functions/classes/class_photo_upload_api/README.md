@@ -72,13 +72,18 @@ A submission runs in this order, and stops at the first refusal:
 1. Parse the body (base64-decoded first when `isBase64Encoded`).
 2. Refuse a photo whose base64 is longer than a 4 MB photo can be, without decoding it;
    decode the rest and run the photo checks. A failing photo never reaches Neon or GitHub.
-3. Read the class list from Neon (live: submit doesn't use the cache yet; epic #114 moves
-   it there); refuse a class that isn't in it, or whose name can't be a file name.
+3. Read the class list from the cache, by the same rule as `GET /classes`: a copy no
+   older than 26 hours is used without Neon; otherwise Neon is read live (and the copy
+   replaced), falling back to the cached copy if Neon fails. Refuse a class that isn't in
+   it, or whose name can't be a file name. The page's list is never trusted.
 4. Read the repository config (SSM) and the GitHub App's credentials (Secrets Manager).
 5. Ask GitHub for an installation token for `asmbly-classes` only: read-only on a dry
    run, `contents: write, pull_requests: write` on prod.
-6. Plan the submission; on prod, apply it (only when at least 8 s of the function's time
-   are left, so a slow read never leaves a half-made commit).
+6. Plan the submission (read calls only); on prod, apply it (only when at least 8 s of
+   the function's time are left, so a slow read never leaves a half-made commit). A
+   GitHub failure in steps 5 and 6 before the writes, and every one on a dry run, changed
+   nothing on GitHub; one during the writes may have left a branch or commit that the
+   next submission of the same class finishes.
 
 The imports of the modules work both under pytest (as the package
 `functions.classes.class_photo_upload_api`) and under Lambda, where the handler is the
@@ -88,7 +93,7 @@ top-level module `lambda_function` (a relative import with a top-level fallback)
 
 Reading the class list from Neon takes about 8 seconds (a 4-month search, two pages of
 200 events). So the list is kept per stage in one DynamoDB item and answered from there,
-well under 2 seconds.
+well under 2 seconds. Submit checks the class against the same copy, by the same rules.
 
 **What is stored.** One item in `ClassPhotoClassListCache-${Stage}`, key
 `cache_key = "class-list"`, with exactly six attributes: `cache_key`, `version` (1),
@@ -129,8 +134,8 @@ DynamoDB (plan `.implementation_plans/class-photo-loading/README.md`, "Design"):
 - `class_list_freshness.py`: `FreshnessPolicy`, the rules above (26 hours, 60 seconds, the
   stale fallback) as a pure class: no I/O, no clock.
 - `class_list_service.py`: `ClassListService`, which applies the policy to the cache and
-  Neon for a request, a manual refresh and the schedule. The HTTP route and the schedule
-  call the same service.
+  Neon for a request, a manual refresh and the schedule. Both HTTP routes and the
+  schedule call the same service.
 - `lambda_function.py` picks the DynamoDB implementation (`class_list_cache()`, once per
   container) and injects it with the Neon reader (`class_list_service()`).
 
@@ -182,17 +187,21 @@ on a normal load and, on `?refresh=1`, `"refreshed"`, `"too_soon"` or `"failed"`
 | --- | --- | --- |
 | 400 | The photo check's message (size, not a JPEG, unreadable, ratio, not landscape, location) | The photo fails a check |
 | 400 | `The photo didn't arrive whole. Choose it again and submit.` | Invalid JSON, a missing or wrong-typed field, bad base64 |
-| 400 | `Pick a class from the list.` | The class isn't in the Neon list (or is empty or over 200 characters) |
+| 400 | `Pick a class from the list.` | The class isn't in the server's class list (the cached copy, or Neon's on a miss; empty when Neon answers no classes and no copy exists), or is empty or over 200 characters |
 | 400 | `The class name "..." contains "/", which can't be in a file name. Rename the class in Neon first.` | The class's name can't be a file name |
 | 403 | `You're not allowed to use this page.` | Wrong app client, an access token, or missing claims |
 | 404 | `Not found.` | Any other method or path |
 | 409 | `Someone else just submitted a photo for this class. Try again.` | Another submission moved the class's branch first |
 | 500 | `Something went wrong on our side. Try again later.` | A missing environment variable, an unreadable config or App secret, anything unexpected |
-| 502 | `Couldn't load the class list. Try again in a minute.` | Neon, or the Neon secret, failed, and no cached copy exists (the class list), or always (submit, which still reads Neon live) |
-| 502 | `Couldn't open the pull request. Try again in a minute.` | A GitHub call failed, or too little time was left to write |
+| 502 | `Couldn't load the class list. Try again in a minute.` | Neon, or the Neon secret, failed, and no cached copy exists |
+| 502 | `Couldn't open the pull request. Nothing was changed on GitHub. Try again in a minute.` | The installation token or a read-only planning call failed, any GitHub call on a dry run failed, or too little time was left to write |
+| 502 | `Couldn't finish the pull request on GitHub. Submit the same class again: it finishes the same pull request instead of opening a second one.` | A GitHub call failed after the writes began (prod only) |
 
-Submitting again after a 409 or a 502 finishes the job without opening a second pull
-request.
+After "Nothing was changed on GitHub", a retry starts clean. After "Couldn't finish the
+pull request", a retry finishes the same branch and pull request; the failure may also
+have come from the blob, tree or commit, which change nothing anyone sees, and
+submitting again is just as safe. A dry run never answers "Couldn't finish". Submitting
+again after a 409 also finishes the job without opening a second pull request.
 
 ## Dry Run (stage)
 
@@ -260,7 +269,11 @@ Logs carry the route, the caller's Cognito `sub`, the class name, which check fa
 the action, the pull request number and the branch. For the class list they also carry
 Neon's time (`Neon read 180 events (1 pages) in 3750 ms: 84 classes`), where the answer
 came from and how old it was (`Class list from cache (age 120 s): 84 classes`), and who
-asked for a refresh (`Class list refresh by sub <sub>: refreshed`). They never carry the username (it
+asked for a refresh (`Class list refresh by sub <sub>: refreshed`). A submission also logs
+the time left before the GitHub writes (`Time left before the GitHub writes: 17250 ms`;
+on a dry run, `Time left after planning (dry run): … ms`), how long the writes took
+(`GitHub writes took 2310 ms`), and on a GitHub failure the call, its status and whether
+it came `(before any write)` or `(during the writes, after … ms)`. They never carry the username (it
 appears only in the pull request, as "Requested by"), the `Authorization` header, the
 request body, the photo, a token or the App's key.
 
@@ -274,12 +287,19 @@ request body, the photo, a token or the App's key.
   search reads at most 8 pages of 200 events and gives up on a request that doesn't
   connect or answer for 4 s; a GitHub call gives up after 5 s. These bound the usual
   slow cases; a response that trickles in can still run longer, and then the function's
-  own 25 s timeout ends the request (API Gateway answers 502, with no details).
+  own 25 s timeout ends the request (API Gateway answers 502, with no details). With a
+  warm cache a submission spends no time in Neon, which leaves its time for GitHub; the
+  log line `Time left before the GitHub writes` records that margin on prod.
 - **Concurrency.** At most 3 requests run at once (`ReservedConcurrentExecutions`). The
   daily refresh on prod takes one of them for a few seconds. The refresh guard is
   checked before Neon is read, so two refreshes pressed in the same second can both read
   Neon; the concurrency limit bounds that.
-- **Cache.** With a warm cache the class list spends no time in Neon. A live read that
+- **Cache.** With a warm cache neither the class list nor a submission spends time in
+  Neon. When Neon fails, a submission is checked against the cached copy whatever its
+  age (on stage, which has no schedule, that copy can be old). A class added in Neon
+  since the copy was read answers `Pick a class from the list.` until the list is
+  refreshed; so does one the page got from a refresh whose cache write failed (the page
+  shows Neon's list, the server keeps its older copy). A live read that
   runs past the 25 s timeout (a very slow Neon) ends in API Gateway's 502 without the
   stale copy, as before the cache. A scheduled refresh cut off by the timeout logs only
   Lambda's "Task timed out", and Lambda retries it twice. `stale` means "Neon failed and

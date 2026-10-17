@@ -12,7 +12,7 @@ epic: 114
 The class photo upload page (`https://facilities.asmbly.org/class-photo-upload`, epic #73,
 restyled by #111) waits on Neon twice and shows almost nothing while it waits. Measured on
 stage on 2026-10-17: `GET /class-photo-upload/classes` took 8.6 s (about 7.5 s of it
-Neon) and a dry-run `POST /class-photo-upload/submit` 10.2 s (about 5.8 s Neon). Both call
+Neon) and a dry-run `POST /class-photo-upload/submit` 10.2 s (about 5.8 s Neon). Both called
 `load_classes()` in `functions/classes/class_photo_upload_api/lambda_function.py`, which
 runs a full `POST /v2/events/search` (4-month lookback, up to 8 pages of 200, 4 s a
 page). On prod the submit's Neon read eats into the 25 s the function has for the GitHub
@@ -56,7 +56,7 @@ see Admin actions 3).
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
 | 1 | [Class-list cache, scheduled refresh and Neon timing](phase-1-class-list-cache.md) | lambda, infra, docs | L | [x] Complete |
-| 2 | [Submit against the cache, time left and what was written](phase-2-submit-against-cache.md) | lambda, docs | M | [ ] Pending |
+| 2 | [Submit against the cache, time left and what was written](phase-2-submit-against-cache.md) | lambda, docs | M | [x] Complete |
 | 3 | [Page busy state, progress, retry and timeout messages](phase-3-page-loading-and-progress.md) | lambda, docs | L | [ ] Pending |
 
 ## Dependencies
@@ -107,7 +107,9 @@ Phase 1 is a predecessor of both. Inside `/offshore` the phases run in order 1, 
    UTC.
 3. **After the prod deploy, the owner or an admin:** make one real submission on prod and
    record, on #114, the "Time left before the GitHub writes" figure from
-   `/asmbly/lambda/ClassPhotoUploadApiFunction-prod` (#114 "Done when", #118 criterion 3).
+   `/asmbly/lambda/ClassPhotoUploadApiFunction-prod`, from a request whose log also says
+   `Class list from cache` (a live read's figure includes Neon's time) (#114 "Done when",
+   #118 criterion 3).
    Then close #114.
 
 No secret, SSM parameter, app client, webhook or GitHub App setting changes.
