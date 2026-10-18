@@ -11,7 +11,7 @@ from common import brand
 from functions.classes.class_photo_upload_api import lambda_function as api
 from functions.classes.class_photo_upload_api import photo_checks
 from functions.classes.class_photo_upload_page import lambda_function
-from tests import capture_page_pins, page_style
+from tests import capture_page_pins, page_csp, page_style
 
 FIXTURES = Path(__file__).parent / "fixtures"
 # The served shell before the nonce and config go in: page.html with the shared brand tokens
@@ -130,6 +130,57 @@ def test_nonce_changes_per_request() -> None:
     second = _csp(_call(_event()))["script-src"]
 
     assert first != second
+
+
+# The CSP strings this function sent on stage 07b9b79, before story #139 moved the CSP into
+# common/csp.py. They must stay byte-identical: same directives, same order, same bytes.
+PINNED_CSP = (
+    "default-src 'none'; script-src 'nonce-n0nce'; style-src 'nonce-n0nce'; img-src blob:; "
+    f"connect-src 'self' https://{AUTH_DOMAIN}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
+PINNED_ERROR_CSP = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+
+
+def test_csp_header_is_byte_for_byte_unchanged() -> None:
+    """Story #139 criterion 2, for the header built for a known nonce and the one actually served."""
+    assert lambda_function.response_headers(AUTH_DOMAIN, "n0nce")["Content-Security-Policy"] == PINNED_CSP
+
+    served = _call(_event())["headers"]["Content-Security-Policy"]
+    assert served.replace(page_csp.nonce(served), "n0nce") == PINNED_CSP
+
+
+def test_error_page_csp_is_unchanged() -> None:
+    """The 400 and 500 pages send the same headers as before, CSP included."""
+    expected = {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "Content-Security-Policy": PINNED_ERROR_CSP,
+    }
+    bad_request = _call(_event(path="/other"))
+    server_error = _call(_event(), {key: value for key, value in ENV.items() if key != "STAFF_AUTH_DOMAIN"})
+
+    assert bad_request["statusCode"] == 400
+    assert server_error["statusCode"] == 500
+    assert bad_request["headers"] == expected
+    assert server_error["headers"] == expected
+
+
+def test_two_requests_get_different_nonces_on_header_style_and_script() -> None:
+    """Story #139 criterion 4: a fresh nonce per request, the same on the header, the <style> and the <script>."""
+    first, second = _call(_event()), _call(_event())
+    nonces = []
+    for response in (first, second):
+        policy, body = response["headers"]["Content-Security-Policy"], response["body"]
+        assert page_csp.nonce_problems(policy, body) == []
+        nonce = page_csp.nonce(policy)
+        assert f'<style nonce="{nonce}">' in body
+        assert f'<script nonce="{nonce}">' in body
+        nonces.append(nonce)
+
+    assert nonces[0] != nonces[1]
+    assert nonces[0] not in second["body"]
 
 
 @pytest.mark.parametrize("missing", lambda_function.REQUIRED_ENV)

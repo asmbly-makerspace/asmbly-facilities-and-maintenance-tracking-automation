@@ -10,7 +10,7 @@ estimated_size: M
 
 # Phase 1: CSP helper, shared CSP checks and the header pins
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-17 on branch feature/shared-csp-helper
 
 ## Required reading
 
@@ -146,6 +146,12 @@ def nonce_policy(nonce: str, allow: Iterable[tuple[str, str]] = ()) -> str:
   `"page must have exactly one <style> block, found {n}"`. It is never shown to a
   visitor, because it raises at import (kiln) and API Gateway answers 502.
 - `strict_policy`'s `ValueError` messages may name the directive, never the sources.
+- `_DIRECTIVE_NAME` and `_NONCE` are checked with `fullmatch`, never `match` with `$`:
+  `$` also matches before a trailing newline, so `"img-src\n"` or `"abc\n"` would pass.
+  (Directive names never go through `_UNSAFE_IN_SOURCES`.) The tests include both cases.
+- The helper checks the header's syntax, not what the sources allow: `allow` can still
+  pass `'unsafe-inline'` or `*`. The guard against a looser policy is the per-page pins
+  and `tests/page_csp.py`'s checks, not the helper. The module docstring says so.
 - No logging: the module has no logger, like `brand.py`.
 - The output for each of today's three calls (pinned in `test_csp.py`):
   - `strict_policy()` →
@@ -194,7 +200,11 @@ def nonce_problems(policy: str, body: str) -> list[str]: ...
   - `default-src` isn't `'none'`;
   - `'unsafe-inline'` anywhere in the policy;
   - a `script-src`;
-  - the body has a number of `style_block` matches other than one;
+  - the body has a number of `<style\b` tags (any case, any attributes) other than one,
+    or its one `<style` tag isn't matched by `style_block` (for example
+    `<style media="print">`, whose hash the browser would still check but this check
+    couldn't read);
+  - the body has a `<script\b` tag (the policy blocks every script, silently);
   - `style-src` isn't exactly `sha256_source(<that block's text>)`.
 - `nonce_problems` reports:
   - `default-src` isn't `'none'`;
@@ -207,6 +217,15 @@ def nonce_problems(policy: str, body: str) -> list[str]: ...
 
   The photo page's config block is such a data block. The browser never runs it, so it
   needs no nonce, and it has none today.
+- Both checks also report an inline `style="…"` or `on…="…"` attribute on a tag. Neither
+  policy allows them, so the browser drops them without an error. The check looks only
+  at tags in the markup, after removing the contents of every `<script>` and `<style>`
+  element, so script text such as `i < n; x.onload = f` is not read as a tag. Text from
+  outside (kiln task names) is escaped, so it can't form a tag. Neither page has such an
+  attribute today (checked on 07b9b79).
+- Both checks keep the `*_problems` contract when the policy can't be parsed: a repeated
+  directive, or no single nonce on `script-src`, is caught (`ValueError` from
+  `directives` or `nonce`) and reported as a message, never raised.
 
 Type hints on every function. No logging.
 
@@ -244,9 +263,9 @@ A comment above them says these are the strings sent on `stage` 07b9b79, before 
 | `test_style_hash_source_needs_exactly_one_style_block` | Raises `ValueError` for no `<style>`, for two, and for a page whose only style is `<style nonce="x">`. That last case means a nonce page passed to `hash_policy` fails loudly. |
 | `test_style_hash_covers_the_text_exactly` | `"<style>a{}</style>"` and `"<style> a{}</style>"` give different sources, so nothing is stripped. |
 | `test_strict_policy_keeps_the_order_given` | `[("style-src", "x"), ("img-src", "y")]` and the reverse give the directives in the order given. |
-| `test_strict_policy_refuses_fixed_repeated_or_bad_names` | Parametrized, each raises `ValueError`: `default-src`, `base-uri`, `form-action`, `frame-ancestors`, `Style-Src`, `""`, `"img src"`, and `img-src` twice. |
+| `test_strict_policy_refuses_fixed_repeated_or_bad_names` | Parametrized, each raises `ValueError`: `default-src`, `base-uri`, `form-action`, `frame-ancestors`, `Style-Src`, `""`, `"img src"`, `"img-src\n"`, and `img-src` twice. |
 | `test_strict_policy_refuses_sources_that_could_break_the_header` | Parametrized, each raises `ValueError`: `""`, `"  "`, `"'self'; script-src *"`, `"a, b"`, `"a\r\nX-Injected: 1"`, `"a\nb"`. |
-| `test_nonce_policy_refuses_a_nonce_that_is_not_base64` | Parametrized, each raises `ValueError`: `""`, `"a b"`, `"abc'"`, `"a;b"`, `"a\nb"`. |
+| `test_nonce_policy_refuses_a_nonce_that_is_not_base64` | Parametrized, each raises `ValueError`: `""`, `"a b"`, `"abc'"`, `"a;b"`, `"a\nb"`, `"abc\n"`. |
 | `test_new_nonce_is_fresh_and_url_safe` | Two calls differ, and each fullmatches `[A-Za-z0-9_-]{22}`. |
 | `test_csp_imports_only_the_standard_library` | AST walk, as in `test_brand.py`: each import's top name is in `sys.stdlib_module_names`, with no relative import. |
 | `test_importing_csp_loads_no_third_party_module` | A subprocess (`sys.executable -I -c`) with only `LAYER_PYTHON` on the path imports `common.csp` and prints `False` for `boto3`, `botocore` and `requests` in `sys.modules`. |
@@ -259,16 +278,18 @@ A comment above them says these are the strings sent on `stage` 07b9b79, before 
 | `test_directives_reads_each_directive_once` | It parses the 8-directive photo literal into 8 entries, and `img-src` is `blob:`. A repeated `style-src` raises `ValueError`. |
 | `test_nonce_reads_the_script_nonce` | `nonce` on the photo literal returns `n0nce`. It raises on a policy with no `script-src`. |
 | `test_style_hash_problems_passes_a_matching_page` | A body with one `<style>` and its correct hash gives `[]`. |
-| `test_style_hash_problems_reports_each_fault` | Parametrized, each gives exactly one message: a wrong hash, two `<style>` blocks, none, `'unsafe-inline'` added, a `script-src` added, `default-src *`. |
-| `test_nonce_problems_passes_a_matching_page` | `<style nonce="N">`, `<script type="application/json" id="c">{}</script>` (no nonce) and `<script nonce="N">` under a matching policy give `[]`. |
-| `test_nonce_problems_reports_each_fault` | Parametrized, each gives at least one message naming the fault: a `<style>` with no nonce, a `<script>` with another nonce, `style-src` with a different nonce from `script-src`, a `__CSP_NONCE__` left in, `'unsafe-inline'` added, no `<script nonce>`. |
+| `test_style_hash_problems_reports_each_fault` | Parametrized, each gives exactly one message: a wrong hash, two `<style>` blocks, none, a `<style media="print">` as the only style, a `<script>` in the body, a `style="…"` attribute, an `onclick="…"` attribute, `'unsafe-inline'` added, a `script-src` added, `default-src *`. |
+| `test_style_hash_problems_reports_a_repeated_directive` | A policy with `style-src` twice gives a message, not an exception. |
+| `test_nonce_problems_passes_a_matching_page` | `<style nonce="N">`, `<script type="application/json" id="c">{}</script>` (no nonce) and `<script nonce="N">` whose text has `i < n; x.onload = f` under a matching policy give `[]`. |
+| `test_nonce_problems_reports_each_fault` | Parametrized, each gives at least one message naming the fault: a `<style>` with no nonce, a `<script>` with another nonce, `style-src` with a different nonce from `script-src`, a `__CSP_NONCE__` left in, `'unsafe-inline'` added, no `<script nonce>`, no `script-src` in the policy (a message, not an exception), a `style="…"` attribute. |
+| `test_page_csp_does_not_import_the_helper` | AST walk of `tests/page_csp.py`: no import of `common` or anything under it, so the checks stay independent of `common.csp`. |
 
 `functions/classes/class_photo_upload_page/tests/test_lambda_function.py`:
 
 | Test | Proves |
 | --- | --- |
-| `test_csp_header_is_byte_for_byte_unchanged` | `lambda_function.response_headers(AUTH_DOMAIN, "n0nce")["Content-Security-Policy"] == PINNED_CSP`. Story #139 criterion 2: same directives, same order, same bytes. |
-| `test_error_page_csp_is_unchanged` | The `Content-Security-Policy` of a 400 (`_call(_event(path="/other"))`) and of a 500 (`STAFF_AUTH_DOMAIN` missing) both equal `PINNED_ERROR_CSP`. |
+| `test_csp_header_is_byte_for_byte_unchanged` | `lambda_function.response_headers(AUTH_DOMAIN, "n0nce")["Content-Security-Policy"] == PINNED_CSP`, and the header the handler actually sends (`_call(_event())`), with its nonce (`page_csp.nonce(policy)`) replaced by `n0nce`, also equals `PINNED_CSP`. The second check pins the served order too, which `test_csp_header`'s dict comparison doesn't. Story #139 criterion 2: same directives, same order, same bytes. |
+| `test_error_page_csp_is_unchanged` | The whole `headers` dict of a 400 (`_call(_event(path="/other"))`) and of a 500 (`STAFF_AUTH_DOMAIN` missing) both equal `{"Content-Type": "text/html; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "Content-Security-Policy": PINNED_ERROR_CSP}`, so phase 2's edit of `ERROR_HEADERS` can't drop another header either. |
 | `test_two_requests_get_different_nonces_on_header_style_and_script` | Two `_call(_event())` responses, A and B. For each, `page_csp.nonce_problems(policy, body) == []`, and `f'<style nonce="{n}">'` and `f'<script nonce="{n}">'` are in the body, where `n = page_csp.nonce(policy)`. A's nonce differs from B's, and A's nonce isn't in B's body. Story #139 criterion 4. |
 
 Changed, with no change to what they assert: the kiln CSP tests (they now call
@@ -339,12 +360,44 @@ None. There is no new named resource, and `csp.py` ships in the existing `Common
 
 ## Hand-off
 
-To be filled in when the phase is done. Phase 2 relies on:
+Done. Phase 2 relies on:
 
-- `common.csp` with `sha256_source`, `style_hash_source`, `strict_policy`,
-  `hash_policy`, `new_nonce` and `nonce_policy`, with the signatures above, and the three
-  calls that reproduce today's headers;
-- `tests/page_csp.py` with `sha256_source`, `directives`, `nonce`, `style_hash_problems`
-  and `nonce_problems`, and `tests/test_page_csp.py` to add the registry to;
-- the photo pins `PINNED_CSP` and `PINNED_ERROR_CSP` and their tests, passing;
-- the suite count after this phase.
+- `common.csp` (`layers/common/python/common/csp.py`), with the signatures above:
+  `sha256_source(text)`, `style_hash_source(page)`, `strict_policy(allow=())`,
+  `hash_policy(page)`, `new_nonce()` and `nonce_policy(nonce, allow=())`. Each raises
+  `ValueError` as described, and the Verification one-liner prints `True True True`.
+  - `style_hash_source`'s error text is `page must have exactly one <style> block, found N`.
+  - `_DIRECTIVE_NAME` and `_NONCE` use `fullmatch`.
+- `tests/page_csp.py`: `sha256_source`, `directives`, `nonce`, `style_hash_problems(policy,
+  body, style_block=STYLE_BLOCK)` and `nonce_problems(policy, body)`.
+  - Both `*_problems` checks also report inline `style=`/`on…=` attributes.
+  - A policy they can't parse is reported as a message.
+  - Both real pages pass them today: kiln on its empty, task and error pages, and photo on
+    a 200.
+  - `tests/test_page_csp.py` is where the `PUBLIC_PAGES` registry goes. It has one test
+    beyond the plan, `test_style_hash_problems_ignores_escaped_text`, which checks that
+    escaped task-name text is never read as a tag.
+- The photo pins `PINNED_CSP` and `PINNED_ERROR_CSP` are in
+  `functions/classes/class_photo_upload_page/tests/test_lambda_function.py`.
+  - Their tests are `test_csp_header_is_byte_for_byte_unchanged`,
+    `test_error_page_csp_is_unchanged` and
+    `test_two_requests_get_different_nonces_on_header_style_and_script`.
+  - They pass on this branch, and on an `origin/stage` (07b9b79) export of the unchanged
+    functions.
+- The suite count after this phase is 1932 (1871 before, plus 61 new test IDs, none
+  removed or renamed).
+- Two follow-ups for phase 2:
+  - The photo test file's private `_csp` parser duplicates `page_csp.directives`.
+    `test_csp_header` wasn't to be edited in phase 1, so it is left for phase 2's cleanup,
+    if any.
+  - `docs/CONTRIBUTING.md`'s page-test section names only `tests/page_style.py`, and
+    phase 2's docs add `tests/page_csp.py`.
+
+Known for phase 2 (from prep): the photo function's `HOST_PATTERN` is `^[A-Za-z0-9.-]+$`
+used with `.match`, so it accepts `"host\n"` (`$` matches before a trailing newline).
+After the switch, `strict_policy` raises `ValueError` on that newline in the
+`connect-src` source. That is an uncaught exception (API Gateway answers 502, and the
+log shows a traceback rather than the "STAFF_AUTH_DOMAIN is not a host name" line).
+Today the same value writes a header with a newline in it. Phase 2 decides between
+`fullmatch` on `STAFF_AUTH_DOMAIN` (a behavior fix with its own test) and noting it as
+follow-up.

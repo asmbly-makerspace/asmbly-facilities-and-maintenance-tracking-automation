@@ -1,0 +1,114 @@
+{
+  "plan_name": "shared-csp-helper",
+  "feature_branch": "feature/shared-csp-helper",
+  "epic": 136,
+  "stories": [
+    139
+  ],
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1,
+      "title": "CSP helper, shared CSP checks and the header pins",
+      "file": ".implementation_plans/shared-csp-helper/phase-1-csp-helper-and-pins.md",
+      "status": "done",
+      "pre_sha": "f1c78c4",
+      "review_rounds": 1,
+      "checks": {
+        "pytest": "1932 passed (1871 + 61 new IDs, none removed)",
+        "cfn_lint": "pre-existing W3005 only",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Both pages use the helper; every page is checked; docs",
+      "file": ".implementation_plans/shared-csp-helper/phase-2-pages-use-csp-helper.md",
+      "status": "pending"
+    }
+  ],
+  "integration": null,
+  "final_pr_number": null,
+  "admin_actions": [],
+  "events": [
+    {
+      "ts": "2026-10-17",
+      "type": "preflight",
+      "python": "3.12.11",
+      "sam": "1.166.2",
+      "gh": "ok"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "branch",
+      "name": "feature/shared-csp-helper",
+      "base": "07b9b79"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "item": "Work is story #139 only, the last story of epic #136; builds on #137 (PR #147), #148 (PR #149) and #138 (PR #150). The owner did not ask for this PR to be merged: leave it open."
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "planned",
+      "commit": "f1c78c4",
+      "decisions": 12,
+      "notes": "common/csp.py (stdlib): sha256_source, style_hash_source, strict_policy, hash_policy, new_nonce, nonce_policy. tests/page_csp.py shared checks (compute hashes themselves). Phase 1 pins current header bytes; phase 2 switches both functions, adds PUBLIC_PAGES registry, test_every_html_page_is_registered, AST test_no_function_builds_a_csp_by_hand, and 'Adding a Public Page' in docs/CONTRIBUTING.md. Baseline 1871."
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "owner_decision",
+      "items": [
+        "Whether to add csp (and brand) to CLAUDE.md's Shared helpers map row; CLAUDE.md not edited, PR proposes it"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "risk",
+      "item": "Layer change publishes a new common-layer-stage version and updates all 12 CommonLayer functions; only the two pages import common.csp"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 1,
+      "review_rounds": 1,
+      "pytest": "1932 passed",
+      "note": "751-line diff allowed 3 rounds; /build review-lead APPROVED 0 BLOCK 0 WARN and round 1 clean, so stopped"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 1,
+      "items": [
+        "Header pins checked against an origin/stage (07b9b79) export, not the new helper: the three header strings match byte for byte",
+        "Pins cover the header the handler serves and the error pages' whole headers dict",
+        "page_csp: fullmatch for directive names and nonces; counts every <style; flags a <script> on a hash page and inline style=/on*= attributes; never imports common (AST test)",
+        "Extra test: escaped kiln task-name text (&lt;script&gt;, style=) isn't read as tags",
+        "No function code changed in phase 1; csp.py stdlib only (AST + -I subprocess test)",
+        "Prep NEEDS_REVISION (0 HIGH, 4 MED, 5 LOW): amendments applied"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 1,
+      "items": [
+        "page_csp.nonce_problems doesn't flag <script nonce=N src=...> (neither page has one)",
+        "Photo function HOST_PATTERN uses ^...$ with .match so it accepts 'host\\n'; after phase 2, strict_policy would raise an uncaught ValueError (502 + traceback) - passed to phase 2",
+        "Photo test file's private _csp parser duplicates page_csp.directives (test_csp_header not edited)",
+        "common/csp rejects ; , CR, LF in sources but not other control characters (header injection needs CR/LF)"
+      ]
+    }
+  ],
+  "closes": [
+    139,
+    136
+  ]
+}

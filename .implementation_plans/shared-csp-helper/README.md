@@ -64,7 +64,7 @@ The epic's own criteria, from its "Decided" section, apply here too:
 
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
-| 1 | [CSP helper, shared CSP checks and the header pins](phase-1-csp-helper-and-pins.md) | layer, lambda | M | [ ] Pending |
+| 1 | [CSP helper, shared CSP checks and the header pins](phase-1-csp-helper-and-pins.md) | layer, lambda | M | [x] Complete |
 | 2 | [Both pages use the helper; every page is checked; docs](phase-2-pages-use-csp-helper.md) | lambda, layer, docs | M | [ ] Pending |
 
 ## Dependencies
@@ -141,14 +141,18 @@ two pages import `common.csp`. The other 10 functions get the new file but never
   phase 1, before the switch, and phase 2 must keep those pins passing:
   - kiln: the existing `EXPECTED_HEADERS`, whose hash the test computes itself;
   - photo: a new literal pin for a fixed nonce, and one for the error pages' policy.
-- **The helper can't be made to write a weak or injected header.** `strict_policy` always
+- **The helper can't be made to write a malformed or injected header.** `strict_policy` always
   starts with `default-src 'none'` and ends with `base-uri 'none'; form-action 'none';
   frame-ancestors 'none'`. A caller can't override those four directives, can't repeat a
   directive, and can't pass a source list that is empty or contains `;`, `,`, CR or LF.
   `nonce_policy` accepts only a base64 or base64url nonce. Each of these raises
   `ValueError`, and tests check every case.
   - The photo function already checks `STAFF_AUTH_DOMAIN` against `HOST_PATTERN` before
-    it builds the policy, so no new error path is reachable from a request.
+    it builds the policy, so no new error path is reachable from a request. (A value with
+    a trailing newline still passes `HOST_PATTERN`; see phase 1's Hand-off.)
+  - The helper checks syntax, not looseness: an `allow` source such as `'unsafe-inline'`
+    or `*` is accepted. What keeps each page's policy strict is its byte pin and the
+    `tests/page_csp.py` checks, which phase 2 runs for every registered page.
 - **The nonce source is unchanged:** `secrets.token_urlsafe(16)`, now behind
   `csp.new_nonce()`. A new nonce for every request is tested at the header, on the
   `<style>` and on the `<script>`.
@@ -210,7 +214,7 @@ Made without asking, inside `/offshore`:
    the same contract: `*_problems` functions return `[]` on a pass, it is test code only,
    and it is never packaged. `tests/test_page_style.py`'s packaging test is extended to
    cover the new module rather than copied.
-   - Its functions are `sha256_source`, `directives`, `style_hash_problems` and
+   - Its functions are `sha256_source`, `directives`, `nonce`, `style_hash_problems` and
      `nonce_problems`.
    - The kiln test file's and `tests/test_shared_brand.py`'s private `_sha256_source`
      copies, and the kiln file's `_directives`, are replaced by calls to it. No
