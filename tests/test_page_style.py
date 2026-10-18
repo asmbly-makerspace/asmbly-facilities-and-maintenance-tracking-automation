@@ -198,6 +198,60 @@ def test_token_block_reports_non_tokens() -> None:
     assert problems(" --glyph-size: 1rem; ", glyph_exempt=("--glyph-size",)) == []
 
 
+def test_font_token_must_be_a_font_stack() -> None:
+    """Issue #148: a --font-* token is two or more families, the last a generic family."""
+
+    def problems(block: str) -> list[str]:
+        return page_style.token_block_problems(_sheet(f":root {{{block}}}"), token_value=TOKEN_VALUE)
+
+    assert problems(" --font-x: red; ") == ["--font-x: red"]
+    for value in ("1rem", "0", "Roboto, Arial", "sans-serif", "Roboto,sans-serif"):
+        assert problems(f" --font-x: {value}; ") == [f"--font-x: {value}"], value
+    page_stacks = (
+        'Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+        '"Helvetica Neue", "Segoe UI", Roboto, Arial, system-ui, sans-serif',
+        "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+        '"A B", serif',
+    )
+    for value in page_stacks:
+        assert problems(f" --font-x: {value}; ") == [], value
+    # --font-size* tokens are lengths, checked by token_value.
+    assert problems(" --font-size-h1: 1.75rem; ") == []
+    assert problems(" --font-size-h1: red; ") == ["--font-size-h1: red"]
+
+
+def test_selector_lists_split_only_on_top_level_commas() -> None:
+    """Issue #148: commas inside :is(), :not() and quoted attribute values don't split a selector."""
+    sheet = _sheet(
+        ":root { --a: 0; }"
+        " :is(a, b), c { margin: var(--a); }"
+        " p:not(.x, .y) { padding: var(--a); }"
+        ' [title="a, b"], e { color: var(--a); }'
+        " @media (hover: hover) { :is(:not(a, b), c):hover { color: var(--a); } }"
+    )
+
+    rules = sheet.rules()
+    assert ("", [":is(a, b)", "c"], " margin: var(--a); ") in rules
+    assert ("", ["p:not(.x, .y)"], " padding: var(--a); ") in rules
+    assert ("", ['[title="a, b"]', "e"], " color: var(--a); ") in rules
+    assert ("(hover: hover)", [":is(:not(a, b), c):hover"], " color: var(--a); ") in rules
+    assert sheet.rule(":is(a, b)") == "margin: var(--a);"
+    assert sheet.rule("c") == "margin: var(--a);"
+    with pytest.raises(LookupError):
+        sheet.rule("b)")
+
+    assert page_style.split_selectors("a, b") == ["a", "b"]
+    assert page_style.split_selectors("a") == ["a"]
+    # Unbalanced input doesn't raise: the depth never goes below 0, and an open
+    # parenthesis or quote keeps the rest of the list whole.
+    assert page_style.split_selectors("a), b") == ["a)", "b"]
+    assert page_style.split_selectors(":is(a, b") == [":is(a, b"]
+    assert page_style.split_selectors('[t="a, b') == ['[t="a, b']
+    # Parentheses inside quotes don't count, and only the opening quote character closes a string.
+    assert page_style.split_selectors('[title="a(b"], c') == ['[title="a(b"]', "c"]
+    assert page_style.split_selectors('[title="it\'s, x"], c') == ['[title="it\'s, x"]', "c"]
+
+
 def test_defined_once_reports_duplicates() -> None:
     def problems(block: str, shared: dict[str, set[str]]) -> list[str]:
         return page_style.defined_once_problems(_sheet(f":root {{{block}}}"), shared)
