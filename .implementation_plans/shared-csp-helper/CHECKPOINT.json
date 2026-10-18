@@ -5,7 +5,7 @@
   "stories": [
     139
   ],
-  "status": "in-progress",
+  "status": "complete",
   "phases": [
     {
       "id": 1,
@@ -53,7 +53,7 @@
     "byte_identical": "28 render cases from origin/stage vs HEAD: 25 identical (status, full headers, body); the 3 intended differences are the trailing-newline cases (Host or path with \\n: 200 -> 400; STAFF_AUTH_DOMAIN with \\n: 200 with the newline written into the CSP header -> logged 500). Pins unchanged; capture script reproduces them; csp.py/brand.py stdlib only; no CSP directive string in any lambda_function.py; ruff F clean",
     "commits": 0
   },
-  "final_pr_number": null,
+  "final_pr_number": 151,
   "admin_actions": [],
   "events": [
     {
@@ -209,6 +209,22 @@
       "type": "manual_qa",
       "steps": 17,
       "note": "Kiln header can't be compared whole with prod: #138 (PR #150) changed the kiln <style> text and is on stage but not main, so the hashes differ; step 1 compares with stage's pre-merge value and with prod after masking each hash. Steps 1-5 already run read-only against stage and prod; steps 11-17 pass locally; steps 8-9 (AWS CLI) not run under the guardrail"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "pr",
+      "number": 151,
+      "result": "ready-for-review",
+      "checks": "green",
+      "rounds": 0,
+      "closes": [
+        139,
+        136
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "complete"
     }
   ],
   "closes": [
