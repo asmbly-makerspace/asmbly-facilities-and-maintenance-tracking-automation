@@ -26,7 +26,17 @@ TOKEN = re.compile(r"(--[\w-]+)\s*:\s*([^;]+);")
 VAR_REFERENCE = re.compile(r"var\(\s*(--[\w-]+)\s*\)")
 HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}(?![\w-])")
 PURE_WHITE_OR_BLACK = re.compile(r"(?<![\w-])(white|black)(?![\w-])", re.I)
-FONT_STACK = re.compile(r'(?:"[\w ]+"|[\w-]+)(?:, (?:"[\w ]+"|[\w-]+))*')
+# A font stack: two or more families separated by ", ", the last a CSS generic family
+# (so the browser always has a fallback). A family is a double-quoted name or an unquoted
+# CSS identifier that doesn't start with a digit. House style quotes every multi-word
+# name, so an unquoted one such as Times New Roman is rejected on purpose, as are single
+# quotes and a lone generic family.
+_FONT_STACK_FAMILY = r'(?:"[\w ]+"|-?[A-Za-z_][\w-]*)'
+GENERIC_FONT_FAMILY = (
+    r"(?:serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-serif|ui-sans-serif"
+    r"|ui-monospace|ui-rounded|emoji|math|fangsong)"
+)
+FONT_STACK = re.compile(rf"(?:{_FONT_STACK_FAMILY}, )+{GENERIC_FONT_FAMILY}")
 # A --glyph-* token: one visible character and an empty alternative text, so screen
 # readers skip it (CSS Generated Content, "content: <string> / <string>").
 GLYPH_TOKEN = re.compile(r'"[^"\s]" / ""')
@@ -53,6 +63,38 @@ _FONT_FAMILY_TOKEN = re.compile(r"var\(--font-[\w-]+\)")
 _FONT_SHORTHAND = re.compile(r"(?<![\w-])font:\s*([^;}]+)")
 _SVG = re.compile(r"<svg\b.*?</svg>", re.S)
 _ATTRIBUTE = re.compile(r'([\w:-]+)="([^"]*)"')
+
+
+def split_selectors(selectors: str) -> list[str]:
+    """A selector list's selectors, stripped, split only on commas at the top level.
+
+    A comma inside parentheses (`:is(a, b)`, `:not(.x, .y)`) or inside a quoted string
+    (`[title="a, b"]`) doesn't split. A string ends only at the quote character that opened
+    it, and parentheses inside a string don't count. Unbalanced input doesn't raise: a
+    stray `)` never takes the depth below 0, and an unclosed `(` or quote keeps the rest of
+    the list in one selector. Backslash escapes are not handled (neither page uses one).
+    """
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    quote = ""
+    for character in selectors:
+        if quote:
+            if character == quote:
+                quote = ""
+        elif character in "\"'":
+            quote = character
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth = max(depth - 1, 0)
+        elif character == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+            continue
+        current.append(character)
+    parts.append("".join(current).strip())
+    return parts
 
 
 @dataclass(frozen=True)
@@ -108,14 +150,17 @@ class Stylesheet:
         return set(VAR_REFERENCE.findall(self.css))
 
     def rules(self) -> list[tuple[str, list[str], str]]:
-        """Every rule after the token block as (media condition or "", selectors, declarations)."""
+        """Every rule after the token block as (media condition or "", selectors, declarations).
+
+        The selector list is split with `split_selectors`, so `:is(a, b)` stays one selector.
+        """
         css = self.rules_after_root()
         found = []
         for media in MEDIA_BLOCK.finditer(css):
             for selectors, body in RULE.findall(media.group(2)):
-                found.append((media.group(1).strip(), [s.strip() for s in selectors.split(",")], body))
+                found.append((media.group(1).strip(), split_selectors(selectors), body))
         for selectors, body in RULE.findall(MEDIA_BLOCK.sub("", css)):
-            found.append(("", [s.strip() for s in selectors.split(",")], body))
+            found.append(("", split_selectors(selectors), body))
         return found
 
     def rule(self, selector: str, media: str = "") -> str:
@@ -247,8 +292,10 @@ def token_block_problems(
 ) -> list[str]:
     """Anything in the :root block that isn't a token of the expected form.
 
-    `--font-*` tokens (other than `--font-size*`) must be font stacks, `--glyph-*` tokens
-    glyphs, and every other token must fully match `token_value`. `glyph_exempt` holds name
+    `--font-*` tokens (other than `--font-size*`) must be font stacks (`FONT_STACK`: two or
+    more families separated by ", ", each a double-quoted name or an unquoted identifier,
+    the last a generic family such as `sans-serif`), `--glyph-*` tokens glyphs, and every
+    other token must fully match `token_value`. `glyph_exempt` holds name
     prefixes of `--glyph-*` tokens that are lengths, not glyphs (matched with startswith).
     The only declaration that isn't a token is `color-scheme: light`.
     """
