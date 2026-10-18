@@ -1,5 +1,3 @@
-import base64
-import hashlib
 import importlib
 import json
 import logging
@@ -10,10 +8,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
-from common import brand
+from common import brand, csp
 # Now we can import the lambda function module directly
 from functions.ceramics.kiln_dropoff_recent_entries_viewer import lambda_function
-from tests import capture_page_pins, page_style
+from tests import capture_page_pins, page_csp, page_style
 
 LAMBDA_FUNCTION_PATH = "functions.ceramics.kiln_dropoff_recent_entries_viewer.lambda_function"
 
@@ -368,11 +366,6 @@ SHEET = page_style.Stylesheet.from_page(PAGE_HTML, STYLE_BLOCK)
 MARKUP = page_style.markup(PAGE_HTML, STYLE_BLOCK)
 
 
-def _sha256_source(text: str) -> str:
-    """The CSP hash source for this text, computed here rather than taken from the module."""
-    return "'sha256-" + base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode("ascii") + "'"
-
-
 A_TASK = {'id': 'abc123', 'custom_id': 'KO-1', 'name': 'Customer Z', 'date_created': '1704067200000'}
 
 
@@ -385,19 +378,9 @@ def _pages() -> dict[str, str]:
     }
 
 
-def _directives(csp: str) -> dict[str, str]:
-    """A Content-Security-Policy as {directive: sources}."""
-    directives = {}
-    for part in csp.split(";"):
-        name, _, value = part.strip().partition(" ")
-        assert name not in directives, name
-        directives[name] = value.strip()
-    return directives
-
-
 # Tightened by plan kiln-dropoff-ceramics-branding: no asmbly.org, no 'unsafe-inline'.
 EXPECTED_CSP = (
-    f"default-src 'none'; style-src {_sha256_source(STYLE_BLOCK.findall(PAGE_HTML)[0])}; "
+    f"default-src 'none'; style-src {page_csp.sha256_source(STYLE_BLOCK.findall(PAGE_HTML)[0])}; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )
 EXPECTED_HEADERS = {
@@ -564,14 +547,14 @@ def test_csp_style_hash_matches_served_style(
         csp = result['headers']['Content-Security-Policy']
         styles = STYLE_BLOCK.findall(result['body'])
         assert len(styles) == 1, name
-        assert _directives(csp)['style-src'] == _sha256_source(styles[0]), name
+        assert page_csp.directives(csp)['style-src'] == page_csp.sha256_source(styles[0]), name
         for forbidden in ("'unsafe-inline'", "font-src", "img-src", "script-src", "data:", "https:", "asmbly.org"):
             assert forbidden not in csp, (name, forbidden)
 
 
 def test_csp_is_no_looser_than_before() -> None:
     """Every directive is 'none' except style-src, which is only the style block's hash."""
-    directives = _directives(lambda_function.RESPONSE_HEADERS['Content-Security-Policy'])
+    directives = page_csp.directives(lambda_function.RESPONSE_HEADERS['Content-Security-Policy'])
 
     assert set(directives) == {'default-src', 'style-src', 'base-uri', 'form-action', 'frame-ancestors'}
     for name, value in directives.items():
@@ -582,11 +565,11 @@ def test_csp_is_no_looser_than_before() -> None:
 
 
 def test_style_hash_rejects_zero_or_two_style_blocks() -> None:
-    assert lambda_function._style_hash("<style>\n  a { }\n</style>") == _sha256_source("\n  a { }\n")
+    assert csp.style_hash_source("<style>\n  a { }\n</style>") == page_csp.sha256_source("\n  a { }\n")
     with pytest.raises(ValueError):
-        lambda_function._style_hash("<html><body></body></html>")
+        csp.style_hash_source("<html><body></body></html>")
     with pytest.raises(ValueError):
-        lambda_function._style_hash("<style>a { }</style><style>b { }</style>")
+        csp.style_hash_source("<style>a { }</style><style>b { }</style>")
 
 
 def test_placeholder_in_task_name_is_shown_as_text() -> None:

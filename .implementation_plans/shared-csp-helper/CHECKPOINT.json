@@ -1,0 +1,252 @@
+{
+  "plan_name": "shared-csp-helper",
+  "feature_branch": "feature/shared-csp-helper",
+  "epic": 136,
+  "stories": [
+    139
+  ],
+  "status": "complete",
+  "phases": [
+    {
+      "id": 1,
+      "title": "CSP helper, shared CSP checks and the header pins",
+      "file": ".implementation_plans/shared-csp-helper/phase-1-csp-helper-and-pins.md",
+      "status": "done",
+      "pre_sha": "f1c78c4",
+      "review_rounds": 1,
+      "checks": {
+        "pytest": "1932 passed (1871 + 61 new IDs, none removed)",
+        "cfn_lint": "pre-existing W3005 only",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      },
+      "squashed_sha": "a486acc"
+    },
+    {
+      "id": 2,
+      "title": "Both pages use the helper; every page is checked; docs",
+      "file": ".implementation_plans/shared-csp-helper/phase-2-pages-use-csp-helper.md",
+      "status": "done",
+      "pre_sha": "a486acc",
+      "review_rounds": 2,
+      "checks": {
+        "pytest": "1943 passed (1932 + 11)",
+        "cfn_lint": "4 pre-existing W3005 only",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      },
+      "squashed_sha": "4012492"
+    }
+  ],
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1943 passed, 8 subtests",
+      "cfn_lint": "0 errors; 4 W3005 byte-identical to origin/stage",
+      "sam_validate": "pass",
+      "sam_build": "pass"
+    },
+    "preexisting": [
+      "cfn-lint W3005 x4 in template.yaml"
+    ],
+    "skipped": [],
+    "byte_identical": "28 render cases from origin/stage vs HEAD: 25 identical (status, full headers, body); the 3 intended differences are the trailing-newline cases (Host or path with \\n: 200 -> 400; STAFF_AUTH_DOMAIN with \\n: 200 with the newline written into the CSP header -> logged 500). Pins unchanged; capture script reproduces them; csp.py/brand.py stdlib only; no CSP directive string in any lambda_function.py; ruff F clean",
+    "commits": 0
+  },
+  "final_pr_number": 151,
+  "admin_actions": [],
+  "events": [
+    {
+      "ts": "2026-10-17",
+      "type": "preflight",
+      "python": "3.12.11",
+      "sam": "1.166.2",
+      "gh": "ok"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "branch",
+      "name": "feature/shared-csp-helper",
+      "base": "07b9b79"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "item": "Work is story #139 only, the last story of epic #136; builds on #137 (PR #147), #148 (PR #149) and #138 (PR #150). The owner did not ask for this PR to be merged: leave it open."
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "planned",
+      "commit": "f1c78c4",
+      "decisions": 12,
+      "notes": "common/csp.py (stdlib): sha256_source, style_hash_source, strict_policy, hash_policy, new_nonce, nonce_policy. tests/page_csp.py shared checks (compute hashes themselves). Phase 1 pins current header bytes; phase 2 switches both functions, adds PUBLIC_PAGES registry, test_every_html_page_is_registered, AST test_no_function_builds_a_csp_by_hand, and 'Adding a Public Page' in docs/CONTRIBUTING.md. Baseline 1871."
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "owner_decision",
+      "items": [
+        "Whether to add csp (and brand) to CLAUDE.md's Shared helpers map row; CLAUDE.md not edited, PR proposes it"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "risk",
+      "item": "Layer change publishes a new common-layer-stage version and updates all 12 CommonLayer functions; only the two pages import common.csp"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 1,
+      "review_rounds": 1,
+      "pytest": "1932 passed",
+      "note": "751-line diff allowed 3 rounds; /build review-lead APPROVED 0 BLOCK 0 WARN and round 1 clean, so stopped"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 1,
+      "items": [
+        "Header pins checked against an origin/stage (07b9b79) export, not the new helper: the three header strings match byte for byte",
+        "Pins cover the header the handler serves and the error pages' whole headers dict",
+        "page_csp: fullmatch for directive names and nonces; counts every <style; flags a <script> on a hash page and inline style=/on*= attributes; never imports common (AST test)",
+        "Extra test: escaped kiln task-name text (&lt;script&gt;, style=) isn't read as tags",
+        "No function code changed in phase 1; csp.py stdlib only (AST + -I subprocess test)",
+        "Prep NEEDS_REVISION (0 HIGH, 4 MED, 5 LOW): amendments applied"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 1,
+      "items": [
+        "page_csp.nonce_problems doesn't flag <script nonce=N src=...> (neither page has one)",
+        "Photo function HOST_PATTERN uses ^...$ with .match so it accepts 'host\\n'; after phase 2, strict_policy would raise an uncaught ValueError (502 + traceback) - passed to phase 2",
+        "Photo test file's private _csp parser duplicates page_csp.directives (test_csp_header not edited)",
+        "common/csp rejects ; , CR, LF in sources but not other control characters (header injection needs CR/LF)"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 1,
+      "sha": "a486acc"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 2,
+      "review_rounds": 2,
+      "pytest": "1943 passed"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 2,
+      "items": [
+        "HOST_PATTERN/PATH_PATTERN: anchors dropped, fullmatch at all 3 call sites, so a Host or path with a trailing newline gets a 400 and the CSP helper can't raise out of the handler; regression tests failed 3 of 5 before the fix",
+        "Headers byte-identical to origin/stage 07b9b79 (kiln header, photo header for a fixed nonce, photo error header, all other headers, page HTML sha256); phase 1 and #138 pins unchanged",
+        "No CSP directive string left in any lambda_function.py; AST test test_no_function_builds_a_csp_by_hand (self-tested; flags the stage versions of both functions)",
+        "PUBLIC_PAGES registry runs the hash check on every hash page and the nonce check on every nonce page; test_every_html_page_is_registered",
+        "page_csp.nonce_problems now reports a <script src=> on a nonce page",
+        "Photo test file's private _csp parser kept so test_csp_header stays byte-identical",
+        "'Adding a Public Page' in docs/CONTRIBUTING.md (with ToC entry); kiln README shows csp.strict_policy with style_hash_source",
+        "Prep NEEDS_REVISION: amendments applied"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 2,
+      "items": [
+        "test_no_function_builds_a_csp_by_hand scans only functions/**; a CSP string built in layers/common/python/common/ outside csp.py would get past it (~5 lines to extend)",
+        ".claude/agents/review/lambda.md:46 still calls the kiln viewer 'the only HTML page today' (pre-existing, agent config)",
+        "The trailing-newline fix can't be exercised on stage (API Gateway sets domainName and path)"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 2,
+      "sha": "4012492"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "integration_start",
+      "pre_sha": "4012492"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "docs_start",
+      "pre_sha": "4012492"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "docs_done",
+      "regression_check": "no file shrank"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "owner_instruction",
+      "item": "Owner: 'When the PR is green, go ahead and merge it' - merge this run's PR once green"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "manual_qa",
+      "steps": 17,
+      "note": "Kiln header can't be compared whole with prod: #138 (PR #150) changed the kiln <style> text and is on stage but not main, so the hashes differ; step 1 compares with stage's pre-merge value and with prod after masking each hash. Steps 1-5 already run read-only against stage and prod; steps 11-17 pass locally; steps 8-9 (AWS CLI) not run under the guardrail"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "pr",
+      "number": 151,
+      "result": "ready-for-review",
+      "checks": "green",
+      "rounds": 0,
+      "closes": [
+        139,
+        136
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "complete"
+    }
+  ],
+  "closes": [
+    139,
+    136
+  ],
+  "docs": {
+    "updated": [
+      "functions/classes/class_photo_upload_page/README.md (527->530)"
+    ],
+    "verified_unchanged": [
+      "docs/CONTRIBUTING.md Adding a Public Page",
+      "kiln viewer README",
+      "docs/README.md"
+    ],
+    "regression": false
+  },
+  "manual_qa": {
+    "stories_covered": [
+      139
+    ],
+    "stories_without_surface": [],
+    "total_steps": 17
+  }
+}

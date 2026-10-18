@@ -3,8 +3,6 @@
 The module's own tests are in layers/common/tests/test_brand.py; each page's pins are in its
 own test file.
 """
-import base64
-import hashlib
 import importlib
 import json
 import pathlib
@@ -18,7 +16,7 @@ import pytest
 from common import brand
 from functions.ceramics.kiln_dropoff_recent_entries_viewer import lambda_function as kiln
 from functions.classes.class_photo_upload_page import lambda_function as photo
-from tests import capture_page_pins, page_style
+from tests import capture_page_pins, page_csp, page_style
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FIXTURES = {name: ROOT / folder / "tests" / "fixtures" for name, (folder, _) in capture_page_pins.PAGES.items()}
@@ -57,11 +55,6 @@ def _raw_sheets() -> dict[str, page_style.Stylesheet]:
         name: page_style.Stylesheet.from_page(raw, capture_page_pins.PAGES[name][1])
         for name, raw in _raw_pages().items()
     }
-
-
-def _sha256_source(text: str) -> str:
-    """The CSP hash source for this text, computed here rather than taken from the kiln module."""
-    return "'sha256-" + base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode("ascii") + "'"
 
 
 def test_shared_tokens_match_both_pages() -> None:
@@ -159,7 +152,7 @@ def test_changing_a_shared_token_changes_both_pages(monkeypatch: pytest.MonkeyPa
             assert len(style) == 1, name
             assert "--asmbly-purple: #123456;" in style[0], name
             assert "#292D6A" not in style[0], name
-            assert style_src.group(1) == _sha256_source(style[0]), name
+            assert style_src.group(1) == page_csp.sha256_source(style[0]), name
 
         monkeypatch.setattr(photo, "_page_template", None)
         with patch.dict("os.environ", env, clear=True):

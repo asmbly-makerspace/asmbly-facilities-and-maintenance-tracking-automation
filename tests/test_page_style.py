@@ -299,7 +299,7 @@ def test_svg_attribute_problems() -> None:
 
 
 def test_page_style_is_outside_every_packaged_folder() -> None:
-    """Story #137 criterion 5: no template packages this folder, so sam build leaves the module out."""
+    """Story #137 criterion 5: no template packages this folder, so sam build leaves page_style and page_csp out."""
     templates = [ROOT / "template.yaml", *sorted((ROOT / "templates").glob("*.yaml"))]
     packaged: list[pathlib.Path] = []
     for template in templates:
@@ -311,11 +311,12 @@ def test_page_style_is_outside_every_packaged_folder() -> None:
         packaged += [(template.parent / uri).resolve() for uri in uris]
 
     assert packaged, "no CodeUri or ContentUri found"
-    module = (ROOT / "tests" / "page_style.py").resolve()
+    modules = [(ROOT / "tests" / name).resolve() for name in ("page_style.py", "page_csp.py")]
     for path in packaged:
         assert path.is_dir(), path
-        for test_file in (module, pathlib.Path(__file__).resolve()):
+        for test_file in (*modules, pathlib.Path(__file__).resolve()):
             assert not test_file.is_relative_to(path), (test_file, path)
-    assert module.is_file()
-    assert not module.is_relative_to(ROOT / "layers" / "common")
-    assert not module.is_relative_to(ROOT / "functions")
+    for module in modules:
+        assert module.is_file(), module
+        assert not module.is_relative_to(ROOT / "layers" / "common"), module
+        assert not module.is_relative_to(ROOT / "functions"), module
