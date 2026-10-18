@@ -206,6 +206,35 @@ def test_invalid_auth_domain_returns_500() -> None:
     assert "Content-Security-Policy" in response["headers"]
 
 
+@pytest.mark.parametrize("auth_domain", ["host.example\n", "host.example\r\n", "host.example\nx"])
+def test_auth_domain_with_a_line_break_returns_500(auth_domain: str, caplog: pytest.LogCaptureFixture) -> None:
+    """A line break in STAFF_AUTH_DOMAIN is refused as not a host name: the logged plain 500,
+    never an exception from building the CSP (which would be a 502 with a traceback)."""
+    with caplog.at_level(logging.ERROR):
+        response = _call(_event(), {**ENV, "STAFF_AUTH_DOMAIN": auth_domain})
+
+    assert response["statusCode"] == 500
+    assert response["headers"] == lambda_function.ERROR_HEADERS
+    assert "Something went wrong on our side. Try again later." in response["body"]
+    assert "host.example" not in response["body"]
+    assert "STAFF_AUTH_DOMAIN is not a host name" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "where, value",
+    [("domainName", "facilities.asmbly.org\n"), ("path", "/class-photo-upload\n")],
+    ids=["domain", "path"],
+)
+def test_domain_or_path_with_a_trailing_newline_returns_400(where: str, value: str) -> None:
+    event = _event()
+    event["requestContext"][where] = value
+
+    response = _call(event)
+
+    assert response["statusCode"] == 400
+    assert "page-config" not in response["body"]
+
+
 @pytest.mark.parametrize(
     "path",
     ["/class-photo-upload/classes", "/other", "/a/b/class-photo-upload", "/x\"y/class-photo-upload", "", None],

@@ -6,9 +6,10 @@ nothing: it embeds only public values (the staff pool's sign-in host, this page'
 client ID, its own URL and whether submissions are a dry run), signs the person in with
 the staff pool, and then calls the data routes, which sit behind the Cognito authorizer.
 
-The page's shared brand tokens and Asmbly logo come from the common layer
-(``common/brand.py``), filled into ``page.html`` once per container. That module imports
-only the standard library, so this function needs no other layer and loads no boto3.
+The page's shared brand tokens and Asmbly logo (``common/brand.py``) and its
+Content-Security-Policy (``common/csp.py``) come from the common layer. The tokens and
+logo are filled into ``page.html`` once per container. Both modules import only the
+standard library, so this function needs no other layer and loads no boto3.
 """
 
 import html
@@ -17,18 +18,18 @@ import logging
 import os
 import pathlib
 import re
-import secrets
 from typing import Any
 
-from common import brand
+from common import brand, csp
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 PAGE_PATH = pathlib.Path(__file__).with_name("page.html")
-HOST_PATTERN = re.compile(r"^[A-Za-z0-9.-]+$")
+# Both are checked with fullmatch: `$` with match would also accept a trailing newline.
+HOST_PATTERN = re.compile(r"[A-Za-z0-9.-]+")
 # "/class-photo-upload" on the custom domain, "/<stage>/class-photo-upload" on the API's own host.
-PATH_PATTERN = re.compile(r"^(?:/[A-Za-z0-9_-]+)?/class-photo-upload$")
+PATH_PATTERN = re.compile(r"(?:/[A-Za-z0-9_-]+)?/class-photo-upload")
 REQUIRED_ENV = ("STAFF_AUTH_DOMAIN", "CLASS_PHOTO_APP_CLIENT_ID")
 
 NONCE_MARKER = "__CSP_NONCE__"
@@ -50,7 +51,7 @@ ERROR_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "no-store",
     "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    "Content-Security-Policy": csp.strict_policy(),
 }
 
 _page_template: str | None = None
@@ -80,9 +81,9 @@ def page_url(event: dict[str, Any]) -> str | None:
         return None
     domain = request_context.get("domainName")
     path = request_context.get("path")
-    if not isinstance(domain, str) or not HOST_PATTERN.match(domain):
+    if not isinstance(domain, str) or not HOST_PATTERN.fullmatch(domain):
         return None
-    if not isinstance(path, str) or not PATH_PATTERN.match(path):
+    if not isinstance(path, str) or not PATH_PATTERN.fullmatch(path):
         return None
     return f"https://{domain}{path}"
 
@@ -96,17 +97,15 @@ def render_page(config: dict[str, Any], nonce: str) -> str:
 
 
 def response_headers(auth_domain: str, nonce: str) -> dict[str, str]:
-    """The page's headers: one nonce for its inline script and style, and fetches only to
-    its own origin and the sign-in host."""
+    """The page's headers: one nonce for its inline script and style, images only from
+    blob: URLs, and fetches only to its own origin and the sign-in host."""
     return {
         "Content-Type": "text/html; charset=utf-8",
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "no-store",
         "Referrer-Policy": "no-referrer",
-        "Content-Security-Policy": (
-            f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
-            f"img-src blob:; connect-src 'self' https://{auth_domain}; base-uri 'none'; "
-            "form-action 'none'; frame-ancestors 'none'"
+        "Content-Security-Policy": csp.nonce_policy(
+            nonce, [("img-src", "blob:"), ("connect-src", f"'self' https://{auth_domain}")]
         ),
     }
 
@@ -122,7 +121,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             logger.error("Missing environment variable %s", name)
             return _error_page(500, SERVER_ERROR_TEXT)
     auth_domain = os.environ["STAFF_AUTH_DOMAIN"]
-    if not HOST_PATTERN.match(auth_domain):
+    if not HOST_PATTERN.fullmatch(auth_domain):
         logger.error("STAFF_AUTH_DOMAIN is not a host name")
         return _error_page(500, SERVER_ERROR_TEXT)
     dry_run = is_dry_run()
@@ -132,7 +131,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.warning("Refused the class photo page for an unexpected host or path")
         return _error_page(400, BAD_REQUEST_TEXT)
 
-    nonce = secrets.token_urlsafe(16)
+    nonce = csp.new_nonce()
     config = {
         "authDomain": auth_domain,
         "clientId": os.environ["CLASS_PHOTO_APP_CLIENT_ID"],

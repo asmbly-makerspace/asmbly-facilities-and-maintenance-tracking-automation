@@ -65,7 +65,7 @@ The epic's own criteria, from its "Decided" section, apply here too:
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
 | 1 | [CSP helper, shared CSP checks and the header pins](phase-1-csp-helper-and-pins.md) | layer, lambda | M | [x] Complete |
-| 2 | [Both pages use the helper; every page is checked; docs](phase-2-pages-use-csp-helper.md) | lambda, layer, docs | M | [ ] Pending |
+| 2 | [Both pages use the helper; every page is checked; docs](phase-2-pages-use-csp-helper.md) | lambda, layer, docs | M | [x] Complete |
 
 ## Dependencies
 

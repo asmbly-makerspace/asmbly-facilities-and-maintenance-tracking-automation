@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
-from common import brand
+from common import brand, csp
 # Now we can import the lambda function module directly
 from functions.ceramics.kiln_dropoff_recent_entries_viewer import lambda_function
 from tests import capture_page_pins, page_csp, page_style
@@ -565,11 +565,11 @@ def test_csp_is_no_looser_than_before() -> None:
 
 
 def test_style_hash_rejects_zero_or_two_style_blocks() -> None:
-    assert lambda_function._style_hash("<style>\n  a { }\n</style>") == page_csp.sha256_source("\n  a { }\n")
+    assert csp.style_hash_source("<style>\n  a { }\n</style>") == page_csp.sha256_source("\n  a { }\n")
     with pytest.raises(ValueError):
-        lambda_function._style_hash("<html><body></body></html>")
+        csp.style_hash_source("<html><body></body></html>")
     with pytest.raises(ValueError):
-        lambda_function._style_hash("<style>a { }</style><style>b { }</style>")
+        csp.style_hash_source("<style>a { }</style><style>b { }</style>")
 
 
 def test_placeholder_in_task_name_is_shown_as_text() -> None:

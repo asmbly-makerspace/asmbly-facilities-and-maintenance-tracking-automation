@@ -1,14 +1,11 @@
-import base64
-import hashlib
 import html
 import logging
 import os
 import pathlib
-import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from common import brand
+from common import brand, csp
 from common.aws import get_secret, get_json_parameter
 from common.clickup import get_all_clickup_tasks
 
@@ -33,34 +30,17 @@ CENTRAL_TIME_ZONE = "America/Chicago"
 # is computed over this filled shell, so it is the hash of the <style> every page serves.
 PAGE_PATH = pathlib.Path(__file__).with_name("page.html")
 PAGE_TEMPLATE: str = brand.fill_brand(PAGE_PATH.read_text(encoding="utf-8"))
-_STYLE_BLOCK = re.compile(r"<style>(.*?)</style>", re.S)
 
-
-def _style_hash(page: str) -> str:
-    """The CSP source for the page's one inline <style> block: 'sha256-<base64 digest>'.
-
-    Raises ValueError when the page has no <style> block or more than one. At import that
-    makes every request fail (API Gateway answers 502) instead of serving an unstyled page;
-    it does not stop a deploy, so the tests are the guard.
-    """
-    blocks = _STYLE_BLOCK.findall(page)
-    if len(blocks) != 1:
-        raise ValueError(f"page.html must have exactly one <style> block, found {len(blocks)}")
-    # The browser hashes the element's text exactly as written, so nothing is stripped.
-    digest = hashlib.sha256(blocks[0].encode("utf-8")).digest()
-    return "'sha256-" + base64.b64encode(digest).decode("ascii") + "'"
-
-
-# The page runs no script, loads nothing from another site, and has one inline <style>
-# block, allowed by its hash.
+# The page runs no script and loads nothing from another site. Its one inline <style> block,
+# in the filled shell above, is allowed by its hash (common/csp.py). If page.html has no
+# <style> block or more than one, hash_policy raises ValueError here, at import, and every
+# request fails (API Gateway answers 502) instead of serving an unstyled page. A deploy
+# doesn't catch that, so the tests are the guard.
 RESPONSE_HEADERS = {
     "Content-Type": "text/html; charset=utf-8",
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "no-store",
-    "Content-Security-Policy": (
-        f"default-src 'none'; style-src {_style_hash(PAGE_TEMPLATE)}; "
-        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-    ),
+    "Content-Security-Policy": csp.hash_policy(PAGE_TEMPLATE),
 }
 
 

@@ -35,6 +35,8 @@ _ELEMENT = re.compile(r"(<(script|style)\b[^>]*>).*?</\2\s*>", re.I | re.S)
 _MARKUP_TAG = re.compile(r"<[A-Za-z][^>]*>")
 # Neither policy allows inline style attributes or event handlers; the browser drops them.
 _INLINE_ATTRIBUTE = re.compile(r"\s(style|on[a-z]+)\s*=", re.I)
+# A nonce allows a <script src=...> from any site, so a nonce page's scripts stay inline.
+_SRC_ATTRIBUTE = re.compile(r"(?:^|\s)src\s*=", re.I)
 
 
 def sha256_source(text: str) -> str:
@@ -117,7 +119,8 @@ def style_hash_problems(policy: str, body: str, style_block: re.Pattern[str] = S
 
 def nonce_problems(policy: str, body: str) -> list[str]:
     """What is wrong with a nonce policy for this body: [] when script-src and style-src are
-    the same nonce and every <style> and executable <script> tag carries it."""
+    the same nonce, every <style> and executable <script> tag carries it, and no script
+    is loaded with src=."""
     try:
         parsed = directives(policy)
         expected = nonce(policy)
@@ -146,4 +149,6 @@ def nonce_problems(policy: str, body: str) -> list[str]:
         found = _NONCE_ATTRIBUTE.search(attributes)
         if found is None or found.group(1) != expected:
             problems.append(f"a <{name}> tag has no nonce or another nonce than the policy's")
+        if name == "script" and _SRC_ATTRIBUTE.search(attributes):
+            problems.append("a <script> tag has a src= attribute, which its nonce would allow from any site")
     return problems + _inline_attribute_problems(body)

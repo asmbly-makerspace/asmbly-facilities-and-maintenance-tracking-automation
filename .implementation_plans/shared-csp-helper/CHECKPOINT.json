@@ -19,13 +19,22 @@
         "cfn_lint": "pre-existing W3005 only",
         "sam_validate": "pass",
         "sam_build": "pass"
-      }
+      },
+      "squashed_sha": "a486acc"
     },
     {
       "id": 2,
       "title": "Both pages use the helper; every page is checked; docs",
       "file": ".implementation_plans/shared-csp-helper/phase-2-pages-use-csp-helper.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "a486acc",
+      "review_rounds": 2,
+      "checks": {
+        "pytest": "1943 passed (1932 + 11)",
+        "cfn_lint": "4 pre-existing W3005 only",
+        "sam_validate": "pass",
+        "sam_build": "pass"
+      }
     }
   ],
   "integration": null,
@@ -104,6 +113,49 @@
         "Photo function HOST_PATTERN uses ^...$ with .match so it accepts 'host\\n'; after phase 2, strict_policy would raise an uncaught ValueError (502 + traceback) - passed to phase 2",
         "Photo test file's private _csp parser duplicates page_csp.directives (test_csp_header not edited)",
         "common/csp rejects ; , CR, LF in sources but not other control characters (header injection needs CR/LF)"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 1,
+      "sha": "a486acc"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 2,
+      "review_rounds": 2,
+      "pytest": "1943 passed"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 2,
+      "items": [
+        "HOST_PATTERN/PATH_PATTERN: anchors dropped, fullmatch at all 3 call sites, so a Host or path with a trailing newline gets a 400 and the CSP helper can't raise out of the handler; regression tests failed 3 of 5 before the fix",
+        "Headers byte-identical to origin/stage 07b9b79 (kiln header, photo header for a fixed nonce, photo error header, all other headers, page HTML sha256); phase 1 and #138 pins unchanged",
+        "No CSP directive string left in any lambda_function.py; AST test test_no_function_builds_a_csp_by_hand (self-tested; flags the stage versions of both functions)",
+        "PUBLIC_PAGES registry runs the hash check on every hash page and the nonce check on every nonce page; test_every_html_page_is_registered",
+        "page_csp.nonce_problems now reports a <script src=> on a nonce page",
+        "Photo test file's private _csp parser kept so test_csp_header stays byte-identical",
+        "'Adding a Public Page' in docs/CONTRIBUTING.md (with ToC entry); kiln README shows csp.strict_policy with style_hash_source",
+        "Prep NEEDS_REVISION: amendments applied"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 2,
+      "items": [
+        "test_no_function_builds_a_csp_by_hand scans only functions/**; a CSP string built in layers/common/python/common/ outside csp.py would get past it (~5 lines to extend)",
+        ".claude/agents/review/lambda.md:46 still calls the kiln viewer 'the only HTML page today' (pre-existing, agent config)",
+        "The trailing-newline fix can't be exercised on stage (API Gateway sets domainName and path)"
       ]
     }
   ],

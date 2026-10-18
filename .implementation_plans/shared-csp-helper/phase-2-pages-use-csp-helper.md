@@ -10,7 +10,7 @@ estimated_size: M
 
 # Phase 2: Both pages use the helper; every page is checked; docs
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-17 on branch feature/shared-csp-helper
 
 ## Required reading
 
@@ -52,7 +52,8 @@ None.
 | `functions/ceramics/kiln_dropoff_recent_entries_viewer/lambda_function.py` | `from common import brand, csp`. Remove `_STYLE_BLOCK` and `_style_hash`, and the `base64`, `hashlib` and `re` imports (nothing else uses them; check with grep). `RESPONSE_HEADERS["Content-Security-Policy"] = csp.hash_policy(PAGE_TEMPLATE)`. The comment above `RESPONSE_HEADERS` says the policy comes from `common/csp.py`, and allows the one inline `<style>` of the filled shell by its hash. |
 | `functions/classes/class_photo_upload_page/lambda_function.py` | `from common import brand, csp`; remove `import secrets`. `ERROR_HEADERS["Content-Security-Policy"] = csp.strict_policy()`. `response_headers` builds `csp.nonce_policy(nonce, [("img-src", "blob:"), ("connect-src", f"'self' https://{auth_domain}")])`, and its signature and other headers are unchanged. `nonce = csp.new_nonce()`. The module docstring's last paragraph says the brand tokens, the logo and the CSP come from the common layer (`common/brand.py`, `common/csp.py`), both standard library only. |
 | `functions/ceramics/kiln_dropoff_recent_entries_viewer/tests/test_kiln_dropoff_viewer_lambda_function.py` | `from common import brand, csp`. `test_style_hash_rejects_zero_or_two_style_blocks` calls `csp.style_hash_source` where it called `lambda_function._style_hash`, with the same three assertions and the same name. |
-| `tests/test_page_csp.py` | The registry and four tests (below). |
+| `functions/classes/class_photo_upload_page/tests/test_lambda_function.py` | Prep amendment: new regression tests only (below, "Tests"), for the trailing-newline fix. No existing test in the file changes. |
+| `tests/test_page_csp.py` | `ROOT` (as in `tests/test_shared_brand.py`), the registry and four tests (below). |
 | `docs/CONTRIBUTING.md` | Add a Table of Contents entry and an "Adding a Public Page" section after "Adding a New Lambda Function". Add one sentence to the "Tests" bullet of Coding Standards pointing at it (below). |
 | `functions/ceramics/kiln_dropoff_recent_entries_viewer/README.md` | "Errors and security headers": the policy is built by `csp.hash_policy` in `layers/common/python/common/csp.py` over the filled shell. The 502 note names `csp.style_hash_source`. Testing: the shared checks in `tests/page_csp.py` and the registry. |
 | `functions/classes/class_photo_upload_page/README.md` | "What It Serves": `__CSP_NONCE__` is a fresh `csp.new_nonce()` (`secrets.token_urlsafe(16)`). The header is built by `csp.nonce_policy`, and the 400 and 500 pages' policy by `csp.strict_policy()`, both from `common/csp.py`. Testing: the byte pins and the shared nonce check. |
@@ -109,9 +110,18 @@ def response_headers(auth_domain: str, nonce: str) -> dict[str, str]:
 ```
 
 - **Failure.** `nonce_policy` raises only for a nonce that isn't base64 (impossible from
-  `new_nonce`) or for unsafe sources. `auth_domain` has already passed `HOST_PATTERN`
-  (`^[A-Za-z0-9.-]+$`) by then, so it can't hold `;`, `,`, CR or LF. No new error path is
-  reachable from a request. The 400 and 500 pages answer as before.
+  `new_nonce`) or for unsafe sources. Today `HOST_PATTERN` (`^[A-Za-z0-9.-]+$`) is used
+  with `.match`, and `$` also matches before a trailing newline, so a `STAFF_AUTH_DOMAIN`
+  of `"host\n"` passes it. After the switch that LF would make `strict_policy` raise an
+  uncaught `ValueError` (a 502 with a traceback instead of the logged plain 500).
+  **Prep amendment (fix in this phase):** `HOST_PATTERN` and `PATH_PATTERN` drop their
+  `^`/`$` anchors and are checked with `fullmatch` at all three call sites (both checks in
+  `page_url`, and the `STAFF_AUTH_DOMAIN` check in `lambda_handler`), with a comment that
+  `$` would also match before a trailing newline. Then `auth_domain` can hold only
+  `[A-Za-z0-9.-]`, the nonce comes from `new_nonce`, and no input reaching the handler can
+  make the helper raise. A `"host\n"` auth domain answers the existing logged 500
+  ("STAFF_AUTH_DOMAIN is not a host name"); a domain or path with a trailing newline
+  answers the existing 400. Every other response is unchanged.
 - The module still imports only `common.brand` and `common.csp` from the layer.
   `tests/test_shared_brand.py`'s `test_photo_page_imports_no_third_party_module` covers
   this unchanged.
@@ -144,10 +154,11 @@ PUBLIC_PAGES: dict[str, PublicPage] = {
 }
 ```
 
-- **`_kiln_responses`** uses `kiln.generate_html_page([])`,
-  `kiln.generate_html_page([A_TASK])` and `kiln.generate_error_page()`, each with
-  `dict(kiln.RESPONSE_HEADERS)`. That is exactly what `lambda_handler` returns, without
-  mocking ClickUp. `A_TASK` is a local copy of the kiln test's
+- **`_kiln_responses`** uses `kiln.html_response(200, kiln.generate_html_page([]))`,
+  `kiln.html_response(200, kiln.generate_html_page([A_TASK]))` and
+  `kiln.html_response(500, kiln.generate_error_page())` (prep amendment: the handler's own
+  response builder, not a hand-paired `RESPONSE_HEADERS`). That is exactly what
+  `lambda_handler` returns, without mocking ClickUp. `A_TASK` is a local copy of the kiln test's
   (`{'id': 'abc123', 'custom_id': 'KO-1', 'name': 'Customer Z', 'date_created': '1704067200000'}`).
   The kiln test file's `test_csp_style_hash_matches_served_style` already covers the
   handler's own paths.
@@ -186,8 +197,9 @@ CSP. It names, in this order:
    - The function reads the file once with `brand.fill_brand(...)` from
      `layers/common/python/common/brand.py`, which fills in `BRAND_TOKENS` and
      `ASMBLY_LOGO`.
-   - Give the function `Layers: [!Ref CommonLayerARN]` and nothing else; `brand` and
-     `csp` need no other layer.
+   - Give the function `Layers: [!Ref CommonLayerARN]`; `brand` and `csp` need no other
+     layer. Add `!Ref RequestsLayerARN` too if the page calls an outside service through
+     `common.clickup` or a similar helper, as the kiln viewer does (prep amendment).
    - Escape anything from outside with `html.escape`, and put it in last.
 3. **The Content-Security-Policy, from `layers/common/python/common/csp.py`.** Never
    write the string by hand.
@@ -197,13 +209,17 @@ CSP. It names, in this order:
      `csp.nonce_policy(nonce, [(directive, sources), ...])` for what the page also needs,
      and the same nonce on its `<style nonce>` and `<script nonce>`, as the class photo
      upload page does.
-   - Error pages with no style: `csp.strict_policy()`.
+   - Error pages with no style: `csp.strict_policy()`. The shared checks don't cover
+     these (the registry checks hash and nonce pages), so pin the error policy in the
+     page's own tests, as `test_error_page_csp_is_unchanged` does (prep amendment).
 4. **Tests.**
    - Style, colour, contrast and logo checks: `tests/page_style.py`.
    - CSP checks: `tests/page_csp.py`.
    - Register the page in `PUBLIC_PAGES` in `tests/test_page_csp.py`; the tests fail
      until you do.
-   - Add it to `PAGES` in `tests/capture_page_pins.py`, run
+   - Add it to `PAGES` in `tests/capture_page_pins.py`, and its filled shell to the
+     `shells` in that file's `served_sheets()` (prep amendment: a page in `PAGES` but not in
+     `shells` raises `KeyError`), run
      `.venv/bin/python -m tests.capture_page_pins`, and commit the pins in its
      `tests/fixtures/`.
    - Pin its header string in its own test file, as the photo page's
@@ -211,8 +227,9 @@ CSP. It names, in this order:
 5. **Docs:** the function's README, and its entry in [README.md](README.md#core-services)
    (what it does, how it is triggered, its URL, and where the caller is configured).
 
-The "Tests" bullet in Coding Standards gets one sentence after the `page_style`
-sentences: "A page's Content-Security-Policy checks come from `tests/page_csp.py`; see
+The "Tests" bullet in Coding Standards gets one sentence at its end, after the
+`brand.py` sentences (prep amendment: the bullet continues past the `page_style`
+sentences): "A page's Content-Security-Policy checks come from `tests/page_csp.py`; see
 [Adding a Public Page](#adding-a-public-page)."
 
 ## Tests
@@ -226,10 +243,24 @@ New, in `tests/test_page_csp.py`:
 | `test_nonce_pages_put_a_fresh_nonce_on_style_and_script` | Parametrized over the `"nonce"` pages. There are at least two responses. Each has `page_csp.nonce_problems(policy, body) == []`, and the nonces (`page_csp.nonce`) are all different. Criterion 4, for every nonce page. |
 | `test_no_function_builds_a_csp_by_hand` | For every `.py` file under `functions/` outside a `tests/` folder (AST): no string constant, f-string part included, matches `(?:^|[;\s])(default-src|script-src|style-src|img-src|connect-src|base-uri|form-action|frame-ancestors)\s`. Docstrings, which are expression statements, are skipped. Each registered page's `lambda_function.py` imports `csp` from `common` (an `ImportFrom` node with `module == "common"` that names `csp`). Criterion 1. |
 
+`test_every_html_page_is_registered` finds pages by `page.html` and by the text
+`text/html` in `lambda_function.py`; its docstring says that a page whose Content-Type
+comes from elsewhere (a helper constant, a sibling module) must still have a `page.html`
+or be registered by hand (prep amendment).
+
+New, in `functions/classes/class_photo_upload_page/tests/test_lambda_function.py` (prep
+amendment, the trailing-newline fix):
+
+| Test | Proves |
+| --- | --- |
+| `test_auth_domain_with_a_line_break_returns_500` | Parametrized over `"host.example\n"`, `"host.example\r\n"`, `"host.example\nx"`: a 500 with the plain message and `ERROR_HEADERS`, the "STAFF_AUTH_DOMAIN is not a host name" log line, no exception, and no auth domain in the body. |
+| `test_domain_or_path_with_a_trailing_newline_returns_400` | `domainName` `"facilities.asmbly.org\n"` and `path` `"/class-photo-upload\n"` each answer 400. |
+
 Changed: `test_style_hash_rejects_zero_or_two_style_blocks`, retargeted to
 `csp.style_hash_source` with the same assertions.
 
-These must pass unchanged (criteria 2 and 6), and their files are not edited:
+These must pass unchanged (criteria 2 and 6), and their text is not edited (the photo
+test file gets only the two new tests above):
 
 - the kiln tests `test_lambda_handler_sets_csp_header` (`EXPECTED_HEADERS`),
   `test_csp_style_hash_matches_served_style` and `test_csp_is_no_looser_than_before`;
@@ -320,7 +351,39 @@ it.
 
 ## Hand-off
 
-To be filled in when the phase is done: the final suite count, the byte-identical check's
-result, and anything `/write-docs` or `MANUAL_QA.md` should know. After this phase,
-#139 is complete. The pull request says `Closes #139` and `Closes #136`, and proposes
-adding `csp` to `CLAUDE.md`'s "Shared helpers" map row for the person to decide.
+Done. #139 is complete; the pull request says `Closes #139` and `Closes #136`.
+
+- **Suite:** 1943 passed (1932 after phase 1, plus 11 new test IDs: 5 for the
+  trailing-newline fix, 1 `src=` fault case, and 5 registry tests). None removed or
+  renamed; `test_style_hash_rejects_zero_or_two_style_blocks` keeps its name and its
+  three assertions, now on `csp.style_hash_source`.
+- **Byte-identical check:** run against a scratch worktree of `origin/stage` (07b9b79,
+  removed afterwards). The kiln header, the photo header for `"n0nce"`, the photo error
+  header, the other headers of both pages, and the sha256 of
+  `kiln.generate_html_page([])` and `photo.render_page(config, "n")` were all identical.
+  `git diff origin/stage -- functions/*/*/page.html functions/*/*/tests/fixtures` is
+  empty. `grep -rn "default-src\|frame-ancestors" functions --include=lambda_function.py`
+  finds nothing.
+- **Prep amendment, now built:** `HOST_PATTERN` and `PATH_PATTERN` in the photo function
+  are checked with `fullmatch`. A `STAFF_AUTH_DOMAIN` with a line break answers the
+  logged plain 500, and a `domainName` or `path` ending in a newline answers 400.
+  `test_auth_domain_with_a_line_break_returns_500` and
+  `test_domain_or_path_with_a_trailing_newline_returns_400` failed before the fix
+  (3 of 5 cases) and pass after. No request input can make `common.csp` raise out of
+  either handler.
+- **Beyond the plan, in scope:** `page_csp.nonce_problems` also reports a `<script>` with
+  `src=` (a nonce would allow it from any site), and `tests/test_page_csp.py` has a
+  self-test of the by-hand scan (`test_hand_built_csp_check_finds_a_policy_string`). The
+  photo test file's private `_csp` parser is left as it is, so that `test_csp_header`
+  stays byte-identical.
+- **For `/write-docs` and `MANUAL_QA.md`:** the docs are written (CONTRIBUTING's "Adding
+  a Public Page", both READMEs, `docs/README.md`'s `/layers` bullet). The stage checks
+  in Verification above apply unchanged. The newline fix can't be exercised on stage:
+  API Gateway sets `domainName` and `path`, and `STAFF_AUTH_DOMAIN` comes from the
+  template.
+- **For the person to decide:**
+  - adding `csp` (and `brand`) to `CLAUDE.md`'s "Shared helpers" map row;
+  - extending `test_no_function_builds_a_csp_by_hand` to `layers/common/python/common/`
+    outside `csp.py`;
+  - `.claude/agents/review/lambda.md` still calls the kiln viewer "the only HTML page
+    today".

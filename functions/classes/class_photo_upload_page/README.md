@@ -48,8 +48,8 @@ layer's [`common/brand.py`](../../../layers/common/python/common/brand.py) go in
 [Brand and Design Tokens](#brand-and-design-tokens)). Two more markers are filled in per
 request:
 
-- `__CSP_NONCE__`: a fresh `secrets.token_urlsafe(16)` nonce on the `<style>` and the
-  `<script>`.
+- `__CSP_NONCE__`: a fresh `csp.new_nonce()` (`secrets.token_urlsafe(16)`) on the
+  `<style>` and the `<script>`.
 - `__PAGE_CONFIG__`: `{"authDomain", "clientId", "pageUrl", "dryRun"}` as JSON inside
   `<script type="application/json" id="page-config">`, with `<`, `>` and `&` written as
   `\u003c`, `\u003e` and `\u0026` so no value can close the element.
@@ -59,7 +59,8 @@ on the custom domain, `/<stage>/class-photo-upload` on the API's own host). It i
 sign-in return address and the base of the API calls, so it must be a callback URL on
 the app client. A host or path that doesn't look like that answers 400; a missing or
 invalid `STAFF_AUTH_DOMAIN` or `CLASS_PHOTO_APP_CLIENT_ID` answers 500. Both are plain
-pages with no details.
+pages with no details. The host, the path and `STAFF_AUTH_DOMAIN` are each matched as a
+whole value, so one that ends in a line break is refused too.
 
 Headers:
 
@@ -75,6 +76,12 @@ Content-Security-Policy: default-src 'none'; script-src 'nonce-<n>'; style-src '
 
 `img-src blob:` is for the photo preview. The page uses no `style` attributes, which the
 policy would block.
+
+The policy is built by `csp.nonce_policy` in the common layer's
+[`common/csp.py`](../../../layers/common/python/common/csp.py), which the kiln drop-off
+viewer also uses, with `img-src` and `connect-src` as the page's additions. The 400 and
+500 pages send the same headers with the policy from `csp.strict_policy()`:
+`default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`.
 
 The branding (plan `photo-upload-branding`, epic #111) didn't change this policy, because
 the page fetches nothing for it. Everything is inline:
@@ -468,6 +475,12 @@ them with the change. A change to a shared token in `brand.py` changes both page
 `tests/test_shared_brand.py` checks that neither `page.html` has its own copy of the
 shared tokens or logo, that a changed shared token reaches both served pages, and that
 this function, with only the common layer, loads no boto3 or `requests`.
+The CSP has its own pins: `test_csp_header_is_byte_for_byte_unchanged` holds the page's
+header for a fixed nonce, and `test_error_page_csp_is_unchanged` the 400 and 500 pages'
+headers, both as they were on `stage` before story #139 moved the policy into
+`common/csp.py`. The shared checks in `tests/page_csp.py` also run on this page from
+`tests/test_page_csp.py` (it is in `PUBLIC_PAGES`): two requests get different nonces,
+and each one's nonce is the same on the header, the `<style>` and the `<script>`.
 
 Some things the tests can't see; check them by hand when you change the styles:
 
