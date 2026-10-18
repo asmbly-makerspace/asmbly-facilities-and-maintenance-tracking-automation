@@ -121,7 +121,7 @@ written) keeps the copy and logs a warning; it returns normally, so Lambda doesn
 no schedule: their copy is read on a visit, when it expires, or on a refresh.
 
 **Design.** The cache is behind a small interface, so the handler doesn't depend on
-DynamoDB (plan `.implementation_plans/class-photo-loading/README.md`, "Design"):
+DynamoDB (plan `.implementation_plans/DONE/class-photo-loading/README.md`, "Design"):
 
 - `class_list_cache.py`: the record (`ClassListRecord`: names, `refreshed_at`, `source`)
   and the `ClassListCache` protocol (`get()`, `put(record)`). No AWS.
@@ -275,7 +275,7 @@ breaks as `\n`). A missing key makes a submission answer 500 and log the key's n
 to create the App and the secret, step by step:
 [docs/Deploying.md, "One-Time Admin Setup: Class Photo Upload"](../../../docs/Deploying.md#one-time-admin-setup-class-photo-upload)
 (also the plan's README, admin actions 4 and 5,
-`.implementation_plans/class-photo-upload/README.md`).
+`.implementation_plans/DONE/class-photo-upload/README.md`).
 
 `configs/class_photo_upload.json` holds the repository's coordinates: `repo_owner`,
 `repo_name`, `base_branch`, `images_dir`, `branch_prefix` (must end with `/`; the client
