@@ -198,6 +198,17 @@
       "ts": "2026-10-17",
       "type": "docs_done",
       "regression_check": "no file shrank"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "owner_instruction",
+      "item": "Owner: 'When the PR is green, go ahead and merge it' - merge this run's PR once green"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "manual_qa",
+      "steps": 17,
+      "note": "Kiln header can't be compared whole with prod: #138 (PR #150) changed the kiln <style> text and is on stage but not main, so the hashes differ; step 1 compares with stage's pre-merge value and with prod after masking each hash. Steps 1-5 already run read-only against stage and prod; steps 11-17 pass locally; steps 8-9 (AWS CLI) not run under the guardrail"
     }
   ],
   "closes": [
@@ -214,5 +225,12 @@
       "docs/README.md"
     ],
     "regression": false
+  },
+  "manual_qa": {
+    "stories_covered": [
+      139
+    ],
+    "stories_without_surface": [],
+    "total_steps": 17
   }
 }
