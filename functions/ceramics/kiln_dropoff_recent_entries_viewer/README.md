@@ -128,8 +128,8 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
   - `Content-Type: text/html; charset=utf-8`
   - `X-Content-Type-Options: nosniff`
   - `Cache-Control: no-store`, so Refresh always fetches a fresh list
-  - `Content-Security-Policy: default-src 'none'; style-src 'sha256-<hash>'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, where `<hash>` is the base64 SHA-256 of the text of the one `<style>` block in `page.html`. The page runs no script and loads nothing from any other site: the icon and the logo are drawn in the page and the fonts are the device's own. The browser applies the style block only if its hash matches, and it ignores any `style="…"` attribute. The page can't be shown inside a frame.
-- `lambda_function.py` computes the hash from `page.html` when the function starts, so editing the stylesheet needs no change to the policy. If `page.html` ever has no `<style>` block or more than one, the function fails as it starts and API Gateway answers every request with a bare 502 instead of a page. A deploy does not catch that; the tests do (`test_style_hash_rejects_zero_or_two_style_blocks`, `test_csp_style_hash_matches_served_style`), so run them after editing `page.html`.
+  - `Content-Security-Policy: default-src 'none'; style-src 'sha256-<hash>'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, where `<hash>` is the base64 SHA-256 of the text of the one `<style>` block the page serves (the one in `page.html`, with the shared brand tokens filled in). The page runs no script and loads nothing from any other site: the icon and the logo are drawn in the page and the fonts are the device's own. The browser applies the style block only if its hash matches, and it ignores any `style="…"` attribute. The page can't be shown inside a frame.
+- `lambda_function.py` computes the hash when the function starts, over `page.html` with the shared brand tokens and logo filled in, so editing the stylesheet or `layers/common/python/common/brand.py` needs no change to the policy. If `page.html` ever has no `<style>` block or more than one, or loses or doubles its `/* __BRAND_TOKENS__ */` marker, the function fails as it starts and API Gateway answers every request with a bare 502 instead of a page. A deploy does not catch that; the tests do (`test_style_hash_rejects_zero_or_two_style_blocks`, `test_csp_style_hash_matches_served_style`), so run them after editing `page.html`.
 - If you ever need an image, font or script from another site, the policy must allow it in `lambda_function.py`. Prefer drawing it in the page, as the icon and logo are.
 - The Refresh button is a plain link back to the same page, so it works without script.
 
@@ -138,10 +138,15 @@ This diagram illustrates the secure, server-side workflow for displaying recent 
 The page follows the Asmbly brand guide with the ceramics colour as its accent, in the
 same way as the class photo upload page (`functions/classes/class_photo_upload_page/`).
 The list page, the empty list and the error page share one shell, `page.html`, next to
-`lambda_function.py`. The function reads it once per container and fills in two
-placeholders: `__RELOAD_TEXT__` (the hint above the Refresh button) and
-`__MAIN_CONTENT__` (the list or the error box). The main content goes in last, so a
-drop-off named `__RELOAD_TEXT__` shows as that name.
+`lambda_function.py`. The function reads it once per container. First it fills in the
+two brand markers from the common layer's
+[`common/brand.py`](../../../layers/common/python/common/brand.py), which the class photo
+upload page shares: `/* __BRAND_TOKENS__ */` in the `:root` block gets the shared brand
+tokens, and `<!-- __ASMBLY_LOGO__ -->` in the footer gets the Asmbly logo. It computes
+the CSP hash over that filled shell. Then, for each page, it fills in two placeholders:
+`__RELOAD_TEXT__` (the hint above the Refresh button) and `__MAIN_CONTENT__` (the list
+or the error box). The main content goes in last, so a drop-off named `__RELOAD_TEXT__`
+shows as that name.
 
 - **Header band:** full width, in the ceramics colour `--ceramics` (#b34a9a), with the
   ceramics icon and the title in Asmbly White. Asmbly White on the ceramics colour is
@@ -168,36 +173,46 @@ drop-off named `__RELOAD_TEXT__` shows as that name.
   colour shows through it. Screen readers announce it as "Ceramics".
 - **Asmbly logo:** the official vector from `asmbly-makerspace/asmbly-classes`
   (`app/src/lib/components/logo.svelte`, commit
-  `9a534a6c538df1e602fead183e30d93d97c247b4`), as inlined on the class photo upload page,
-  with `fill: currentColor`. Screen readers announce it as "Asmbly Makerspace".
-- **Type:** system font stacks (the photo page's), so no font file is fetched. PP Gosha,
-  the brand's heading face, is not used until Asmbly confirms its web licence covers
-  this site.
+  `9a534a6c538df1e602fead183e30d93d97c247b4`), from `common/brand.py` (`ASMBLY_LOGO`),
+  shared with the class photo upload page, with `fill: currentColor`. Screen readers
+  announce it as "Asmbly Makerspace".
+- **Type:** system font stacks, shared with the photo page through `common/brand.py`, so
+  no font file is fetched. PP Gosha, the brand's heading face, is not used until Asmbly
+  confirms its web licence covers this site.
 
 ### Tokens
 
-Every colour, font stack, length and number is a CSS custom property, defined once in the
-`:root` block at the top of the stylesheet in `page.html`. Every other rule uses them
-through `var()`. No `style` attribute, no colour or size written anywhere else; the tests
-fail if that changes.
+Every colour, font stack, length and number is a CSS custom property, defined once: the
+shared ones in [`common/brand.py`](../../../layers/common/python/common/brand.py)
+(`BRAND_TOKENS`), the page's own in the `:root` block at the top of the stylesheet in
+`page.html`. The served `:root` holds both. Every other rule uses them through `var()`.
+No `style` attribute, no colour or size written anywhere else; the tests fail if that
+changes.
 
-- Brand colours: `--asmbly-purple` #292D6A, `--asmbly-white` #F2F4EF,
+A change to a shared token in `brand.py` changes this page and the class photo upload
+page, and changes this page's CSP hash, which the function recomputes when it starts.
+Both pages' pins then need regenerating (see [Testing](#testing)).
+
+- Brand colours (shared): `--asmbly-purple` #292D6A, `--asmbly-white` #F2F4EF,
   `--midnight-black` #171d1a, `--ceramics` #b34a9a, `--lasers` #D33E43.
 - Tints and shades, per sRGB channel, rounded:
   `tint(p) = p × colour + (1 − p) × asmbly-white`,
   `shade(p) = p × colour + (1 − p) × midnight-black`.
   `--ceramics-shade` (0.8) #944180, `--ceramics-shade-60` (0.6) #753867,
-  `--ceramics-40` #d9b0cd, `--ceramics-20` #e5d2de, `--ceramics-10` #ece3e6,
-  `--lasers-shade` (0.8) #ad373b, `--lasers-20` #ecd0cd. A test recomputes each, so to
-  change a brand colour, change it and recompute its tints and shades.
-- What each colour is for: `--page-bg`, `--text`, `--accent` (= `--ceramics`),
+  `--ceramics-40` #d9b0cd, `--ceramics-20` #e5d2de, `--ceramics-10` #ece3e6 (this
+  page's), `--lasers-shade` (0.8) #ad373b, `--lasers-20` #ecd0cd (shared). A test
+  recomputes each, so to change a brand colour, change it and recompute its tints and
+  shades.
+- What each colour is for (this page's): `--page-bg`, `--text`, `--accent` (= `--ceramics`),
   `--on-accent`, `--accent-strong` (IDs, button), `--accent-hover`, `--table-head-bg`,
   `--row-hover-bg`, `--line`, `--focus`, `--logo-colour` (the only use of Asmbly Purple),
   `--error-bg`, `--error-edge`, and the glyph `--glyph-error`.
-- Type and size: `--font-body`, `--font-heading`, `--font-mono`, `--font-size-*`,
-  `--line-height*`, `--weight-*`, `--space-1` to `--space-6`, `--gutter`, `--radius`,
-  `--content-max-width`, `--icon-height`, `--logo-height`, `--border-width*`,
-  `--focus-width`, `--focus-offset`, `--tap-target`.
+- Type and size (shared): `--font-body`, `--font-heading`, `--font-mono`,
+  `--font-size-body`, `-h1`, `-h2`, `-small`, `--line-height*`, `--weight-*`,
+  `--space-1` to `--space-6`, `--gutter`, `--radius`, `--logo-height`, `--border-width`,
+  `--border-width-accent`, `--focus-width`, `--focus-offset`, `--tap-target`.
+- Sizes (this page's): `--font-size-id`, `--content-max-width` (50rem),
+  `--icon-height`.
 
 Add a token only when a rule uses it. `--lasers` is the one token no rule reads; it is
 the parent of the two lasers tokens.
@@ -292,4 +307,4 @@ The tests mock SSM, Secrets Manager and ClickUp, so they need no AWS access. Aft
 
 The browser's own request for `/favicon.ico` may show as blocked by `default-src 'none'` (Firefox) or as a 403. That is older than the page's styling and is the one expected console message.
 
-The tests also cover the look: every colour, size and font is a token (and every token is used and defined once), the tints and shades follow the formula, every pair in the contrast table meets its minimum, the Refresh button is a 44px target with a visible focus ring, hover looks exist only where a pointer can hover, table text wraps, the band holds only the icon and the title, the error page shares the shell, and the page with 50 drop-offs is under 60 KB. Two pins hold the page's look as it was on `stage` before story #138, which shares the brand tokens and logo through `layers/common/python/common/brand.py`: every page the function serves must have the `:root` tokens in `tests/fixtures/pinned_tokens.json` and the CSS rules in `tests/fixtures/pinned_rules.css`. After a deliberate change to the look, regenerate them with `.venv/bin/python -m tests.capture_page_pins` from the repository root and commit them with the change. To see the pages without deploying, write `generate_html_page([...])`, `generate_html_page([])` and `generate_error_page()` to files and open them in a browser. A local file has no CSP header, so the policy is checked on stage.
+The tests also cover the look: every colour, size and font is a token (and every token is used and defined once), the tints and shades follow the formula, every pair in the contrast table meets its minimum, the Refresh button is a 44px target with a visible focus ring, hover looks exist only where a pointer can hover, table text wraps, the band holds only the icon and the title, the error page shares the shell, and the page with 50 drop-offs is under 60 KB. Two pins hold the page's look as it was on `stage` before story #138, which shares the brand tokens and logo through `layers/common/python/common/brand.py`: every page the function serves must have the `:root` tokens in `tests/fixtures/pinned_tokens.json` and the CSS rules in `tests/fixtures/pinned_rules.css`. After a deliberate change to the look, regenerate them with `.venv/bin/python -m tests.capture_page_pins` from the repository root and commit them with the change. A change to a shared token in `brand.py` changes both pages' pins, and this page's CSP hash, which the function recomputes when it starts. `tests/test_shared_brand.py` checks that neither `page.html` has its own copy of the shared tokens or logo, and that a changed shared token reaches both served pages. To see the pages without deploying, write `generate_html_page([...])`, `generate_html_page([])` and `generate_error_page()` to files and open them in a browser. A local file has no CSP header, so the policy is checked on stage.

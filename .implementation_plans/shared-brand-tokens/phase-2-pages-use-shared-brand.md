@@ -10,7 +10,7 @@ estimated_size: M
 
 # Phase 2: Both pages serve the shared tokens and logo
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-10-17 on branch feature/shared-brand-tokens
 
 ## Required reading
 
@@ -340,10 +340,28 @@ None. There is no new named resource and no deploy-role change.
 
 ## Hand-off
 
-Filled in when the phase is done. Story #139 can rely on:
+Done 2026-10-17. Story #139 can rely on:
 
 - `common.brand.fill_brand` and both markers as the way a page gets the shared tokens and
-  logo.
-- The kiln pattern of filling first and hashing the filled `<style>`, and the photo
-  pattern of filling first and adding the nonce after.
-- The pins, which `/write-docs` and #139 should mention when they describe adding a page.
+  logo. Each raw `page.html` holds `    /* __BRAND_TOKENS__ */` right after
+  `color-scheme: light;` and one `<!-- __ASMBLY_LOGO__ -->` (kiln indented two spaces in
+  the footer, photo four in the header). Neither has a copy of the 32 tokens or the logo.
+- The kiln pattern of filling first and hashing the filled `<style>`
+  (`PAGE_TEMPLATE = brand.fill_brand(...)` at import, then `_style_hash(PAGE_TEMPLATE)`),
+  and the photo pattern of filling first and adding the nonce after (`_template()`).
+- `ClassPhotoUploadPageFunction` has `Layers: [!Ref CommonLayerARN]` and no policies.
+  12 functions now use `CommonLayer`. No deploy-role change was needed.
+- The pins, unchanged from phase 1, which `/write-docs` and #139 should mention when they
+  describe adding a page. A deliberate change to a shared token changes both pages' pins
+  and the kiln CSP hash.
+- Tests in `tests/test_shared_brand.py` (8 now): `_raw_pages()`, `_raw_sheets()` and
+  `_sha256_source()` were added for the four phase 2 tests. Suite: 1871 tests.
+- Render check against `stage` (in a worktree, by subprocess): the sorted `:root`
+  declarations, the rules after `:root` and the whitespace-collapsed markup are equal on
+  the kiln list, empty and error pages and on the photo page. The only byte difference in
+  the logo is the kiln page's `</svg>`, now indented four spaces instead of two. Sizes:
+  kiln 13.8 KB empty, 24.0 KB with 50 short rows; photo 70.6 KB. The kiln CSP hash
+  value changed, as expected.
+- Deferred: the audit's note that `test_page_template_has_each_placeholder_once` can't
+  catch a marker error itself. A broken marker raises at import, which shows up as a
+  collection error, and CI still fails.

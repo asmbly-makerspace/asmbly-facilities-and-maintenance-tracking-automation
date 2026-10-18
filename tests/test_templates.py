@@ -296,9 +296,11 @@ def test_class_photo_page_route_is_the_only_unauthorized_class_photo_route() -> 
 
 
 def test_class_photo_page_function_reads_nothing() -> None:
-    # The page function holds no secrets and calls nothing, so it gets no policies or layers.
+    # The page function holds no secrets and calls nothing, so it gets no policies. Its one
+    # layer is the common layer, for the shared brand tokens and logo (story #138).
     function = _load(ROOT / "templates" / "classes.yaml")["Resources"]["ClassPhotoUploadPageFunction"]["Properties"]
-    assert "Policies" not in function and "Layers" not in function
+    assert "Policies" not in function and "Role" not in function
+    assert function["Layers"] == [{"Ref": "CommonLayerARN"}]
     assert set(function["Environment"]["Variables"]) == {
         "STAFF_AUTH_DOMAIN",
         "CLASS_PHOTO_APP_CLIENT_ID",

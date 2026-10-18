@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
+from common import brand
 # Now we can import the lambda function module directly
 from functions.ceramics.kiln_dropoff_recent_entries_viewer import lambda_function
 from tests import capture_page_pins, page_style
@@ -357,7 +358,10 @@ def test_generate_html_page_escapes_quotes_and_ampersands():
     assert 'O\'Brien & "Sons"' not in page
 
 
-PAGE_HTML = (pathlib.Path(lambda_function.__file__).parent / "page.html").read_text(encoding="utf-8")
+# The served shell: page.html with the shared brand tokens and logo filled in, so the style,
+# logo and CSP checks below run on what visitors get. RAW_PAGE_HTML is the file itself.
+PAGE_HTML = lambda_function.PAGE_TEMPLATE
+RAW_PAGE_HTML = lambda_function.PAGE_PATH.read_text(encoding="utf-8")
 STYLE_BLOCK = re.compile(r"<style>(.*?)</style>", re.S)
 # The page's stylesheet and its markup without it, read with the shared checks in tests/page_style.py.
 SHEET = page_style.Stylesheet.from_page(PAGE_HTML, STYLE_BLOCK)
@@ -601,7 +605,9 @@ def test_placeholder_in_task_name_is_shown_as_text() -> None:
 
 
 def test_page_template_has_each_placeholder_once() -> None:
-    assert lambda_function.PAGE_TEMPLATE == PAGE_HTML
+    assert lambda_function.PAGE_TEMPLATE == brand.fill_brand(RAW_PAGE_HTML)
+    assert RAW_PAGE_HTML.count(brand.BRAND_TOKENS_MARKER) == 1
+    assert RAW_PAGE_HTML.count(brand.ASMBLY_LOGO_MARKER) == 1
     assert PAGE_HTML.count('__MAIN_CONTENT__') == 1
     assert PAGE_HTML.count('__RELOAD_TEXT__') == 1
     assert PAGE_HTML.index('__MAIN_CONTENT__') < PAGE_HTML.index('__RELOAD_TEXT__')

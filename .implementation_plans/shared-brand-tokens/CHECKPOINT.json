@@ -19,13 +19,23 @@
         "cfn_lint": "4 pre-existing W3005 only",
         "sam_validate": "pass",
         "sam_build": "pass"
-      }
+      },
+      "squashed_sha": "709880a"
     },
     {
       "id": 2,
       "title": "Both pages serve the shared tokens and logo",
       "file": ".implementation_plans/shared-brand-tokens/phase-2-pages-use-shared-brand.md",
-      "status": "pending"
+      "status": "done",
+      "pre_sha": "709880a",
+      "review_rounds": 2,
+      "checks": {
+        "pytest": "1871 passed (1866 + 5)",
+        "cfn_lint": "4 pre-existing W3005 only",
+        "sam_validate": "pass",
+        "sam_build": "pass; ClassPhotoUploadPageFunction Layers: [CommonLayerARN]",
+        "page_sizes": "kiln 24.0 KB with 50 rows (<60 KB); photo 70.6 KB (<100 KB)"
+      }
     }
   ],
   "integration": null,
@@ -99,6 +109,51 @@
       "items": [
         "layers/common/tests/ (now with test_brand.py) is packaged into the layer, like the other layer tests (pre-existing)"
       ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 1,
+      "sha": "709880a"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_done",
+      "phase": 2,
+      "review_rounds": 2,
+      "pytest": "1871 passed"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "decision",
+      "phase": 2,
+      "items": [
+        "Phase 1 pin fixtures unchanged and passing: served tokens and rules equal stage on kiln empty/50-row/error pages and the photo page; only byte difference is the kiln </svg> indent (2 -> 4 spaces)",
+        "Kiln CSP: 5 directives; hash recomputed over the filled shell (value changed, shape unchanged). Photo CSP: 8 directives, nonce per request, test unchanged",
+        "ClassPhotoUploadPageFunction gains Layers: [!Ref CommonLayerARN] in templates/classes.yaml only; no policies, template.yaml/template-cicd.yaml/configs untouched",
+        "test_photo_page_imports_no_third_party_module: subprocess python -I check that boto3/botocore/requests aren't loaded (mutation-checked)",
+        "test_changing_a_shared_token_changes_both_pages restores the module and asserts #292D6A is back on both pages",
+        "Prep READY"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "deferred",
+      "phase": 2,
+      "items": [
+        "test_page_template_has_each_placeholder_once can't catch a broken marker alone: fill_brand raises at import, so it shows as a collection error (CI still fails)",
+        "MANUAL_QA should compare stage with prod (unchanged until /promote) at 320px and 1280px, allowing for the photo page's stage dry-run banner"
+      ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "risk",
+      "item": "Stage deploy publishes a new common-layer-stage version and updates the 12 functions that use it (11 + ClassPhotoUploadPageFunction); stage may answer 502 for a few seconds during the update"
     }
   ]
 }

@@ -44,7 +44,7 @@ helper and the shared pieces") builds on this plan in a later run.
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
 | 1 | [Brand module and the stage pins](phase-1-brand-module-and-stage-pins.md) | layer, lambda | L | [x] Complete |
-| 2 | [Both pages serve the shared tokens and logo](phase-2-pages-use-shared-brand.md) | lambda, layer, infra, docs | M | [ ] Pending |
+| 2 | [Both pages serve the shared tokens and logo](phase-2-pages-use-shared-brand.md) | lambda, layer, infra, docs | M | [x] Complete |
 
 ## Dependencies
 

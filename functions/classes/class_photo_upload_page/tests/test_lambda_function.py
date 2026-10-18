@@ -7,13 +7,16 @@ from unittest.mock import patch
 
 import pytest
 
+from common import brand
 from functions.classes.class_photo_upload_api import lambda_function as api
 from functions.classes.class_photo_upload_api import photo_checks
 from functions.classes.class_photo_upload_page import lambda_function
 from tests import capture_page_pins, page_style
 
 FIXTURES = Path(__file__).parent / "fixtures"
-PAGE_HTML = (Path(lambda_function.__file__).parent / "page.html").read_text(encoding="utf-8")
+# The served shell before the nonce and config go in: page.html with the shared brand tokens
+# and logo filled in, so the style and logo checks below run on what visitors get.
+PAGE_HTML = lambda_function._template()
 
 AUTH_DOMAIN = "asmbly-staff.auth.us-east-2.amazoncognito.com"
 CLIENT_ID = "fakeappclientid123"
@@ -238,6 +241,16 @@ def test_page_uses_text_content_not_inner_html() -> None:
         assert sink not in PAGE_HTML
     # Style attributes would need 'unsafe-inline' under the page's CSP.
     assert "style=" not in PAGE_HTML
+
+
+def test_template_is_page_html_with_the_brand_filled() -> None:
+    """The served shell is page.html with the shared brand tokens and logo filled in, before the nonce and config."""
+    raw = lambda_function.PAGE_PATH.read_text(encoding="utf-8")
+    assert lambda_function._template() == brand.fill_brand(raw)
+    assert raw.count(brand.BRAND_TOKENS_MARKER) == 1
+    assert raw.count(brand.ASMBLY_LOGO_MARKER) == 1
+    assert lambda_function.NONCE_MARKER in lambda_function._template()
+    assert lambda_function._template().count(lambda_function.CONFIG_MARKER) == 1
 
 
 def test_page_has_one_inline_script_and_style() -> None:
