@@ -1,0 +1,105 @@
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  ::selection { background: var(--tint-bg); color: var(--text); }
+  body { margin: 0; background: var(--page-bg); color: var(--text); font-family: var(--font-body); font-size: var(--font-size-body); line-height: var(--line-height); }
+  h1, h2 { font-family: var(--font-heading); font-weight: var(--weight-heading); line-height: var(--line-height-heading); }
+  h2 { font-size: var(--font-size-h2); margin: var(--space-5) 0 var(--space-2); color: var(--brand); }
+  a, a:visited { color: var(--brand); }
+  .brand-band { background: var(--brand); color: var(--on-dark); }
+  .brand-inner {
+    max-width: var(--content-max-width); margin: 0 auto; padding: var(--space-4) var(--gutter);
+    display: grid; grid-template-columns: var(--track-fill) auto; grid-template-areas: "logo logo" "title sign-out";
+    align-items: center; gap: var(--space-3) var(--space-5);
+  }
+  .logo { grid-area: logo; display: block; height: var(--logo-height); width: auto; fill: currentColor; }
+  .brand-band h1 { grid-area: title; margin: 0; font-size: var(--font-size-h1); color: var(--on-dark); }
+  .brand-band #sign-out { grid-area: sign-out; }
+  .pattern { display: block; width: 100%; height: var(--pattern-height); overflow: hidden; }
+  .pattern .woodwork { fill: var(--woodwork); }
+  .pattern .metalwork { fill: var(--metalwork); }
+  .pattern .lasers { fill: var(--lasers); }
+  .pattern .textiles { fill: var(--textiles); }
+  .pattern .electronics { fill: var(--electronics); }
+  .pattern .printing-3d { fill: var(--printing-3d); }
+  .pattern .ceramics { fill: var(--ceramics); }
+  .pattern .asmbly-white { fill: var(--asmbly-white); }
+  .pattern .brand { fill: var(--brand); }
+  main { max-width: var(--content-max-width); margin: 0 auto; padding: var(--space-5) var(--gutter); }
+  button, .button {
+    font: inherit; font-weight: var(--weight-strong);
+    display: inline-block; min-height: var(--tap-target); padding: var(--space-2) var(--space-5);
+    border: var(--border-width-strong) solid var(--brand); border-radius: var(--radius-control);
+    background: var(--brand); color: var(--on-dark); cursor: pointer; text-align: center;
+  }
+  button:disabled, button[aria-disabled="true"] { background: var(--disabled-bg); color: var(--text); border-color: var(--control-border); border-style: dashed; cursor: not-allowed; }
+  .brand-band button.secondary { background: transparent; color: var(--on-dark); border-color: var(--on-dark); padding: var(--space-2) var(--space-4); }
+  #sign-in-again, #class-retry, #class-refresh { margin-top: var(--space-3); }
+  select {
+    font: inherit; width: 100%; max-width: 100%; min-height: var(--tap-target); padding: var(--space-2) var(--space-3);
+    border: var(--border-width-strong) solid var(--control-border); border-radius: var(--radius-control);
+    background: var(--page-bg); color: var(--text); cursor: pointer; text-overflow: ellipsis;
+  }
+  select:disabled { background: var(--disabled-bg); color: var(--text); border-style: dashed; cursor: not-allowed; }
+  .drop-zone { border: var(--border-width-strong) dashed var(--control-border); border-radius: var(--radius); padding: var(--space-5); text-align: center; }
+  .drop-zone p { margin: 0 0 var(--space-3); }
+  .drop-zone.dragging { background: var(--drag-bg); color: var(--text); border-style: solid; border-color: var(--brand); }
+  .drop-zone.dragging * { pointer-events: none; }
+  .drop-zone input:disabled + label { background: var(--disabled-bg); color: var(--text); border-color: var(--control-border); border-style: dashed; cursor: not-allowed; }
+  .visually-hidden { position: absolute; width: var(--visually-hidden-size); height: var(--visually-hidden-size); overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .preview { display: block; max-width: 100%; height: auto; max-height: var(--preview-max-height); margin: var(--space-3) auto 0; border-radius: var(--radius-control); }
+  button:focus-visible, select:focus-visible, a:focus-visible, .drop-zone input:focus-visible + label, .drop-zone label:focus-visible {
+    outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset);
+  }
+  .brand-band button:focus-visible { outline-color: var(--focus-on-dark); }
+  .busy { display: block; width: 100%; height: var(--progress-height); margin: var(--space-2) 0 0; accent-color: var(--progress-fill); }
+  .message { margin: var(--space-2) 0 0; }
+  .message.note { font-size: var(--font-size-small); }
+  .message.error, .message.ok, .warning, .banner {
+    display: grid; grid-template-columns: auto var(--track-fill); align-items: start; gap: var(--space-3);
+  }
+  .message.error::before, .message.ok::before, .warning::before, .banner::before {
+    width: var(--glyph-size); height: var(--glyph-size); margin-top: var(--glyph-offset);
+    border-radius: var(--radius-control); color: var(--on-dark);
+    font-family: var(--font-heading); font-size: var(--font-size-small); font-weight: var(--weight-heading);
+    line-height: var(--glyph-size); text-align: center;
+  }
+  .message.error { padding-left: var(--space-3); color: var(--error); font-weight: var(--weight-strong); border-left: var(--border-width-accent) solid var(--error); }
+  .message.error::before { content: var(--glyph-error); background: var(--error); }
+  .message.ok { padding-left: var(--space-3); color: var(--ok); border-left: var(--border-width-accent) solid var(--ok); }
+  .message.ok::before { content: var(--glyph-ok); background: var(--ok); }
+  .warning {
+    margin: var(--space-5) 0 var(--space-3); padding: var(--space-3) var(--space-4);
+    background: var(--warning-bg); color: var(--text); font-weight: var(--weight-strong);
+    border-left: var(--border-width-accent) solid var(--error); border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  }
+  .warning::before { content: var(--glyph-warning); background: var(--error); }
+  .banner {
+    margin: 0 0 var(--space-5); padding: var(--space-3) var(--space-4);
+    background: var(--banner-bg); color: var(--text);
+    border-left: var(--border-width-accent) solid var(--banner-edge); border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  }
+  .banner::before { content: var(--glyph-banner); background: var(--banner-edge); font-family: var(--font-mono); }
+  .result { margin-top: var(--space-5); padding: var(--space-4) var(--space-5); background: var(--page-bg); border: var(--border-width) solid var(--line); border-top: var(--border-width-accent) solid var(--brand); border-radius: var(--radius); }
+  .result > :first-child { margin-top: 0; }
+  .result p, .result li, .result pre { overflow-wrap: anywhere; }
+  .result p { margin: var(--space-3) 0 0; }
+  .result ul { margin: var(--space-1) 0 0; padding-left: var(--space-5); }
+  .result pre {
+    margin: var(--space-2) 0 0; padding: var(--space-3); white-space: pre-wrap;
+    background: var(--code-bg); color: var(--text); border-radius: var(--radius-control);
+    font-family: var(--font-mono); font-size: var(--font-size-small);
+  }
+  .message > a { justify-self: start; }
+  .result a { text-decoration: underline; text-decoration-thickness: var(--border-width); text-underline-offset: var(--underline-offset); }
+  @media (hover: hover) {
+    button:hover:not(:disabled), .button:hover { background: var(--hover-bg); border-color: var(--hover-bg); }
+    button[aria-disabled="true"]:hover { background: var(--disabled-bg); color: var(--text); border-color: var(--control-border); }
+    .brand-band button.secondary:hover { background: var(--on-dark); color: var(--brand); border-color: var(--on-dark); }
+    select:hover:not(:disabled), .drop-zone:hover { border-color: var(--brand); }
+    .result a:hover { text-decoration-thickness: var(--border-width-strong); }
+  }
+  @media (min-width: 40rem) {
+    .brand-inner { padding: var(--space-5); grid-template-columns: auto var(--track-fill) auto; grid-template-areas: "logo title sign-out"; }
+    .brand-band h1 { padding-left: var(--space-5); border-left: var(--border-width) solid var(--line-on-dark); }
+    main { padding: var(--space-6) var(--space-5); }
+  }

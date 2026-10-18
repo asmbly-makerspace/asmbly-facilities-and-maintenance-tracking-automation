@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from common import brand
 from common.aws import get_secret, get_json_parameter
 from common.clickup import get_all_clickup_tasks
 
@@ -27,9 +28,11 @@ CLICKUP_CERAMICS_CONFIG_PARAMETER_NAME = os.environ.get("CLICKUP_CERAMICS_CONFIG
 # zone data is logged and shows the error page instead of failing every request.
 CENTRAL_TIME_ZONE = "America/Chicago"
 
-# The page shell (styles, header band, Refresh button, footer logo), read once per container.
+# The page shell (styles, header band, Refresh button, footer logo), read once per container,
+# with the shared brand tokens and logo from the common layer filled in. The CSP hash below
+# is computed over this filled shell, so it is the hash of the <style> every page serves.
 PAGE_PATH = pathlib.Path(__file__).with_name("page.html")
-PAGE_TEMPLATE: str = PAGE_PATH.read_text(encoding="utf-8")
+PAGE_TEMPLATE: str = brand.fill_brand(PAGE_PATH.read_text(encoding="utf-8"))
 _STYLE_BLOCK = re.compile(r"<style>(.*?)</style>", re.S)
 
 

@@ -5,6 +5,10 @@ send a token (README Decision 7). The page reads nothing, calls nothing and chan
 nothing: it embeds only public values (the staff pool's sign-in host, this page's app
 client ID, its own URL and whether submissions are a dry run), signs the person in with
 the staff pool, and then calls the data routes, which sit behind the Cognito authorizer.
+
+The page's shared brand tokens and Asmbly logo come from the common layer
+(``common/brand.py``), filled into ``page.html`` once per container. That module imports
+only the standard library, so this function needs no other layer and loads no boto3.
 """
 
 import html
@@ -15,6 +19,8 @@ import pathlib
 import re
 import secrets
 from typing import Any
+
+from common import brand
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -51,10 +57,10 @@ _page_template: str | None = None
 
 
 def _template() -> str:
-    """page.html, read once per container."""
+    """page.html with the shared brand tokens and logo filled in, read once per container."""
     global _page_template
     if _page_template is None:
-        _page_template = PAGE_PATH.read_text(encoding="utf-8")
+        _page_template = brand.fill_brand(PAGE_PATH.read_text(encoding="utf-8"))
     return _page_template
 
 

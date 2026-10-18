@@ -157,7 +157,8 @@ Resources:
         - Key: Project
           Value: classes:class-photo-upload
 
-  # Serves fixed HTML and reads nothing, so it has no layers and no policies.
+  # Serves fixed HTML and reads nothing, so it has no policies. Its only layer is the
+  # common layer, for the shared brand tokens and logo (common/brand.py).
   ClassPhotoUploadPageFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -169,6 +170,8 @@ Resources:
       Timeout: 5
       LoggingConfig:
         LogGroup: !Ref ClassPhotoUploadPageLogGroup
+      Layers:
+        - !Ref CommonLayerARN
       Environment:
         Variables:
           STAFF_AUTH_DOMAIN: !Ref StaffAuthDomain

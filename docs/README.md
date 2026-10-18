@@ -156,4 +156,4 @@ This project uses the **AWS Serverless Application Model (SAM)**. This means:
 * `template.yaml`: Defines all AWS resources. **Start here to understand the architecture.**
 * `/templates`: Contains the nested SAM templates for each service (facilities, ceramics, etc.).
 * `/functions`: Contains a separate folder for each Lambda function's Python code.
-* `/layers`: Holds shared code or dependencies. Currently used for the `requests` Python library.
+* `/layers`: shared code and dependencies: `requests_layer` (the `requests` library) and `common` (the helpers for AWS, ClickUp, Slack, Neon, Discourse, Google Forms and GitHub, and the brand tokens and logo the two HTML pages share).

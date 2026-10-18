@@ -204,6 +204,13 @@ The full list, with the reasons, is under [Rules](../CLAUDE.md#rules). In short:
   `page_style.*_problems(...)` check returns `[]`. The module is test code only: no
   function imports it, and no template packages it. Its own tests are in
   `tests/test_page_style.py`.
+  The brand tokens and logo the two pages share live in
+  `layers/common/python/common/brand.py` (`common.brand`). A page marks them in `page.html`
+  with `/* __BRAND_TOKENS__ */` inside `:root` and `<!-- __ASMBLY_LOGO__ -->`, and its
+  function calls `brand.fill_brand` when it reads the file. Each page pins its served tokens
+  and rules in `tests/fixtures/pinned_tokens.json` and `pinned_rules.css`. After a deliberate
+  change to a look, or to a shared token, recapture both pages' pins from the repository
+  root with `.venv/bin/python -m tests.capture_page_pins` and commit them with the change.
 - **IAM.** Grant the least privilege that works: name exact parameter and secret ARNs, and
   use `Resource: "*"` only for actions that have no resource-level permissions.
 - **Scope.** Keep a pull request to its task, and open an issue for any unrelated problem

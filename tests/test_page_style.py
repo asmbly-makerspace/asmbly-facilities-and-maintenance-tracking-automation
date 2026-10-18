@@ -8,10 +8,10 @@ import re
 
 import pytest
 
+from common import brand
 from tests import page_style
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-KILN_PAGE = ROOT / "functions" / "ceramics" / "kiln_dropoff_recent_entries_viewer" / "page.html"
 STYLE_BLOCK = re.compile(r"<style>(.*?)</style>", re.S)
 TOKEN_VALUE = re.compile(r"#[0-9a-fA-F]{6}|var\(--[\w-]+\)|\d*\.?\d+(?:rem|px)?")
 WORDS = {"solid", "none"}
@@ -22,7 +22,8 @@ def _sheet(css: str) -> page_style.Stylesheet:
 
 
 def _kiln_logo() -> str:
-    return page_style.find_logo(KILN_PAGE.read_text(encoding="utf-8"))
+    # The Asmbly logo both pages serve, from the common layer (story #138).
+    return page_style.find_logo(brand.ASMBLY_LOGO)
 
 
 def test_from_page_reads_the_one_style_block() -> None:
