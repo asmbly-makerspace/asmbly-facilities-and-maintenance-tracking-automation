@@ -3,6 +3,10 @@ from unittest.mock import patch, Mock
 import base64
 import json
 import logging
+import os
+import pathlib
+import subprocess
+import sys
 from typing import Any
 
 import pytest
@@ -49,7 +53,7 @@ class TestNeonCRM(unittest.TestCase):
             "outputFields": ["Account ID"],
             "pagination": {"currentPage": 0, "pageSize": 1},
         }
-        mock_post.assert_called_once_with(expected_url, headers=self.client.headers, json=expected_payload)
+        mock_post.assert_called_once_with(expected_url, headers=self.client.headers, json=expected_payload, timeout=8.0)
 
     @patch('common.neoncrm.requests.post')
     def test_get_account_by_email_not_found(self, mock_post):
@@ -139,7 +143,7 @@ class TestNeonCRM(unittest.TestCase):
                 "accountCustomFields": [{"id": field_id, "value": field_value}]
             }
         }
-        mock_patch.assert_called_once_with(expected_url, headers=self.client.headers, json=expected_payload)
+        mock_patch.assert_called_once_with(expected_url, headers=self.client.headers, json=expected_payload, timeout=8.0)
 
     @patch('common.neoncrm.requests.patch')
     def test_update_account_custom_field_api_error(self, mock_patch):
@@ -302,3 +306,143 @@ def test_search_events_raises_when_a_later_page_fails(neon: NeonCRM, requests_mo
 
     with pytest.raises(NeonCRMError, match="status 503"):
         neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS)
+
+
+# --- Logging setup, account-call logging and timeouts ---
+
+LAYER_PYTHON_DIR = pathlib.Path(__file__).resolve().parents[1]
+MEMBER_EMAIL = "pk_member@example.com"
+
+
+def _import_in_fresh_interpreter(module: str) -> list[str]:
+    """Imports a layer module in a new Python with the root logger at WARNING, and
+    returns the root level and the module logger's level after the import."""
+    code = (
+        "import logging, sys\n"
+        "logging.getLogger().setLevel(logging.WARNING)\n"
+        f"import {module}\n"
+        f"print(logging.getLogger().level, logging.getLogger({module!r}).level)\n"
+    )
+    env = {**os.environ, "PYTHONPATH": str(LAYER_PYTHON_DIR)}
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, check=True)
+    return result.stdout.split()
+
+
+def test_import_sets_no_log_level() -> None:
+    """Importing the Neon helper leaves the root logger alone and sets no level of its own."""
+    root_level, module_level = _import_in_fresh_interpreter("common.neoncrm")
+
+    assert int(root_level) == logging.WARNING
+    assert int(module_level) == logging.NOTSET
+
+
+def _neon_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.name == "common.neoncrm"]
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    ["found", "not_found", "connection_error"],
+)
+def test_get_account_by_email_logs_no_email(neon: NeonCRM, caplog: pytest.LogCaptureFixture, outcome: str) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.neoncrm")
+    with patch("common.neoncrm.requests.post") as mock_post:
+        if outcome == "connection_error":
+            mock_post.side_effect = requests.exceptions.ConnectionError(f"search for {MEMBER_EMAIL} failed")
+        else:
+            results = [{"Account ID": "12345"}] if outcome == "found" else []
+            mock_post.return_value = Mock(**{"json.return_value": {"searchResults": results}})
+
+        neon.get_account_by_email(MEMBER_EMAIL)
+
+    assert _neon_records(caplog)
+    assert MEMBER_EMAIL not in caplog.text
+    assert "pk_member" not in caplog.text
+
+
+def test_get_account_by_email_http_error_logs_status(neon: NeonCRM, caplog: pytest.LogCaptureFixture) -> None:
+    """A failed search logs the operation, the error class and the status, not Neon's body."""
+    caplog.set_level(logging.DEBUG, logger="common.neoncrm")
+    response = Mock(status_code=401, text=f"pk_NEON_BODY {MEMBER_EMAIL}")
+    error = requests.exceptions.HTTPError(f"401 Client Error for {MEMBER_EMAIL}", response=response)
+    with patch("common.neoncrm.requests.post") as mock_post:
+        mock_post.return_value.raise_for_status.side_effect = error
+
+        assert neon.get_account_by_email(MEMBER_EMAIL) is None
+
+    errors = [r.getMessage() for r in _neon_records(caplog) if r.levelno == logging.ERROR]
+    assert errors == ["Error searching for NeonCRM account: HTTPError (status 401)"]
+    assert "pk_NEON_BODY" not in caplog.text
+    assert MEMBER_EMAIL not in caplog.text
+
+
+def test_update_account_custom_field_success_logs_ids(neon: NeonCRM, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.neoncrm")
+    with patch("common.neoncrm.requests.patch") as mock_patch:
+        mock_patch.return_value.raise_for_status.return_value = None
+
+        neon.update_account_custom_field("12345", "77", "2026-10-17")
+
+    assert [r.getMessage() for r in _neon_records(caplog)] == ["Updated custom field 77 for NeonCRM account 12345"]
+    assert "2026-10-17" not in caplog.text
+
+
+def test_update_account_custom_field_failure_logs_status_not_body(neon: NeonCRM, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.neoncrm")
+    response = Mock(status_code=400, text="pk_NEON_BODY jane@example.com")
+    error = requests.exceptions.HTTPError("400 Client Error: pk_HTTP_TEXT", response=response)
+    with patch("common.neoncrm.requests.patch") as mock_patch:
+        mock_patch.return_value.raise_for_status.side_effect = error
+
+        assert neon.update_account_custom_field("12345", "77", "2026-10-17") is None
+
+    errors = [r for r in _neon_records(caplog) if r.levelno == logging.ERROR]
+    assert [r.getMessage() for r in errors] == ["Error updating NeonCRM account 12345: HTTPError (status 400)"]
+    assert "pk_NEON_BODY" not in caplog.text
+    assert "jane@example.com" not in caplog.text
+    assert "pk_HTTP_TEXT" not in caplog.text
+
+
+def test_update_account_custom_field_network_error_logs_type(neon: NeonCRM, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.neoncrm")
+    with patch("common.neoncrm.requests.patch") as mock_patch:
+        mock_patch.side_effect = requests.exceptions.ConnectionError("pk_URL")
+
+        neon.update_account_custom_field("12345", "77", "2026-10-17")
+
+    errors = [r.getMessage() for r in _neon_records(caplog) if r.levelno == logging.ERROR]
+    assert errors == ["Error updating NeonCRM account 12345: ConnectionError (status no response)"]
+    assert "pk_URL" not in caplog.text
+
+
+def test_update_account_custom_field_timeout_logs_type(neon: NeonCRM, caplog: pytest.LogCaptureFixture) -> None:
+    """A timeout is handled like any other failed update: logged by class, None returned."""
+    caplog.set_level(logging.DEBUG, logger="common.neoncrm")
+    with patch("common.neoncrm.requests.patch") as mock_patch:
+        mock_patch.side_effect = requests.exceptions.ReadTimeout("pk_URL")
+
+        assert neon.update_account_custom_field("12345", "77", "2026-10-17") is None
+
+    errors = [r.getMessage() for r in _neon_records(caplog) if r.levelno == logging.ERROR]
+    assert errors == ["Error updating NeonCRM account 12345: ReadTimeout (status no response)"]
+    assert "pk_URL" not in caplog.text
+
+
+def test_account_calls_pass_timeout(neon: NeonCRM) -> None:
+    with patch("common.neoncrm.requests.post") as mock_post, patch("common.neoncrm.requests.patch") as mock_patch:
+        mock_post.return_value = Mock(**{"json.return_value": {"searchResults": []}})
+
+        neon.get_account_by_email(MEMBER_EMAIL)
+        neon.update_account_custom_field("12345", "77", "2026-10-17")
+
+    assert mock_post.call_args.kwargs["timeout"] == 8.0
+    assert mock_patch.call_args.kwargs["timeout"] == 8.0
+
+
+def test_search_events_keeps_ten_second_timeout(neon: NeonCRM) -> None:
+    with patch("common.neoncrm.requests.post") as mock_post:
+        mock_post.return_value = Mock(status_code=200, **{"json.return_value": {"searchResults": []}})
+
+        neon.search_events(SEARCH_FIELDS, OUTPUT_FIELDS)
+
+    assert mock_post.call_args.kwargs["timeout"] == 10.0

@@ -1,5 +1,6 @@
 import json
 import importlib
+import logging
 import pathlib
 from unittest.mock import patch
 
@@ -186,8 +187,9 @@ def test_lambda_handler_with_tasks(mock_time_sleep, mock_send_slack, mock_get_ta
 
 
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
-def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, capsys):
-    """Test the main exception handler for unexpected errors."""
+def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, capsys, caplog):
+    """An unexpected error is logged with its traceback as a log record, not printed."""
+    caplog.set_level(logging.INFO)
     # --- Mocks Setup ---
     # Force the first call to get_secret to raise a generic exception
     mock_get_secret.side_effect = Exception("Something went terribly wrong")
@@ -197,10 +199,35 @@ def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, cap
 
     # --- Assertions ---
     assert result['statusCode'] == 500
-    assert "Something went terribly wrong" in result['body']
+    assert result['body'] == json.dumps("Error: the PM reminder run failed.")
+    assert "Something went terribly wrong" not in result['body']
     captured = capsys.readouterr()
-    assert "--- FATAL ERROR in handler:" in captured.out
-    assert "Traceback (most recent call last):" in captured.err
+    assert "FATAL ERROR" not in captured.out + captured.err
+    assert "Traceback" not in captured.out + captured.err
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert [r.getMessage() for r in errors] == ["PM reminder run failed"]
+    assert errors[0].exc_info is not None
+
+
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.send_slack_message')
+def test_lambda_handler_logs_progress_at_info(mock_send_slack, mock_get_tasks, mock_get_secret, mock_get_json_param, reload_lambda_function, capsys, caplog):
+    """The run's progress lines are INFO log records; the handler prints nothing."""
+    mock_get_json_param.side_effect = ['ws-field-id', '12345']
+    mock_get_secret.side_effect = ['clickup-token', 'slack-token']
+    mock_get_tasks.return_value = []
+
+    with caplog.at_level(logging.INFO, logger=""):
+        result = lambda_function.lambda_handler({}, None)
+
+    assert result['statusCode'] == 200
+    info = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO and r.name == "root"]
+    assert "Found 0 overdue tasks." in info
+    assert "Found 0 upcoming tasks." in info
+    assert "Fetching ClickUp config from SSM Parameter '/test/config/clickup/field/workspace'..." in info
+    assert capsys.readouterr().out == ""
 
 
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')

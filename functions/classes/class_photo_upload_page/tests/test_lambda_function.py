@@ -7,12 +7,16 @@ from unittest.mock import patch
 
 import pytest
 
+from common import brand
 from functions.classes.class_photo_upload_api import lambda_function as api
 from functions.classes.class_photo_upload_api import photo_checks
 from functions.classes.class_photo_upload_page import lambda_function
+from tests import capture_page_pins, page_csp, page_style
 
 FIXTURES = Path(__file__).parent / "fixtures"
-PAGE_HTML = (Path(lambda_function.__file__).parent / "page.html").read_text(encoding="utf-8")
+# The served shell before the nonce and config go in: page.html with the shared brand tokens
+# and logo filled in, so the style and logo checks below run on what visitors get.
+PAGE_HTML = lambda_function._template()
 
 AUTH_DOMAIN = "asmbly-staff.auth.us-east-2.amazoncognito.com"
 CLIENT_ID = "fakeappclientid123"
@@ -128,6 +132,57 @@ def test_nonce_changes_per_request() -> None:
     assert first != second
 
 
+# The CSP strings this function sent on stage 07b9b79, before story #139 moved the CSP into
+# common/csp.py. They must stay byte-identical: same directives, same order, same bytes.
+PINNED_CSP = (
+    "default-src 'none'; script-src 'nonce-n0nce'; style-src 'nonce-n0nce'; img-src blob:; "
+    f"connect-src 'self' https://{AUTH_DOMAIN}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
+PINNED_ERROR_CSP = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+
+
+def test_csp_header_is_byte_for_byte_unchanged() -> None:
+    """Story #139 criterion 2, for the header built for a known nonce and the one actually served."""
+    assert lambda_function.response_headers(AUTH_DOMAIN, "n0nce")["Content-Security-Policy"] == PINNED_CSP
+
+    served = _call(_event())["headers"]["Content-Security-Policy"]
+    assert served.replace(page_csp.nonce(served), "n0nce") == PINNED_CSP
+
+
+def test_error_page_csp_is_unchanged() -> None:
+    """The 400 and 500 pages send the same headers as before, CSP included."""
+    expected = {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "Content-Security-Policy": PINNED_ERROR_CSP,
+    }
+    bad_request = _call(_event(path="/other"))
+    server_error = _call(_event(), {key: value for key, value in ENV.items() if key != "STAFF_AUTH_DOMAIN"})
+
+    assert bad_request["statusCode"] == 400
+    assert server_error["statusCode"] == 500
+    assert bad_request["headers"] == expected
+    assert server_error["headers"] == expected
+
+
+def test_two_requests_get_different_nonces_on_header_style_and_script() -> None:
+    """Story #139 criterion 4: a fresh nonce per request, the same on the header, the <style> and the <script>."""
+    first, second = _call(_event()), _call(_event())
+    nonces = []
+    for response in (first, second):
+        policy, body = response["headers"]["Content-Security-Policy"], response["body"]
+        assert page_csp.nonce_problems(policy, body) == []
+        nonce = page_csp.nonce(policy)
+        assert f'<style nonce="{nonce}">' in body
+        assert f'<script nonce="{nonce}">' in body
+        nonces.append(nonce)
+
+    assert nonces[0] != nonces[1]
+    assert nonces[0] not in second["body"]
+
+
 @pytest.mark.parametrize("missing", lambda_function.REQUIRED_ENV)
 def test_missing_env_returns_500_without_details(missing: str, caplog: pytest.LogCaptureFixture) -> None:
     env = {key: value for key, value in ENV.items() if key != missing}
@@ -149,6 +204,35 @@ def test_invalid_auth_domain_returns_500() -> None:
     assert response["statusCode"] == 500
     assert "evil" not in response["body"]
     assert "Content-Security-Policy" in response["headers"]
+
+
+@pytest.mark.parametrize("auth_domain", ["host.example\n", "host.example\r\n", "host.example\nx"])
+def test_auth_domain_with_a_line_break_returns_500(auth_domain: str, caplog: pytest.LogCaptureFixture) -> None:
+    """A line break in STAFF_AUTH_DOMAIN is refused as not a host name: the logged plain 500,
+    never an exception from building the CSP (which would be a 502 with a traceback)."""
+    with caplog.at_level(logging.ERROR):
+        response = _call(_event(), {**ENV, "STAFF_AUTH_DOMAIN": auth_domain})
+
+    assert response["statusCode"] == 500
+    assert response["headers"] == lambda_function.ERROR_HEADERS
+    assert "Something went wrong on our side. Try again later." in response["body"]
+    assert "host.example" not in response["body"]
+    assert "STAFF_AUTH_DOMAIN is not a host name" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "where, value",
+    [("domainName", "facilities.asmbly.org\n"), ("path", "/class-photo-upload\n")],
+    ids=["domain", "path"],
+)
+def test_domain_or_path_with_a_trailing_newline_returns_400(where: str, value: str) -> None:
+    event = _event()
+    event["requestContext"][where] = value
+
+    response = _call(event)
+
+    assert response["statusCode"] == 400
+    assert "page-config" not in response["body"]
 
 
 @pytest.mark.parametrize(
@@ -239,6 +323,16 @@ def test_page_uses_text_content_not_inner_html() -> None:
     assert "style=" not in PAGE_HTML
 
 
+def test_template_is_page_html_with_the_brand_filled() -> None:
+    """The served shell is page.html with the shared brand tokens and logo filled in, before the nonce and config."""
+    raw = lambda_function.PAGE_PATH.read_text(encoding="utf-8")
+    assert lambda_function._template() == brand.fill_brand(raw)
+    assert raw.count(brand.BRAND_TOKENS_MARKER) == 1
+    assert raw.count(brand.ASMBLY_LOGO_MARKER) == 1
+    assert lambda_function.NONCE_MARKER in lambda_function._template()
+    assert lambda_function._template().count(lambda_function.CONFIG_MARKER) == 1
+
+
 def test_page_has_one_inline_script_and_style() -> None:
     assert PAGE_HTML.count("<script nonce=") == 1
     assert PAGE_HTML.count("<style nonce=") == 1
@@ -260,14 +354,11 @@ def test_logs_hold_no_query_string(caplog: pytest.LogCaptureFixture) -> None:
 
 
 # ---- Brand and design tokens (plan photo-upload-branding, "Design rule") ----
+# The checks' logic is in tests/page_style.py (shared with the kiln drop-off viewer);
+# this file holds this page's data and its own tests.
 
 STYLE_BLOCK = re.compile(r'<style nonce="__CSP_NONCE__">(.*?)</style>', re.S)
 SCRIPT_BLOCKS = re.compile(r"<script\b.*?</script>", re.S)
-CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
-TOKEN = re.compile(r"(--[\w-]+)\s*:\s*([^;]+);")
-VAR_REFERENCE = re.compile(r"var\(\s*(--[\w-]+)\s*\)")
-HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}(?![\w-])")
-PURE_WHITE_OR_BLACK = re.compile(r"(?<![\w-])(white|black)(?![\w-])", re.I)
 # Outside :root a declaration's value may hold only var() references, 0, 100% and these
 # words: CSS keywords that are not colours, and the header's grid-area names. Anything
 # else (a named colour such as whitesmoke, a system colour such as Highlight, a length)
@@ -281,10 +372,6 @@ GRID_AREAS = {"logo", "title", "sign-out"}
 # Token values: a #rrggbb colour, a reference to another token, a length or unitless
 # number, or (for --font-* stacks only) a list of family names.
 TOKEN_VALUE = re.compile(r"#[0-9a-fA-F]{6}|var\(--[\w-]+\)|\d*\.?\d+(?:rem|px|fr)?")
-FONT_STACK = re.compile(r'(?:"[\w ]+"|[\w-]+)(?:, (?:"[\w ]+"|[\w-]+))*')
-# A --glyph-* token: one visible character and an empty alternative text, so screen
-# readers skip it (CSS Generated Content, "content: <string> / <string>").
-GLYPH_TOKEN = re.compile(r'"[^"\s]" / ""')
 # Tokens defined for later phases or used outside var(): see the phase 1 hand-off.
 RESERVED_TOKENS = {
     "--breakpoint-wide": "the @media literal repeats it (test_breakpoint_matches_token)",
@@ -303,7 +390,6 @@ SVG_ATTRIBUTES = {
     "preserveAspectRatio", "role", "viewBox", "width",
 }
 MEDIA_RULE = re.compile(r"@media\s*\(min-width:\s*([^)]+)\)")
-ROOT_FONT_PX = 16
 
 BRAND_COLOURS = {
     "--asmbly-purple": "#292D6A",
@@ -361,114 +447,9 @@ MESSAGE_KINDS = [
     (".warning", "--glyph-warning"),
     (".banner", "--glyph-banner"),
 ]
-MEDIA_BLOCK = re.compile(r"@media([^{]*)\{((?:[^{}]*\{[^{}]*\})*[^{}]*)\}")
-RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
-HOVER_MEDIA = "(hover: hover)"
-
-
-def _style() -> str:
-    """The text of the page's one <style> block."""
-    match = STYLE_BLOCK.search(PAGE_HTML)
-    assert match is not None
-    return match.group(1)
-
-
-def _css() -> str:
-    """The stylesheet without comments."""
-    return CSS_COMMENT.sub("", _style())
-
-
-def _root_block() -> str:
-    """The body of the :root rule, which must be the stylesheet's only :root and its first rule."""
-    css = _css().strip()
-    assert css.startswith(":root {"), "the token block must be the first rule"
-    assert css.count(":root") == 1, "there must be one token block"
-    return css[len(":root {") : css.index("}")]
-
-
-def _rules_after_root() -> str:
-    """Every rule after the token block."""
-    css = _css().strip()
-    return css[css.index("}") + 1 :]
-
-
-def _tokens() -> dict[str, str]:
-    """The custom properties the token block defines, by name."""
-    return {name: value.strip() for name, value in TOKEN.findall(_root_block())}
-
-
-def _colour(name: str) -> str:
-    """A token's colour as lower-case #rrggbb, following var() references."""
-    value = _tokens()[name]
-    reference = VAR_REFERENCE.fullmatch(value)
-    if reference:
-        return _colour(reference.group(1))
-    assert re.fullmatch(r"#[0-9a-fA-F]{6}", value), f"{name} is not a #rrggbb colour: {value}"
-    return value.lower()
-
-
-def _channels(colour: str) -> list[int]:
-    return [int(colour[index : index + 2], 16) for index in (1, 3, 5)]
-
-
-def _mix(a: str, b: str, p: float) -> str:
-    """p × a + (1 − p) × b per sRGB channel, rounded, as #rrggbb."""
-    mixed = [round(p * x + (1 - p) * y) for x, y in zip(_channels(a), _channels(b))]
-    return "#" + "".join(f"{channel:02x}" for channel in mixed)
-
-
-def _luminance(colour: str) -> float:
-    def linear(channel: int) -> float:
-        value = channel / 255
-        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
-
-    red, green, blue = (linear(channel) for channel in _channels(colour))
-    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
-
-
-def _contrast(foreground: str, background: str) -> float:
-    """The WCAG 2.1 contrast ratio of two #rrggbb colours."""
-    lighter, darker = sorted((_luminance(foreground), _luminance(background)), reverse=True)
-    return (lighter + 0.05) / (darker + 0.05)
-
-
-def _declaration_values(css: str) -> list[str]:
-    """The value of every declaration in every rule body (not selectors, not @media conditions)."""
-    values = []
-    for body in re.findall(r"\{([^{}]*)\}", css):
-        for declaration in body.split(";"):
-            if ":" in declaration:
-                values.append(declaration.split(":", 1)[1].strip())
-    return values
-
-
-def _rules() -> list[tuple[str, list[str], str]]:
-    """Every rule after the token block as (media condition or "", selectors, declarations)."""
-    css = _rules_after_root()
-    found = []
-    for media in MEDIA_BLOCK.finditer(css):
-        for selectors, body in RULE.findall(media.group(2)):
-            found.append((media.group(1).strip(), [s.strip() for s in selectors.split(",")], body))
-    for selectors, body in RULE.findall(MEDIA_BLOCK.sub("", css)):
-        found.append(("", [s.strip() for s in selectors.split(",")], body))
-    return found
-
-
-def _rule(selector: str, media: str = "") -> str:
-    """The declarations of every rule whose selector list holds exactly `selector`, joined."""
-    bodies = [" ".join(body.split()) for condition, selectors, body in _rules() if condition == media and selector in selectors]
-    assert bodies, f"no rule for {selector} {media}".strip()
-    return "; ".join(bodies)
-
-
-def _markup() -> str:
-    """The page without its <style> and <script> blocks."""
-    return SCRIPT_BLOCKS.sub("", STYLE_BLOCK.sub("", PAGE_HTML))
-
-
-def _rem_to_px(value: str) -> float:
-    assert value.endswith("rem"), value
-    return float(value.removesuffix("rem")) * ROOT_FONT_PX
+# The page's stylesheet and its markup without its <style> and <script> blocks.
+SHEET = page_style.Stylesheet.from_page(PAGE_HTML, STYLE_BLOCK)
+MARKUP = page_style.markup(PAGE_HTML, STYLE_BLOCK, SCRIPT_BLOCKS)
 
 
 def test_page_shows_official_logo_in_header() -> None:
@@ -480,16 +461,12 @@ def test_page_shows_official_logo_in_header() -> None:
     assert logo_at < PAGE_HTML.index('id="signing-in"')
     header = PAGE_HTML[PAGE_HTML.index('<header class="brand-band">') : PAGE_HTML.index("</header>")]
     assert logo in header and "<h1>Class photo upload</h1>" in header and 'id="sign-out"' in header
-    svg = PAGE_HTML[logo_at : PAGE_HTML.index("</svg>", logo_at)]
-    assert 'viewBox="0 0 443.61 122.16"' in svg
-    assert 'd="m122.16,77.71V0H0v44.44h20.85' in svg  # the official icon path
-    assert svg.count("<path ") == 17
-    assert "fill=" not in svg and "xmlns" not in svg
+    assert page_style.logo_problems(page_style.find_logo(PAGE_HTML)) == []
 
 
 def test_logo_meets_brand_minimum() -> None:
-    assert _rem_to_px(_tokens()["--logo-height"]) >= 50
-    logo_rule = re.search(r"\.logo \{([^}]*)\}", _css())
+    assert page_style.rem_to_px(SHEET.tokens()["--logo-height"]) >= 50
+    logo_rule = re.search(r"\.logo \{([^}]*)\}", SHEET.css)
     assert logo_rule is not None
     assert "height: var(--logo-height)" in logo_rule.group(1)
     assert "fill: currentColor" in logo_rule.group(1)
@@ -507,147 +484,130 @@ def test_pattern_is_decorative() -> None:
         assert forbidden not in svg
     assert not re.search(r"<(?:path|rect|circle|ellipse|polygon)\b(?![^>]*\bclass=)(?![^>]*\bfill=\"url)", svg)
     shape_classes = set(re.findall(r'<(?:path|rect|circle|ellipse|polygon) class="([\w-]+)"', svg))
-    fills = dict(re.findall(r"\.pattern \.([\w-]+) \{ fill: var\(--([\w-]+)\); \}", _css()))
+    fills = dict(re.findall(r"\.pattern \.([\w-]+) \{ fill: var\(--([\w-]+)\); \}", SHEET.css))
     assert shape_classes and shape_classes <= set(fills)
     # Each colour class is filled with the token of the same name (.pattern .lasers -> --lasers).
     assert all(fills[name] == name for name in shape_classes), fills
 
 
 def test_brand_tokens_match_the_guide() -> None:
-    tokens = _tokens()
-    for name, value in BRAND_COLOURS.items():
-        assert tokens[name].lower() == value.lower(), name
+    assert page_style.brand_colour_problems(SHEET, BRAND_COLOURS) == []
 
 
 @pytest.mark.parametrize("name,first,second,share", DERIVED_COLOURS)
 def test_derived_tokens_follow_the_formula(name: str, first: str, second: str, share: float) -> None:
-    assert _colour(name) == _mix(_colour(first), _colour(second), share)
+    assert page_style.derived_colour_problems(SHEET, [(name, first, second, share)]) == []
 
 
 def test_styles_use_tokens_only() -> None:
-    rules = _rules_after_root()
-
-    assert not HEX_COLOUR.search(rules)
-    assert not re.search(r"\b(rgba?|hsla?)\(", rules)
-    values = _declaration_values(rules)
-    assert len(values) > 100, "the declaration parser found too few declarations"
-    for value in values:
-        literal = VAR_REFERENCE.sub("", value)
-        for area_names in re.findall(r'"([^"]*)"', literal):
-            assert set(area_names.split()) <= GRID_AREAS, f"unexpected string in: {value}"
-        literal = re.sub(r'"[^"]*"', "", literal)
-        numbers = re.findall(r"\d*\.?\d+(?:[a-z%]+)?", literal)
-        assert all(number in ("0", "100%") for number in numbers), f"magic value in: {value}"
-        words = set(re.findall(r"[A-Za-z][\w-]*", literal))
-        assert words <= ALLOWED_VALUE_WORDS | GRID_AREAS, f"literal {sorted(words - ALLOWED_VALUE_WORDS - GRID_AREAS)} in: {value}"
-    for match in re.finditer(r"font(-family)?:\s*([^;}]+)", rules):
-        if match.group(1):
-            assert re.fullmatch(r"var\(--font-[\w-]+\)", match.group(2).strip()), match.group(0)
-        else:
-            assert match.group(2).strip() == "inherit", match.group(0)
-    markup = _markup()
+    problems = page_style.tokens_only_problems(
+        SHEET,
+        allowed_words=ALLOWED_VALUE_WORDS | GRID_AREAS,
+        string_words=GRID_AREAS,
+        font_shorthand={"inherit"},
+        min_declarations=101,
+    )
+    assert problems == []
     for forbidden in ('fill="#', 'stroke="#', "style=", "color="):
-        assert forbidden not in markup
-    for svg in re.findall(r"<svg\b.*?</svg>", markup, re.S):
-        assert "<style" not in svg
-        for name, value in re.findall(r'([\w:-]+)="([^"]*)"', svg):
-            assert name in SVG_ATTRIBUTES, f"SVG attribute {name}"
-            if name == "fill":
-                assert re.fullmatch(r"url\(#[\w-]+\)", value), f'fill="{value}"'
+        assert forbidden not in MARKUP
+    assert page_style.svg_attribute_problems(MARKUP, SVG_ATTRIBUTES, fill=re.compile(r"url\(#[\w-]+\)")) == []
 
 
 def test_token_block_holds_only_tokens() -> None:
-    assert _root_block().strip().endswith(";"), "every token ends with a semicolon"
-    for declaration in _root_block().split(";"):
-        if not declaration.strip():
-            continue
-        name, value = (part.strip() for part in declaration.split(":", 1))
-        if name == "color-scheme":
-            assert value == "light"
-            continue
-        assert name.startswith("--"), f"{name} in the token block"
-        if name.startswith("--font-") and not name.startswith("--font-size"):
-            assert FONT_STACK.fullmatch(value), f"{name}: {value}"
-        elif name.startswith("--glyph-") and not name.startswith(("--glyph-size", "--glyph-offset")):
-            assert GLYPH_TOKEN.fullmatch(value), f"{name}: {value}"
-        else:
-            assert TOKEN_VALUE.fullmatch(value), f"{name}: {value}"
+    problems = page_style.token_block_problems(SHEET, token_value=TOKEN_VALUE, glyph_exempt=("--glyph-size", "--glyph-offset"))
+    assert problems == []
 
 
 def test_every_token_is_used() -> None:
-    used = set(VAR_REFERENCE.findall(_css()))
-
-    unused = set(_tokens()) - used
-    assert unused == set(RESERVED_TOKENS), f"unused tokens: {sorted(unused - set(RESERVED_TOKENS))}"
+    assert page_style.unused_token_problems(SHEET, RESERVED_TOKENS) == []
 
 
 def test_breakpoint_matches_token() -> None:
-    conditions = MEDIA_RULE.findall(_css())
+    conditions = MEDIA_RULE.findall(SHEET.css)
 
-    assert conditions == [_tokens()["--breakpoint-wide"]]
+    assert conditions == [SHEET.tokens()["--breakpoint-wide"]]
     # Any other media query (prefers-reduced-motion, say) carries no number of its own.
-    for query in re.findall(r"@media([^{]*)\{", _css()):
+    for query in re.findall(r"@media([^{]*)\{", SHEET.css):
         assert MEDIA_RULE.fullmatch("@media" + query.rstrip()) or not re.search(r"\d", query), query
 
 
 def test_tokens_are_defined_once() -> None:
-    definitions = TOKEN.findall(_root_block())
-    names = [name for name, _ in definitions]
-    assert len(names) == len(set(names))
-
-    literals = [value.strip() for _, value in definitions if not VAR_REFERENCE.fullmatch(value.strip())]
-    colours = [value.lower() for value in literals if HEX_COLOUR.fullmatch(value)]
-    assert len(colours) == len(set(colours))
-    stacks = [value for value in literals if "," in value]
-    assert len(stacks) == len(set(stacks))
-    # Every other literal (a length, a number) is written once, apart from SHARED_LITERALS.
-    by_value: dict[str, set[str]] = {}
-    for name, value in definitions:
-        if not VAR_REFERENCE.fullmatch(value.strip()):
-            by_value.setdefault(value.strip(), set()).add(name)
-    shared = {value: names for value, names in by_value.items() if len(names) > 1}
-    assert shared == SHARED_LITERALS, shared
+    # Names, colours and font stacks are written once; any other literal (a length, a
+    # number) is written once too, apart from SHARED_LITERALS.
+    assert page_style.defined_once_problems(SHEET, SHARED_LITERALS) == []
+    definitions = page_style.TOKEN.findall(SHEET.root_block())
     steps = [value.strip() for name, value in definitions if re.fullmatch(r"--space-\d+", name)]
     assert len(steps) == len(set(steps)) and len(steps) >= 6
 
 
 def test_every_token_used_is_defined() -> None:
-    used = set(VAR_REFERENCE.findall(_css()))
+    assert page_style.undefined_token_problems(SHEET) == []
 
-    assert used
-    assert used <= set(_tokens())
+
+# The pins: the tokens and rules the page serves, as on stage 6fd11c9 before story #138. The
+# served <style> carries the request's nonce.
+SERVED_STYLE_BLOCK = re.compile(r'<style nonce="[A-Za-z0-9_-]+">(.*?)</style>', re.S)
+
+
+def _served_sheet() -> page_style.Stylesheet:
+    response = _call(_event())
+    assert response["statusCode"] == 200
+    return page_style.Stylesheet.from_page(response["body"], SERVED_STYLE_BLOCK)
+
+
+def test_served_tokens_are_the_stage_tokens() -> None:
+    """Story #138 criterion 3: the served page has stage 6fd11c9's :root tokens, by name and value.
+
+    After a deliberate change to the page's look, regenerate the pins with
+    `.venv/bin/python -m tests.capture_page_pins` and commit them with the change.
+    """
+    sheet = _served_sheet()
+
+    assert sheet.tokens() == json.loads((FIXTURES / "pinned_tokens.json").read_text(encoding="utf-8"))
+    assert "color-scheme: light;" in sheet.root_block()
+
+
+def test_served_rules_are_the_stage_rules() -> None:
+    """Story #138 criterion 3: the served page has stage 6fd11c9's CSS rules after :root.
+
+    After a deliberate change to the page's look, regenerate the pins with
+    `.venv/bin/python -m tests.capture_page_pins` and commit them with the change.
+    """
+    pinned = (FIXTURES / "pinned_rules.css").read_text(encoding="utf-8")
+
+    assert capture_page_pins.pinned_rules_text(_served_sheet()) == pinned
 
 
 def test_page_has_no_pure_white_or_black() -> None:
     for colour in ("#fff", "#000"):
         assert colour not in PAGE_HTML.lower()
-    assert not PURE_WHITE_OR_BLACK.search(_css())
-    ceramics = re.findall(r"[^{}]+\{[^}]*var\(--ceramics\)[^}]*\}", _rules_after_root())
+    assert not page_style.PURE_WHITE_OR_BLACK.search(SHEET.css)
+    ceramics = re.findall(r"[^{}]+\{[^}]*var\(--ceramics\)[^}]*\}", SHEET.rules_after_root())
     assert ceramics and all(rule.strip().startswith(".pattern ") for rule in ceramics)
-    assert [name for name, value in _tokens().items() if value == "var(--ceramics)"] == []
+    assert [name for name, value in SHEET.tokens().items() if value == "var(--ceramics)"] == []
 
 
 @pytest.mark.parametrize("foreground,background,minimum", CONTRAST_PAIRS)
 def test_brand_colour_pairs_meet_contrast(foreground: str, background: str, minimum: float) -> None:
-    assert _contrast(_colour(foreground), _colour(background)) >= minimum
+    assert page_style.contrast_problems(SHEET, [(foreground, background, minimum)]) == []
 
 
 def test_page_loads_no_fonts_or_outside_assets() -> None:
-    style = _style()
+    style = SHEET.style
     assert "@font-face" not in style and "url(" not in style
     assert "<link" not in PAGE_HTML
     assert re.findall(r"<img\b[^>]*>", PAGE_HTML) == ['<img id="preview" class="preview" alt="Preview of the chosen photo" hidden>']
-    markup = _markup()
+    markup = MARKUP
     assert "http://" not in markup and "https://" not in markup
 
 
 def test_headings_are_bold_and_larger_than_body() -> None:
-    tokens = _tokens()
-    body = _rem_to_px(tokens["--font-size-body"])
-    assert _rem_to_px(tokens["--font-size-h2"]) >= 1.25 * body
-    assert _rem_to_px(tokens["--font-size-h1"]) >= 1.25 * body
+    tokens = SHEET.tokens()
+    body = page_style.rem_to_px(tokens["--font-size-body"])
+    assert page_style.rem_to_px(tokens["--font-size-h2"]) >= 1.25 * body
+    assert page_style.rem_to_px(tokens["--font-size-h1"]) >= 1.25 * body
     assert int(tokens["--weight-heading"]) >= 700
-    heading_rule = re.search(r"h1, h2 \{([^}]*)\}", _css())
+    heading_rule = re.search(r"h1, h2 \{([^}]*)\}", SHEET.css)
     assert heading_rule is not None
     assert "font-weight: var(--weight-heading)" in heading_rule.group(1)
     assert "font-family: var(--font-heading)" in heading_rule.group(1)
@@ -661,11 +621,11 @@ def test_served_page_is_small() -> None:
 
 
 def test_light_tints_carry_dark_text() -> None:
-    tints = {_colour(name) for name in _tokens() if re.search(r"-(20|40)$", name)}
+    tints = {SHEET.colour(name) for name in SHEET.tokens() if re.search(r"-(20|40)$", name)}
     checked = 0
-    for media, selectors, body in _rules():
+    for media, selectors, body in SHEET.rules():
         for token in re.findall(r"background(?:-color)?:\s*var\((--[\w-]+)\)", body):
-            if _colour(token) in tints:
+            if SHEET.colour(token) in tints:
                 checked += 1
                 assert re.search(r"(?<![\w-])color:\s*var\(--text\)", body), f"{selectors} {media}"
                 assert "--on-dark" not in body, f"{selectors} {media}"
@@ -673,79 +633,79 @@ def test_light_tints_carry_dark_text() -> None:
 
 
 def test_message_kinds_differ_beyond_colour() -> None:
-    tokens = _tokens()
+    tokens = SHEET.tokens()
     glyphs = []
     for selector, glyph in MESSAGE_KINDS:
-        assert re.search(r"border-left: var\(--border-width-accent\) solid var\(--[\w-]+\)", _rule(selector)), selector
-        assert f"content: var({glyph})" in _rule(selector + "::before"), selector
-        assert GLYPH_TOKEN.fullmatch(tokens[glyph]), glyph
+        assert re.search(r"border-left: var\(--border-width-accent\) solid var\(--[\w-]+\)", SHEET.rule(selector)), selector
+        assert f"content: var({glyph})" in SHEET.rule(selector + "::before"), selector
+        assert page_style.GLYPH_TOKEN.fullmatch(tokens[glyph]), glyph
         glyphs.append(tokens[glyph])
     assert len(set(glyphs)) == len(glyphs)
     # Plain status text ("Signing in…", "Loading classes…", "Sending the photo…") has no edge or glyph.
-    assert "border" not in _rule(".message") and "content" not in _rule(".message")
+    assert "border" not in SHEET.rule(".message") and "content" not in SHEET.rule(".message")
     # Error and warning text is heavier than success and banner text.
     for selector in (".message.error", ".warning"):
-        assert "font-weight: var(--weight-strong)" in _rule(selector)
+        assert "font-weight: var(--weight-strong)" in SHEET.rule(selector)
     for selector in (".message.ok", ".banner"):
-        assert "font-weight" not in _rule(selector)
+        assert "font-weight" not in SHEET.rule(selector)
 
 
 def test_focus_is_visible() -> None:
     ring = "outline: var(--focus-width) solid var(--focus)"
     for selector in ("button:focus-visible", "select:focus-visible", "a:focus-visible", ".drop-zone input:focus-visible + label"):
-        assert ring in _rule(selector), selector
-    assert "outline-color: var(--focus-on-dark)" in _rule(".brand-band button:focus-visible")
-    assert float(_tokens()["--focus-width"].removesuffix("px")) >= 2
-    assert not re.search(r"outline:\s*(none|0)\b", _css())
+        assert ring in SHEET.rule(selector), selector
+    assert "outline-color: var(--focus-on-dark)" in SHEET.rule(".brand-band button:focus-visible")
+    assert float(SHEET.tokens()["--focus-width"].removesuffix("px")) >= 2
+    assert not re.search(r"outline:\s*(none|0)\b", SHEET.css)
 
 
 def test_tap_targets_are_44px() -> None:
     for selector in ("button", ".button", "select"):
-        assert "min-height: var(--tap-target)" in _rule(selector), selector
-    assert _rem_to_px(_tokens()["--tap-target"]) >= 44
+        assert "min-height: var(--tap-target)" in SHEET.rule(selector), selector
+    assert page_style.rem_to_px(SHEET.tokens()["--tap-target"]) >= 44
     # font: inherit resets font-weight, so the weight must come after it.
-    buttons = _rule("button")
+    buttons = SHEET.rule("button")
     assert buttons.index("font: inherit") < buttons.index("font-weight: var(--weight-strong)")
 
 
 def test_controls_have_hover() -> None:
-    assert "background: var(--hover-bg)" in _rule("button:hover:not(:disabled)", HOVER_MEDIA)
-    assert "background: var(--hover-bg)" in _rule(".button:hover", HOVER_MEDIA)
-    assert "background: var(--on-dark)" in _rule(".brand-band button.secondary:hover", HOVER_MEDIA)
-    assert "color: var(--brand)" in _rule(".brand-band button.secondary:hover", HOVER_MEDIA)
+    assert "background: var(--hover-bg)" in SHEET.rule("button:hover:not(:disabled)", page_style.HOVER_MEDIA)
+    assert "background: var(--hover-bg)" in SHEET.rule(".button:hover", page_style.HOVER_MEDIA)
+    assert "background: var(--on-dark)" in SHEET.rule(".brand-band button.secondary:hover", page_style.HOVER_MEDIA)
+    assert "color: var(--brand)" in SHEET.rule(".brand-band button.secondary:hover", page_style.HOVER_MEDIA)
     for selector in ("select:hover:not(:disabled)", ".drop-zone:hover"):
-        assert "border-color: var(--brand)" in _rule(selector, HOVER_MEDIA), selector
+        assert "border-color: var(--brand)" in SHEET.rule(selector, page_style.HOVER_MEDIA), selector
     # No hover look outside (hover: hover), where a tap would leave it on.
-    assert not [selectors for media, selectors, _ in _rules() if media != HOVER_MEDIA and any(":hover" in s for s in selectors)]
+    assert not [selectors for media, selectors, _ in SHEET.rules() if media != page_style.HOVER_MEDIA and any(":hover" in s for s in selectors)]
 
 
 def test_disabled_controls_differ_beyond_colour() -> None:
     for selector in ("button:disabled", "select:disabled"):
-        rule = _rule(selector)
+        rule = SHEET.rule(selector)
         assert "border-style: dashed" in rule and "cursor: not-allowed" in rule, selector
         assert "color: var(--text)" in rule
-    assert "opacity" not in _css()
-    assert "background: var(--drag-bg)" in _rule(".drop-zone.dragging")
-    assert "border-style: solid" in _rule(".drop-zone.dragging")
+    assert "opacity" not in SHEET.css
+    assert "background: var(--drag-bg)" in SHEET.rule(".drop-zone.dragging")
+    assert "border-style: solid" in SHEET.rule(".drop-zone.dragging")
 
 
 def test_result_text_wraps() -> None:
     for selector in (".result p", ".result li", ".result pre"):
-        assert "overflow-wrap: anywhere" in _rule(selector), selector
-    assert "white-space: pre-wrap" in _rule(".result pre")
-    assert "text-decoration: underline" in _rule(".result a")
+        assert "overflow-wrap: anywhere" in SHEET.rule(selector), selector
+    assert "white-space: pre-wrap" in SHEET.rule(".result pre")
+    assert "text-decoration: underline" in SHEET.rule(".result a")
     # The opened/updated link is the only child of a grid message: it must not stretch.
-    assert "justify-self: start" in _rule(".message > a")
-    assert "border: var(--border-width) solid var(--line)" in _rule(".result")
+    assert "justify-self: start" in SHEET.rule(".message > a")
+    assert "border: var(--border-width) solid var(--line)" in SHEET.rule(".result")
 
 
 def test_no_hidden_horizontal_overflow() -> None:
     for selector in ("html", "body", "main"):
-        for media, selectors, body in _rules():
+        for media, selectors, body in SHEET.rules():
             if selector in selectors:
                 assert not re.search(r"overflow(-x)?:\s*hidden", body), selector
     assert "tabindex" not in PAGE_HTML
-    assert "max-width: 100%" in _rule("select") and "max-width: 100%" in _rule(".preview")
+    assert "max-width: 100%" in SHEET.rule("select") and "max-width: 100%" in SHEET.rule(".preview")
 
 
 # ---- Loading, progress and retry (plan class-photo-loading, phase 3) ----
@@ -772,7 +732,7 @@ LOADING_MESSAGES = [
 
 def _tag(element_id: str) -> str:
     """The opening tag of the element with this id."""
-    match = re.search(rf'<[a-z]+\b[^>]*\bid="{element_id}"[^>]*>', _markup())
+    match = re.search(rf'<[a-z]+\b[^>]*\bid="{element_id}"[^>]*>', MARKUP)
     assert match is not None, element_id
     return match.group(0)
 
@@ -787,7 +747,7 @@ def test_class_field_has_busy_indicator_and_retry() -> None:
     progress = _tag("class-progress")
     assert progress.startswith("<progress ") and 'aria-label="Loading classes"' in progress and " hidden" in progress
     assert "value=" not in progress  # no value: the browser's indeterminate bar
-    assert '<button type="button" id="class-retry" hidden>Try again</button>' in _markup()
+    assert '<button type="button" id="class-retry" hidden>Try again</button>' in MARKUP
     freshness = _tag("class-freshness")
     assert "role=" not in freshness and "aria-live" not in freshness
     assert 'aria-describedby="class-status class-freshness"' in _tag("class-select")
@@ -808,33 +768,33 @@ def test_loading_and_progress_messages_are_in_the_page(message: str) -> None:
 
 
 def test_class_field_has_refresh_button() -> None:
-    assert '<button type="button" id="class-refresh" hidden>Refresh class list</button>' in _markup()
+    assert '<button type="button" id="class-refresh" hidden>Refresh class list</button>' in MARKUP
     assert "aria-label" not in _tag("class-refresh")  # its name is its text
     assert '"/classes?refresh=1"' in _script()
 
 
 def test_busy_indicator_uses_tokens() -> None:
-    busy = _rule(".busy")
+    busy = SHEET.rule(".busy")
     assert "height: var(--progress-height)" in busy
     assert "accent-color: var(--progress-fill)" in busy
     assert "width: 100%" in busy
     # .busy's display: block can't show a hidden bar: the global rule wins.
-    assert "display: none !important" in _rule("[hidden]")
-    assert "@keyframes" not in _css() and "animation" not in _css()
+    assert "display: none !important" in SHEET.rule("[hidden]")
+    assert "@keyframes" not in SHEET.css and "animation" not in SHEET.css
 
 
 def test_disabled_photo_button_differs_beyond_colour() -> None:
-    rule = _rule(".drop-zone input:disabled + label")
+    rule = SHEET.rule(".drop-zone input:disabled + label")
     assert "border-style: dashed" in rule and "cursor: not-allowed" in rule
     assert "background: var(--disabled-bg)" in rule and "color: var(--text)" in rule
 
 
 def test_busy_buttons_keep_the_disabled_look() -> None:
     # Busy buttons use aria-disabled so they keep focus; they look like disabled ones.
-    assert _rule('button[aria-disabled="true"]') == _rule("button:disabled")
-    hover = _rule('button[aria-disabled="true"]:hover', HOVER_MEDIA)
+    assert SHEET.rule('button[aria-disabled="true"]') == SHEET.rule("button:disabled")
+    hover = SHEET.rule('button[aria-disabled="true"]:hover', page_style.HOVER_MEDIA)
     assert "background: var(--disabled-bg)" in hover and "border-color: var(--control-border)" in hover
-    assert "margin-top: var(--space-3)" in _rule("#class-retry") and "margin-top: var(--space-3)" in _rule("#class-refresh")
+    assert "margin-top: var(--space-3)" in SHEET.rule("#class-retry") and "margin-top: var(--space-3)" in SHEET.rule("#class-refresh")
 
 
 def test_page_sends_submission_to_its_own_origin() -> None:

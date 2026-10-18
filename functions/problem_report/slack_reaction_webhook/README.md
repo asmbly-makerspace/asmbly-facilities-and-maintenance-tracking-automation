@@ -130,3 +130,7 @@ The deployment process is managed and specified in the Deployment Instructions.
 ## Usage
 
 The URL is used in the Maintenance Slack App in Event Subscriptions.
+
+### If something fails
+
+If the function raises an error while it handles a reaction, it answers `500` with the fixed body `"Internal server error."`, never the error's details. The error and its traceback are logged with the Slack event ID in the `/asmbly/lambda/ProblemReport-ReactionFunction-<stage>` log group. The received-event log line holds only the event type, reaction, channel, message timestamp and event ID, because the full Slack event carries Slack's verification token. The Discourse reply is logged by post ID only.

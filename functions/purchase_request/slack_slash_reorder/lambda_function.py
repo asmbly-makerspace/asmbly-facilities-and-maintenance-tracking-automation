@@ -6,6 +6,7 @@ import urllib.parse
 from datetime import datetime
 import boto3
 import logging
+from typing import Any
 
 from common.aws import get_secret, get_json_parameter
 from common.clickup import get_all_clickup_tasks, get_task, create_task
@@ -13,6 +14,20 @@ from common.slack import SlackState, get_slack_user_info
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+# What the user sees when the async work fails. The details go to the log only.
+LOAD_FAILURE_TEXT = "Couldn't load the items to reorder. Please try `/reorder` again in a few minutes."
+SUBMISSION_FAILURE_TEXT = "Your purchase request was not created. Please try again in a few minutes."
+
+
+def _error_view(text: str) -> dict[str, Any]:
+    """Builds the Slack modal shown when loading or submitting fails."""
+    return {
+        "type": "modal",
+        "title": {"type": "plain_text", "text": "Error"},
+        "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}}],
+        "close": {"type": "plain_text", "text": "Close"},
+    }
 
 # Boto3 clients, initialized lazily to make testing easier
 dynamodb_resource = None
@@ -168,14 +183,19 @@ def handle_block_actions(payload, http_session, slack_bot_token):
     slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
     api_response = http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": updated_view})
 
-    if not api_response.ok or not api_response.json().get("ok"):
-        logger.error("Error updating Slack view: %s", api_response.text)
+    try:
+        response_body = api_response.json()
+    except ValueError:
+        response_body = None
+    ok = response_body.get("ok") if isinstance(response_body, dict) else None
+    if not api_response.ok or not ok:
+        logger.error("Error updating Slack view %s: HTTP %s, ok=%s", view_id, api_response.status_code, ok)
     else:
         logger.info("Successfully updated view via API")
 
     return {"statusCode": 200, "body": ""}
 
-def handle_process_submission(payload):
+def handle_process_submission(payload: dict[str, Any]) -> None:
     """
     (ASYNC) Handles the slow work of a modal submission after it has been acknowledged.
     """
@@ -233,18 +253,30 @@ def handle_process_submission(payload):
 
         create_task(clickup_api_token, config.purchase_requests_config['list_id'], new_task_payload)
 
-        success_view = {"type": "modal", "title": {"type": "plain_text", "text": "Success!"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Your purchase request was created successfully."}}], "close": {"type": "plain_text", "text": "Close"}}
-        slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
-        http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": success_view})
-
     except Exception as e:
         logger.error("Failed to process submission for view_id %s: %s", view_id, e, exc_info=True)
         if slack_bot_token:
-            error_view = {"type": "modal", "title": {"type": "plain_text", "text": "Error"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": f"An error occurred: {e}"}}], "close": {"type": "plain_text", "text": "Close"}}
             slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
-            http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": error_view})
+            http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": _error_view(SUBMISSION_FAILURE_TEXT)})
+        return
 
-def handle_load_data_and_update_view(view_id):
+    # The task exists from here on: a failure to show the success view must not tell the
+    # user it wasn't created, or they would submit it again.
+    success_view = {"type": "modal", "title": {"type": "plain_text", "text": "Success!"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Your purchase request was created successfully."}}], "close": {"type": "plain_text", "text": "Close"}}
+    slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
+    try:
+        api_response = http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": success_view})
+        try:
+            response_body = api_response.json()
+        except ValueError:
+            response_body = None
+        ok = response_body.get("ok") if isinstance(response_body, dict) else None
+        if not api_response.ok or not ok:
+            logger.error("Failed to post success view for view_id %s: HTTP %s, ok=%s", view_id, api_response.status_code, ok)
+    except Exception:
+        logger.error("Failed to post success view for view_id %s", view_id, exc_info=True)
+
+def handle_load_data_and_update_view(view_id: str) -> None:
     """(ASYNC) Fetches data from ClickUp, stores it in DynamoDB, and updates the Slack modal."""
     logger.info("Starting to load data for view_id: %s", view_id)
     http_session = requests.Session()
@@ -276,9 +308,8 @@ def handle_load_data_and_update_view(view_id):
     except Exception as e:
         logger.error("Failed to load data and update view %s: %s", view_id, e, exc_info=True)
         if slack_bot_token:
-            error_view = {"type": "modal", "title": {"type": "plain_text", "text": "Error"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": f"An error occurred: {e}"}}], "close": {"type": "plain_text", "text": "Close"}}
             slack_headers = {"Authorization": f"Bearer {slack_bot_token}", "Content-Type": "application/json; charset=utf-8"}
-            http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": error_view})
+            http_session.post("https://slack.com/api/views.update", headers=slack_headers, json={"view_id": view_id, "view": _error_view(LOAD_FAILURE_TEXT)})
 
 def handle_initial_open(trigger_id, slack_headers, context):
     """(SYNC) Handles the initial slash command to open the modal."""

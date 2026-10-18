@@ -42,10 +42,14 @@ any other `/class-photo-upload` route loses its authorizer.
 ## What It Serves
 
 `page.html` (one inline `<style>`, one inline `<script>`, no libraries), read once per
-container, with two markers filled in per request:
+container. When it is read, the shared brand tokens and the Asmbly logo from the common
+layer's [`common/brand.py`](../../../layers/common/python/common/brand.py) go in at its
+`/* __BRAND_TOKENS__ */` and `<!-- __ASMBLY_LOGO__ -->` markers (see
+[Brand and Design Tokens](#brand-and-design-tokens)). Two more markers are filled in per
+request:
 
-- `__CSP_NONCE__`: a fresh `secrets.token_urlsafe(16)` nonce on the `<style>` and the
-  `<script>`.
+- `__CSP_NONCE__`: a fresh `csp.new_nonce()` (`secrets.token_urlsafe(16)`) on the
+  `<style>` and the `<script>`.
 - `__PAGE_CONFIG__`: `{"authDomain", "clientId", "pageUrl", "dryRun"}` as JSON inside
   `<script type="application/json" id="page-config">`, with `<`, `>` and `&` written as
   `\u003c`, `\u003e` and `\u0026` so no value can close the element.
@@ -55,7 +59,11 @@ on the custom domain, `/<stage>/class-photo-upload` on the API's own host). It i
 sign-in return address and the base of the API calls, so it must be a callback URL on
 the app client. A host or path that doesn't look like that answers 400; a missing or
 invalid `STAFF_AUTH_DOMAIN` or `CLASS_PHOTO_APP_CLIENT_ID` answers 500. Both are plain
-pages with no details.
+pages with no details. The host, the path and `STAFF_AUTH_DOMAIN` are each matched as a
+whole value (`fullmatch`), so one that ends in a line break is refused too: a Host or
+path with a trailing newline now answers 400 (before, `$` let it through), and a
+`STAFF_AUTH_DOMAIN` with one answers 500.
+`test_domain_or_path_with_a_trailing_newline_returns_400` covers the 400.
 
 Headers:
 
@@ -72,6 +80,12 @@ Content-Security-Policy: default-src 'none'; script-src 'nonce-<n>'; style-src '
 `img-src blob:` is for the photo preview. The page uses no `style` attributes, which the
 policy would block.
 
+The policy is built by `csp.nonce_policy` in the common layer's
+[`common/csp.py`](../../../layers/common/python/common/csp.py), which the kiln drop-off
+viewer also uses, with `img-src` and `connect-src` as the page's additions. The 400 and
+500 pages send the same headers with the policy from `csp.strict_policy()`:
+`default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`.
+
 The branding (plan `photo-upload-branding`, epic #111) didn't change this policy, because
 the page fetches nothing for it. Everything is inline:
 
@@ -79,7 +93,9 @@ the page fetches nothing for it. Everything is inline:
   SVG from `asmbly-makerspace/asmbly-classes`, file `app/src/lib/components/logo.svelte`,
   commit `9a534a6c538df1e602fead183e30d93d97c247b4`. The path data is unchanged. The
   Svelte attributes and `xmlns` were dropped, and the paths take their colour from CSS
-  (`fill: currentColor`). It is about 5 KB.
+  (`fill: currentColor`). It is about 5 KB. It lives in `common/brand.py`
+  (`ASMBLY_LOGO`), shared with the kiln drop-off viewer, and `page.html` holds only its
+  marker.
 - **The pattern strip.** It is redrawn from the brand guide's strip as an inline SVG,
   because no official vector of the strip was found (plan README, Decision 8). It is
   one 640×40 motif in an SVG `<pattern>` that fills a single `<rect>`, and it is hidden
@@ -251,15 +267,31 @@ here.
 
 ## Brand and Design Tokens
 
-The page follows the Asmbly brand guide (the screenshots in issue #111). Its stylesheet
-starts with one `:root { … }` block of design tokens. That block is the only place a
-colour, font stack, length or other number is written. Every other rule uses the tokens
-through `var(--…)`. The only literals allowed outside the block are `0`, `100%`, `auto`,
-`none`, `inherit`, `currentColor`, `transparent` and keywords that aren't colours.
+The page follows the Asmbly brand guide (the screenshots in issue #111). Its served
+stylesheet starts with one `:root { … }` block of design tokens, which holds the page's
+own tokens from `page.html` and the shared ones from `common/brand.py` (below). That block
+is the only place a colour, font stack, length or other number is written. Every other
+rule uses the tokens through `var(--…)`. The only literals allowed outside the block are
+`0`, `100%`, `auto`, `none`, `inherit`, `currentColor`, `transparent` and keywords that
+aren't colours.
 
 There is one exception: the breakpoint in `@media (min-width: 40rem)`, because CSS
 can't use `var()` there. It must equal the `--breakpoint-wide` token, and a test checks
 that it does.
+
+The tokens are defined once: the shared ones in
+[`common/brand.py`](../../../layers/common/python/common/brand.py) (`BRAND_TOKENS`, also
+served by the kiln drop-off viewer), the page's own in the `:root` block of `page.html`.
+The function fills the shared ones in at the `/* __BRAND_TOKENS__ */` marker when it
+reads `page.html`, so the served `:root` holds both. The shared ones are Asmbly Purple,
+Asmbly White, Midnight Black, Ceramics and Lasers, the two lasers tokens below, the font
+stacks, type sizes, line heights and weights, the spacing scale, `--gutter`, `--radius`,
+`--logo-height`, `--border-width`, `--border-width-accent`, `--focus-width`,
+`--focus-offset` and `--tap-target`. A change to one of them in `brand.py` changes both
+pages, and both pages' pins then need regenerating (see [Testing](#testing)). The page's
+own are everything else here: the area colours, the purple tints, the semantic and glyph
+tokens, and its own sizes (`--content-max-width` 47.5rem, the control, progress and
+glyph sizes).
 
 - **Defined once.** A token that means the same as another refers to it
   (`--focus-on-dark: var(--woodwork)`). No colour literal, font stack or spacing step is
@@ -269,18 +301,18 @@ that it does.
   token. No element has a `style` attribute.
 - **Brand colours**, exactly as the guide gives them:
 
-  | Token | Value |
-  | --- | --- |
-  | `--asmbly-purple` | `#292D6A` |
-  | `--asmbly-white` | `#F2F4EF` |
-  | `--midnight-black` | `#171d1a` |
-  | `--woodwork` | `#F3B61B` |
-  | `--metalwork` | `#578BC9` |
-  | `--lasers` | `#D33E43` |
-  | `--textiles` | `#79CCC4` |
-  | `--electronics` | `#00916E` |
-  | `--printing-3d` | `#EE6E23` |
-  | `--ceramics` | `#b34a9a` |
+  | Token | Value | Defined in |
+  | --- | --- | --- |
+  | `--asmbly-purple` | `#292D6A` | `brand.py` (shared) |
+  | `--asmbly-white` | `#F2F4EF` | `brand.py` (shared) |
+  | `--midnight-black` | `#171d1a` | `brand.py` (shared) |
+  | `--woodwork` | `#F3B61B` | `page.html` |
+  | `--metalwork` | `#578BC9` | `page.html` |
+  | `--lasers` | `#D33E43` | `brand.py` (shared) |
+  | `--textiles` | `#79CCC4` | `page.html` |
+  | `--electronics` | `#00916E` | `page.html` |
+  | `--printing-3d` | `#EE6E23` | `page.html` |
+  | `--ceramics` | `#b34a9a` | `brand.py` (shared) |
 
   The sub-brand colours are used only in the pattern strip, in the focus ring on the
   purple band (woodwork), as shades in the error and success text and edges, and as
@@ -294,9 +326,9 @@ that it does.
   | Token | Value | Formula |
   | --- | --- | --- |
   | `--asmbly-purple-80`, `-60`, `-40`, `-20` | `#515585`, `#797d9f`, `#a2a4ba`, `#caccd4` | tint 0.8, 0.6, 0.4, 0.2 |
-  | `--lasers-shade` | `#ad373b` | shade of lasers (error text, 5.6:1 on Asmbly White) |
+  | `--lasers-shade` | `#ad373b` | shade of lasers (error text, 5.6:1 on Asmbly White); shared, in `brand.py` |
   | `--electronics-shade` | `#057a5d` | shade of electronics (success text, 4.8:1) |
-  | `--lasers-20` | `#ecd0cd` | tint 0.2 of lasers (the warning's background) |
+  | `--lasers-20` | `#ecd0cd` | tint 0.2 of lasers (the warning's background); shared, in `brand.py` |
   | `--woodwork-20` | `#f2e8c5` | tint 0.2 of woodwork (the stage banner's background) |
 
   Tints lighter than 60% only ever carry Midnight Black text (the guide's rule), and a
@@ -332,8 +364,9 @@ These tests enforce the rule:
   `fill` only as `url(#…)`.
 - `test_token_block_holds_only_tokens` checks that the one `:root` block holds only
   tokens, and that each token is a `#rrggbb` colour, a `var()`, a length or number,
-  (for `--font-*`) a font stack, or (for the four `--glyph-*` glyphs) one character with
-  an empty alternative text.
+  (for `--font-*`) a font stack (two or more families, the last a generic family such as
+  `sans-serif`), or (for the four `--glyph-*` glyphs) one character with an empty
+  alternative text.
 - `test_tokens_are_defined_once` catches a duplicate token, colour, font stack or other
   literal. Two tokens of different kinds may share a number only when the pair is listed
   in `SHARED_LITERALS`, with the reason (for example, `--font-size-body` and `--space-4`
@@ -344,6 +377,14 @@ These tests enforce the rule:
 - `test_brand_tokens_match_the_guide` and `test_derived_tokens_follow_the_formula`
   check the colour values, and `test_brand_colour_pairs_meet_contrast` checks the WCAG
   2.1 contrast of the colour pairs the page uses.
+
+The logic of these checks, and of the logo check in
+`test_page_shows_official_logo_in_header`, is in `tests/page_style.py` at the
+repository root, shared with the kiln drop-off viewer. This page's test file holds its
+data (`STYLE_BLOCK`, `SCRIPT_BLOCKS`, `BRAND_COLOURS`, `DERIVED_COLOURS`,
+`CONTRAST_PAIRS`, `ALLOWED_VALUE_WORDS`, `GRID_AREAS`, `TOKEN_VALUE`, `RESERVED_TOKENS`,
+`SHARED_LITERALS`, `SVG_ATTRIBUTES`, `MEDIA_RULE`, `MESSAGE_KINDS`, `LOADING_MESSAGES`)
+and the tests that only this page has.
 
 To change a colour or a size, change its token. To add a style, use the existing
 tokens, or add a token to the block first. Add a word to `ALLOWED_VALUE_WORDS` only if
@@ -383,7 +424,7 @@ Defined in `templates/classes.yaml` (nested stack `ClassesStack`), wired in
 
 | Resource | Name |
 | --- | --- |
-| Function | `ClassPhotoUploadPageFunction-${Stage}` (Python 3.12, 5 s timeout, no layers, no policies) |
+| Function | `ClassPhotoUploadPageFunction-${Stage}` (Python 3.12, 5 s timeout, the common layer only (brand tokens and logo), no policies) |
 | Log group | `/asmbly/lambda/ClassPhotoUploadPageFunction-${Stage}`, 14 days |
 | Route | `GET /class-photo-upload` on `FacilitiesApi`, no authorizer |
 | Invoke permission | `ClassPhotoUploadPageInvokePermission`, for `GET /class-photo-upload` only |
@@ -428,6 +469,21 @@ states: the progress bars (labelled, hidden, coloured from tokens, no animation)
 again** and **Refresh class list** (named by their text), the elapsed seconds kept out of
 the live regions, every loading and progress message, the disabled look of busy buttons
 and of **Choose a photo**, and that the submission goes to the page's own origin.
+Two pins hold the page's look as it was on `stage` before story #138, which shares
+the brand tokens and logo through `layers/common/python/common/brand.py`: the served page must
+have the `:root` tokens in `tests/fixtures/pinned_tokens.json` and the CSS rules in
+`tests/fixtures/pinned_rules.css`. After a deliberate change to the look, regenerate them
+with `.venv/bin/python -m tests.capture_page_pins` from the repository root and commit
+them with the change. A change to a shared token in `brand.py` changes both pages' pins.
+`tests/test_shared_brand.py` checks that neither `page.html` has its own copy of the
+shared tokens or logo, that a changed shared token reaches both served pages, and that
+this function, with only the common layer, loads no boto3 or `requests`.
+The CSP has its own pins: `test_csp_header_is_byte_for_byte_unchanged` holds the page's
+header for a fixed nonce, and `test_error_page_csp_is_unchanged` the 400 and 500 pages'
+headers, both as they were on `stage` before story #139 moved the policy into
+`common/csp.py`. The shared checks in `tests/page_csp.py` also run on this page from
+`tests/test_page_csp.py` (it is in `PUBLIC_PAGES`): two requests get different nonces,
+and each one's nonce is the same on the header, the `<style>` and the `<script>`.
 
 Some things the tests can't see; check them by hand when you change the styles:
 

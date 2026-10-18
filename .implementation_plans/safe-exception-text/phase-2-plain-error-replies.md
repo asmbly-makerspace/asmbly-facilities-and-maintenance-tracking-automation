@@ -1,0 +1,253 @@
+---
+phase_id: 2
+title: Plain error replies and /reorder error modal
+epic: 141
+implements: [143]
+depends_on: [1]
+domain: [lambda, layer, docs]
+estimated_size: M
+---
+
+# Phase 2: Plain error replies and /reorder error modal
+
+> **Status:** [x] Complete — 2026-10-17 on branch feature/safe-exception-text
+
+## Required reading
+
+- `CLAUDE.md`: "Send an exception's text to the caller" (Never) and "Don't add checks to
+  an existing route as a side effect of other work".
+- `functions/ceramics/kiln_dropoff_recent_entries_viewer/lambda_function.py` lines
+  181–183: the model (`logger.exception`, then a fixed message).
+- `functions/purchase_request/slack_slash_reorder/lambda_function.py`:
+  `handle_process_submission` (error modal at line 248), `handle_load_data_and_update_view`
+  (line 284), and the sync catch at line 352 (already generic; unchanged).
+- `functions/purchase_request/new_purchase_request_received/lambda_function.py` lines
+  50–129, `functions/{problem_report,purchase_request}/slack_reaction_webhook/lambda_function.py`
+  (the final `except`), `functions/facilities/pm_bot_reminder/lambda_function.py` lines
+  173–177, `layers/common/python/common/slack.py` lines 81–91.
+- Their tests, listed below. Issue #83, story #143.
+- Phase 1's hand-off: ClickUp exception text is safe to log.
+
+## Goal
+
+No response, Slack modal or helper return value carries an exception's text. Each
+failure still answers with today's status code and is still logged for the maintainer
+with the IDs at hand. No route gets a caller check.
+
+## Files to create
+
+None.
+
+## Files to modify
+
+| Path | Change |
+| --- | --- |
+| `functions/purchase_request/slack_slash_reorder/lambda_function.py` | The two error modals show fixed text; the success-view post gets its own `try`. |
+| `functions/purchase_request/slack_slash_reorder/tests/test_slack_slash_reorder_lambda_function.py` | Three new tests. |
+| `functions/purchase_request/new_purchase_request_received/lambda_function.py` | Fixed 500 body; add a module logger and log the exception with the task ID. |
+| `functions/purchase_request/new_purchase_request_received/tests/test_lambda_function.py` | Invert the assertion in `test_lambda_handler_clickup_get_task_failure`; one new test. |
+| `functions/problem_report/slack_reaction_webhook/lambda_function.py` | Fixed 500 body; `logger.exception` with IDs. |
+| `functions/problem_report/slack_reaction_webhook/tests/test_slack_reaction_webhook.py` | Invert `test_handler_general_exception`. |
+| `functions/purchase_request/slack_reaction_webhook/lambda_function.py` | As above. |
+| `functions/purchase_request/slack_reaction_webhook/tests/test_slack_reaction_webhook.py` | Tighten `test_lambda_handler_general_exception`. |
+| `functions/facilities/pm_bot_reminder/lambda_function.py` | Fixed 500 body (the `print`s stay until phase 3); drop the unused `import requests`. |
+| `functions/facilities/pm_bot_reminder/tests/test_pm_bot_reminder_lambda_function.py` | Invert the body assertion in `test_lambda_handler_fatal_error`. |
+| `layers/common/python/common/slack.py` | `send_slack_message`'s exception result drops `error_message`. |
+| `layers/common/tests/test_slack.py` | Update `test_send_slack_message_exception_logs_type_only`. |
+| `functions/purchase_request/slack_slash_reorder/README.md` | A short "If something goes wrong" note: the two messages the user can see. |
+| `functions/purchase_request/new_purchase_request_received/README.md` | Under "Usage" or "Step-by-Step Data Flow": what the route answers on failure. |
+| `functions/facilities/pm_bot_reminder/README.md` | One line: a failed run returns 500 with `Error: the PM reminder run failed.`; details are in the log (README Decision 12). |
+
+## Implementation details
+
+Exact strings (README Decision 9); tests pin them.
+
+### lambda: `/reorder` error modals
+
+Both modals keep `"title": "Error"` and the `Close` button; only the section text
+changes. Define the two views as module constants (or a small typed builder,
+`def _error_view(text: str) -> dict[str, Any]:`):
+
+The exact Python strings (the backticks around `/reorder` are literal: Slack mrkdwn shows
+it as code):
+
+```python
+LOAD_FAILURE_TEXT = "Couldn't load the items to reorder. Please try `/reorder` again in a few minutes."
+SUBMISSION_FAILURE_TEXT = "Your purchase request was not created. Please try again in a few minutes."
+```
+
+- `handle_load_data_and_update_view` (`:284`) shows `LOAD_FAILURE_TEXT`.
+- `handle_process_submission` (`:248`) shows `SUBMISSION_FAILURE_TEXT`.
+
+**Only a failure before the task exists shows the submission-failure text** (prep
+amendment: a user who reads "not created" and retries would file a duplicate). Once
+`create_task` has returned, the task exists: posting the success view goes in its own
+`try`/`except` that logs `"Failed to post success view for view_id %s"` (with
+`exc_info=True`) and shows no error modal. A `create_task` call that times out after
+ClickUp committed the task stays ambiguous; that only becomes possible with phase 3's
+timeout and is noted for phase 3.
+
+The existing `logger.error("…view_id %s: %s", view_id, e, exc_info=True)` lines stay
+(safe after phase 1). The modal is posted by the async self-invocation after Slack has
+already been answered, so the 3-second limit doesn't apply. The sync catch at `:347`
+already answers `{"error": "An internal server error occurred."}`; unchanged.
+
+### lambda: `/purchase-request/new`
+
+- Add `import logging`, `logger = logging.getLogger()`, `logger.setLevel(logging.INFO)`
+  (README Decision 14).
+- Set `task_id: str | None = None` before the `try`, so the `except` can name it.
+- Replace the `except` body (`:127–128`):
+
+  ```python
+  except Exception:
+      logger.exception("Failed to process purchase request for task %r", task_id)
+      return {'statusCode': 500, 'body': json.dumps('An error occurred while processing the purchase request.')}
+  ```
+
+  The `print(f"An error occurred: {e}")` goes (the log record replaces it). Other `print`s
+  stay until phase 3. Fixes #83. `%r` because the task ID comes from an unauthenticated
+  request body: `repr` escapes newlines, so a planted value can't fake a log line.
+
+### lambda: both reaction functions
+
+Replace the final `except` in each:
+
+```python
+except Exception:
+    event_id = event.get("event_id") if isinstance(event, dict) else None
+    logger.exception("Unexpected error processing reaction for event %r", event_id)
+    return {"statusCode": 500, "body": json.dumps("Internal server error.")}
+```
+
+The ERROR record names the event ID itself (#143 AC7; prep amendment), and the phase 1
+"Received event" line has the channel and ts for the same invocation. Status 500 stays: the router invokes these with `InvocationType='Event'`, so
+the body is discarded there; on the public routes (no caller today, #79) the body was
+the leak.
+
+### lambda: PM reminder
+
+`:177` becomes `return {"statusCode": 500, "body": json.dumps("Error: the PM reminder run failed.")}`.
+The `print` and `traceback.print_exc()` above it stay until phase 3 (safe after phase 1).
+Drop the unused `import requests # type: ignore` (line 3; CLAUDE.md: only the imports you
+use in changed Python). Its tests patch `common.slack.requests.post`, not this module's
+`requests`, so nothing else changes.
+
+### layer: `common.slack.send_slack_message`
+
+Keep the `except Exception as e:` and its log line (`type(e).__name__`); return
+`{"ok": False, "error": "script_error"}`. No caller reads `error_message` (domain brief);
+`new_problem_report_request_received` and `new_purchase_request_received` read only
+`error`. Update the return-type docstring if it mentions `error_message`.
+
+### docs
+
+- `/reorder` README: when loading fails the modal says the first message; when
+  submitting fails, the second; details are in the `SlackSlashReorderFunction-<stage>`
+  log group.
+- New purchase request README: on any failure after validation the route answers 500
+  with `An error occurred while processing the purchase request.`; the log has the task
+  ID.
+- PM reminder README: a failed run returns 500 with `Error: the PM reminder run failed.`;
+  the details are in the function's log group.
+
+## Tests
+
+- `slack_slash_reorder/.../test_load_data_failure_shows_plain_error_modal`: patch
+  `get_all_clickup_tasks` to raise `ValueError("ClickUp API HTTP Error: 401 Unauthorized - GET list/pk_LIST_MARKER/task (ECODE=OAUTH_025)")`;
+  the `views.update` call's JSON view has title `Error` and the exact load-failure text,
+  and `json.dumps(view)` contains neither `pk_LIST_MARKER`, `401` nor `ClickUp`; an ERROR
+  record names the view ID.
+- `slack_slash_reorder/.../test_process_submission_failure_shows_plain_error_modal`:
+  patch `create_task` to raise with a planted marker; the modal holds the exact
+  submission-failure text and no marker.
+- `slack_slash_reorder/.../test_success_view_post_failure_shows_no_error_modal`:
+  `create_task` returns, the first `views.update` post raises; no second post with an
+  `Error` view is made, and an ERROR record names the view ID.
+- `new_purchase_request_received/.../test_lambda_handler_clickup_get_task_failure`
+  (invert): 500, body is exactly `"An error occurred while processing the purchase request."`
+  (JSON-encoded), `ClickUp API is down` not in it; Slack not called.
+- `new_purchase_request_received/.../test_failure_logs_task_id`: an ERROR record from the
+  handler names the payload's task ID and has `exc_info`.
+- `problem_report/.../test_handler_general_exception` (invert): 500, body is
+  `"Internal server error."`, `Something broke!` not in it; an ERROR record has
+  `exc_info` and names the event's `event_id` (add one to the test event).
+- `purchase_request/.../test_lambda_handler_general_exception` (tighten): body is
+  exactly `"Internal server error."` and contains no exception text; an ERROR record
+  names the event's `event_id` (add one to the test event).
+- `pm_bot_reminder/.../test_lambda_handler_fatal_error` (invert the body line only):
+  500, body is `"Error: the PM reminder run failed."`, `Something went terribly wrong`
+  not in it. Its `capsys` assertions stay until phase 3.
+- `layers/common/tests/test_slack.py::test_send_slack_message_exception_logs_type_only`:
+  the return value is exactly `{"ok": False, "error": "script_error"}`; `pk_EXC_MARKER`
+  is not in `str(response)`.
+
+## Acceptance criteria
+
+1. When loading `/reorder` items fails, the modal titled "Error" shows exactly the
+   load-failure text and nothing from the exception (#143 AC1).
+2. When a `/reorder` submission fails before the task is created, the modal shows
+   exactly the submission-failure text and nothing from the exception; a failure after
+   the task is created shows no "not created" modal (#143 AC2).
+3. `POST /purchase-request/new` answers 500 with the fixed body on any failure inside the
+   `try`, ClickUp, Slack, Secrets Manager or SSM alike (#143 AC3, #83).
+4. Both reaction functions answer 500 with `"Internal server error."` (#143 AC4).
+5. The PM reminder's 500 body is `"Error: the PM reminder run failed."` (#143 AC5).
+6. `send_slack_message`'s exception result is `{"ok": False, "error": "script_error"}`
+   (#143 AC6).
+7. Every status code is unchanged; each failure is logged with the view, task or
+   event ID; no file under `templates/`, `template.yaml` or `template-cicd.yaml` changes,
+   and no route gains a caller check (#143 AC7).
+
+## Verification
+
+```bash
+.venv/bin/python -m pytest functions/purchase_request functions/problem_report functions/facilities layers/common/tests/test_slack.py
+.venv/bin/python -m pytest
+sam build
+```
+
+On the stage stack after deploy (stage API: the stage stack's `FacilitiesApiUrl`
+output, `https://4s626uu7q5.execute-api.us-east-2.amazonaws.com/stage` per
+`docs/README.md`):
+
+- `curl -s -X POST <FacilitiesApiUrl>/purchase-request/new -d '{"trigger_id":"x","payload":{"id":"doesnotexist"}}'`
+  answers 500 `"An error occurred while processing the purchase request."` with no
+  ClickUp text, and the `/asmbly/lambda/NewPurchaseRequestReceivedFunction-stage` log
+  has an ERROR record naming task `doesnotexist` with a ClickUp line in phase 1's form.
+- `/reorder` in the stage Slack workspace still opens, loads and submits as before. The
+  error modals are covered by the tests; they can't be triggered on stage without
+  breaking the stage ClickUp token, so no manual step forces them.
+
+## Admin actions
+
+None.
+
+## Hand-off
+
+- Every caller-facing reply is fixed text; tests pin the strings.
+- `new_purchase_request_received` has a root `logger` at INFO; phase 3 converts its
+  remaining `print`s to it.
+- `send_slack_message` returns no `error_message`.
+- The PM reminder still uses `print` and `traceback.print_exc()`; phase 3 converts them
+  and updates `test_lambda_handler_fatal_error`'s `capsys` assertions. Its unused
+  `import requests` is gone, and its `lambda_handler` is typed
+  (`from typing import Any` is imported).
+- Exact strings: `/reorder`'s `LOAD_FAILURE_TEXT` and `SUBMISSION_FAILURE_TEXT` (module
+  constants) built by `_error_view(text: str) -> dict[str, Any]`; `"Internal server
+  error."` for both reaction functions; `"An error occurred while processing the
+  purchase request."` for `/purchase-request/new`; `"Error: the PM reminder run
+  failed."` for the PM reminder.
+- `/reorder`'s `handle_process_submission` posts the success view after its `try`, in its
+  own `try`/`except` that only logs. **For phase 3:** once `create_task` has an 8-second
+  timeout, a timeout after ClickUp committed the task shows "Your purchase request was
+  not created" although it was. Decide in phase 3 whether to accept that (rare) or
+  reword the text; the current tests pin the text.
+- Also changed, beyond the files table: the four reaction missing-variable tests
+  (`test_handler_missing_env_var` and the three
+  `test_lambda_handler_missing_*_env_var`) now assert the fixed body and find the
+  variable name in the logged traceback; the purchase-request reaction tests dropped an
+  unused `call` import; the changed handlers have type hints.
+- The reaction functions' ERROR record is `Unexpected error processing reaction for
+  event %r` with the Slack `event_id`; `/purchase-request/new`'s is `Failed to process
+  purchase request for task %r`.

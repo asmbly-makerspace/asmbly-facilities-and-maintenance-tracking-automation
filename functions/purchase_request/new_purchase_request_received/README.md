@@ -73,6 +73,16 @@ The automation follows a clear, sequential process triggered by a ClickUp webhoo
 
 7.  **Update ClickUp Task**: Finally, the function makes a `PUT` request back to the ClickUp API to update the original task. It populates a specific custom field (e.g., "Slack Post URL") with the permalink generated in the previous step. This creates a two-way link, allowing anyone viewing the task in ClickUp to jump directly to the Slack conversation.
 
+**If something fails:** when the request body isn't JSON, or a call after the payload
+checks raises an error (Secrets Manager, SSM, ClickUp or Slack), the route answers `500`
+with the fixed body
+`"An error occurred while processing the purchase request."`, never the error's details.
+If Slack answers that the post failed, the body is `"Failed to send Slack message."`.
+The error and its traceback are logged with the task ID in the
+`/asmbly/lambda/NewPurchaseRequestReceivedFunction-<stage>` log group.
+A ClickUp or Slack request that gets no answer gives up after 8 seconds and is handled
+like the failures above. Progress lines are `[INFO]` records in the same log group.
+
 ## AWS Infrastructure
 
 The core infrastructure consists of an IAM Role, secrets in Secrets Manager, an API Gateway endpoint, and the Lambda function itself. All related resources are tagged for cost allocation and organization.

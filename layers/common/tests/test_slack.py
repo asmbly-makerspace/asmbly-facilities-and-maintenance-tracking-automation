@@ -120,7 +120,8 @@ def test_get_slack_user_info():
     mock_session.get.assert_called_once_with(
         "https://slack.com/api/users.info",
         headers={"Authorization": f"Bearer {api_token}"},
-        params={"user": user_id}
+        params={"user": user_id},
+        timeout=8.0,
     )
 
 
@@ -158,13 +159,14 @@ def test_send_slack_message_api_error_logs_error_code_only(mock_requests_post, c
 
 @patch('common.slack.requests.post')
 def test_send_slack_message_exception_logs_type_only(mock_requests_post, caplog, capsys):
-    """A request failure logs the exception type, while the return value is unchanged."""
+    """A request failure logs the exception type and returns no exception text."""
     caplog.set_level(logging.DEBUG, logger="common.slack")
     mock_requests_post.side_effect = requests.exceptions.ConnectionError("pk_EXC_MARKER")
 
     response = slack.send_slack_message('xoxb-TOKEN-MARKER', '#general', 'Hello', 'Bot', ':emoji:')
 
-    assert response == {"ok": False, "error": "script_error", "error_message": "pk_EXC_MARKER"}
+    assert response == {"ok": False, "error": "script_error"}
+    assert "pk_EXC_MARKER" not in str(response)
     assert capsys.readouterr().out == ""
     errors = _slack_errors(caplog)
     assert len(errors) == 1
@@ -198,3 +200,69 @@ def test_slack_error_for_log_rejects_trailing_newline():
     assert slack._slack_error_for_log({"error": "channel_not_found\n"}) == "<invalid>"
     assert slack._slack_error_for_log({"error": "channel_not_found"}) == "channel_not_found"
     assert slack._slack_error_for_log({"ok": False}) is None
+
+
+@patch('common.slack.requests.post')
+def test_send_slack_message_passes_timeout(mock_requests_post):
+    """chat.postMessage is sent with the 8-second timeout."""
+    mock_requests_post.return_value.json.return_value = {"ok": True, "ts": "1.2"}
+
+    slack.send_slack_message('xoxb-TOKEN-MARKER', '#general', 'Hello', 'Bot', ':emoji:')
+
+    assert slack.DEFAULT_TIMEOUT_SECONDS == 8.0
+    assert mock_requests_post.call_args.kwargs['timeout'] == 8.0
+
+
+@patch('common.slack.requests.post')
+def test_send_slack_message_timeout_returns_script_error(mock_requests_post, caplog, capsys):
+    """A timeout is handled like any other failure: logged by class, script_error returned."""
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_requests_post.side_effect = requests.exceptions.ReadTimeout("pk_URL_MARKER read timed out")
+
+    response = slack.send_slack_message('xoxb-TOKEN-MARKER', '#general', 'Hello', 'Bot', ':emoji:')
+
+    assert response == {"ok": False, "error": "script_error"}
+    assert capsys.readouterr().out == ""
+    errors = _slack_errors(caplog)
+    assert len(errors) == 1
+    assert "ReadTimeout" in errors[0].getMessage()
+    assert "chat.postMessage" in errors[0].getMessage()
+    assert "pk_URL_MARKER" not in caplog.text
+    assert "xoxb-TOKEN-MARKER" not in caplog.text
+
+
+def test_get_slack_user_info_timeout_logs_and_reraises(caplog):
+    """A users.info timeout is logged with the endpoint and class, then raised unchanged."""
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    err = requests.exceptions.ReadTimeout("HTTPSConnectionPool(host='slack.com'): pk_URL_MARKER")
+    mock_session = MagicMock()
+    mock_session.get.side_effect = err
+
+    try:
+        slack.get_slack_user_info('xoxb-TOKEN-MARKER', 'U123', http_session=mock_session)
+    except requests.exceptions.ReadTimeout as raised:
+        assert raised is err
+    else:
+        raise AssertionError("ReadTimeout was not raised")
+
+    errors = _slack_errors(caplog)
+    assert [r.getMessage() for r in errors] == ["Slack users.info failed: ReadTimeout"]
+    assert "pk_URL_MARKER" not in caplog.text
+    assert "xoxb-TOKEN-MARKER" not in caplog.text
+
+
+def test_get_slack_user_info_http_error_logs_and_reraises(caplog):
+    """An HTTP error from users.info is logged by class and re-raised."""
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_session = MagicMock()
+    mock_session.get.return_value.raise_for_status.side_effect = requests.exceptions.HTTPError("pk_URL_MARKER")
+
+    try:
+        slack.get_slack_user_info('xoxb-TOKEN-MARKER', 'U123', http_session=mock_session)
+    except requests.exceptions.HTTPError:
+        pass
+    else:
+        raise AssertionError("HTTPError was not raised")
+
+    assert [r.getMessage() for r in _slack_errors(caplog)] == ["Slack users.info failed: HTTPError"]
+    assert "pk_URL_MARKER" not in caplog.text

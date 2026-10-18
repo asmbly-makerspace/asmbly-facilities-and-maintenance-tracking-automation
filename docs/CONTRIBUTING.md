@@ -11,6 +11,7 @@ and one of those documents ever disagree, the linked document is right; fix this
 - [Running Tests](#running-tests)
 - [Dependency Updates](#dependency-updates)
 - [Adding a New Lambda Function](#adding-a-new-lambda-function)
+- [Adding a Public Page](#adding-a-public-page)
 - [Coding Standards](#coding-standards)
 - [Working with AI Agents](#working-with-ai-agents)
 - [AWS and Production](#aws-and-production)
@@ -178,6 +179,68 @@ closest example of how new code should look.
 
 ---
 
+## Adding a Public Page
+
+A public page is an HTML page that a visitor's browser opens, such as the kiln drop-off
+viewer (`functions/ceramics/kiln_dropoff_recent_entries_viewer/`) or the class photo
+upload page (`functions/classes/class_photo_upload_page/`). Build a new one from the
+pieces those two share, not by copying either of them.
+
+1. **Start from [Adding a New Lambda Function](#adding-a-new-lambda-function).** A page
+   is a function too, and the steps in [Rules](../CLAUDE.md#rules) still apply. Three
+   matter most:
+   - **A caller check.** Every HTTP route is public, and a new route must check its
+     caller ([What this repository does](../CLAUDE.md#what-this-repository-does)). A
+     browser opening a page directly can't send a token. The class photo upload page
+     shows one answer: the page serves only public values, and the routes it calls sit
+     behind a Cognito authorizer (its README, "Why the Route Has No Authorizer"). Say in
+     the plan and the pull request how the new page's route checks its caller. Issue #79
+     tracks the existing routes.
+   - **A log group** named `/asmbly/lambda/<FunctionName>-${Stage}`, with a retention
+     period.
+   - **The deploy-role names.** The function and its log group go in
+     `GitHubDeployPolicystage` and `GitHubDeployPolicyprod` in `template-cicd.yaml`. The
+     pull request's **Risk** section says that an admin must redeploy that stack first.
+2. **The shell: `page.html`, next to `lambda_function.py`.**
+   - It has one inline `<style>`. Its first rule is `:root`, which holds
+     `/* __BRAND_TOKENS__ */` and the page's own tokens.
+   - Put `<!-- __ASMBLY_LOGO__ -->` where the logo goes. The logo is optional, and it
+     appears at most once.
+   - The function reads the file once, through `brand.fill_brand(...)` from
+     `layers/common/python/common/brand.py`. That fills in `BRAND_TOKENS` and
+     `ASMBLY_LOGO`.
+   - Give the function `Layers: [!Ref CommonLayerARN]`, since `brand` and `csp` need no
+     other layer. If the page calls an outside service through `common.clickup` or a
+     similar helper, add `!Ref RequestsLayerARN`, as the kiln viewer does.
+   - Escape anything from outside with `html.escape`, and put it in last.
+3. **The Content-Security-Policy, from `layers/common/python/common/csp.py`.** This
+   header tells the browser what the page may run and load. Never write it by hand.
+   - A page with no script: call `csp.hash_policy(filled_page)` once, at import, over the
+     filled shell, as the kiln viewer does.
+   - A page with a script: on every request, make `nonce = csp.new_nonce()`. Build the
+     header with `csp.nonce_policy(nonce, [(directive, sources), ...])`, listing whatever
+     else the page needs. Put the same nonce on its `<style nonce>` and `<script nonce>`,
+     as the class photo upload page does.
+   - An error page with no style: `csp.strict_policy()`. The shared checks below don't
+     cover error pages, so pin that policy in the page's own tests, as
+     `test_error_page_csp_is_unchanged` does.
+4. **Tests.**
+   - The style, colour, contrast and logo checks are in `tests/page_style.py`.
+   - The CSP checks are in `tests/page_csp.py`.
+   - Register the page in `PUBLIC_PAGES` in `tests/test_page_csp.py`.
+     `test_every_html_page_is_registered` fails until you do.
+   - Add the page to `PAGES` in `tests/capture_page_pins.py`, and its filled shell to
+     `shells` in that file's `served_sheets()`. Run
+     `.venv/bin/python -m tests.capture_page_pins` and commit the pins it writes in the
+     function's `tests/fixtures/`.
+   - Pin the page's header string in its own test file, as the class photo upload page's
+     `test_csp_header_is_byte_for_byte_unchanged` does.
+5. **Docs.** Write the function's README. Add its entry to
+   [README.md](README.md#core-services): what it does, how it is triggered, its URL, and
+   where the caller is configured.
+
+---
+
 ## Coding Standards
 
 The full list, with the reasons, is under [Rules](../CLAUDE.md#rules). In short:
@@ -197,7 +260,22 @@ The full list, with the reasons, is under [Rules](../CLAUDE.md#rules). In short:
 - **Slack.** Answer within 3 seconds. Run longer work asynchronously.
 - **Tests.** Tests go next to the function, in `functions/<area>/<name>/tests/`. They never
   call the network: patch the module where it is used, or use `moto` for AWS. Don't skip
-  or delete a failing test, and don't use `--no-verify`.
+  or delete a failing test, and don't use `--no-verify`. An HTML page's colour, contrast,
+  token and logo checks come from `tests/page_style.py`: a new page's tests call it with
+  the page's own data, as the kiln viewer's and the class photo upload page's tests do.
+  Build `page_style.Stylesheet.from_page(page_html, STYLE_BLOCK)` and assert that each
+  `page_style.*_problems(...)` check returns `[]`. The module is test code only: no
+  function imports it, and no template packages it. Its own tests are in
+  `tests/test_page_style.py`.
+  The brand tokens and logo the two pages share live in
+  `layers/common/python/common/brand.py` (`common.brand`). A page marks them in `page.html`
+  with `/* __BRAND_TOKENS__ */` inside `:root` and `<!-- __ASMBLY_LOGO__ -->`, and its
+  function calls `brand.fill_brand` when it reads the file. Each page pins its served tokens
+  and rules in `tests/fixtures/pinned_tokens.json` and `pinned_rules.css`. After a deliberate
+  change to a look, or to a shared token, recapture both pages' pins from the repository
+  root with `.venv/bin/python -m tests.capture_page_pins` and commit them with the change.
+  A page's Content-Security-Policy checks come from `tests/page_csp.py`; see
+  [Adding a Public Page](#adding-a-public-page).
 - **IAM.** Grant the least privilege that works: name exact parameter and secret ARNs, and
   use `Resource: "*"` only for actions that have no resource-level permissions.
 - **Scope.** Keep a pull request to its task, and open an issue for any unrelated problem
