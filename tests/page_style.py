@@ -26,11 +26,12 @@ TOKEN = re.compile(r"(--[\w-]+)\s*:\s*([^;]+);")
 VAR_REFERENCE = re.compile(r"var\(\s*(--[\w-]+)\s*\)")
 HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{3,8}(?![\w-])")
 PURE_WHITE_OR_BLACK = re.compile(r"(?<![\w-])(white|black)(?![\w-])", re.I)
-# A font stack: two or more families separated by ", ", the last a CSS generic family
-# (so the browser always has a fallback). A family is a double-quoted name or an unquoted
-# CSS identifier that doesn't start with a digit. House style quotes every multi-word
-# name, so an unquoted one such as Times New Roman is rejected on purpose, as are single
-# quotes and a lone generic family.
+# A font stack: two or more families separated by ", ", the last a CSS generic family in
+# lower case (so the browser always has a fallback). A family is a double-quoted name or
+# an unquoted ASCII name: a letter or `_`, optionally after one `-`, then letters, digits,
+# `_` or `-` (so not a digit, `--` or a non-ASCII letter first). House style quotes every
+# multi-word name, so an unquoted one such as Times New Roman is rejected on purpose, as
+# are single quotes and a lone generic family.
 _FONT_STACK_FAMILY = r'(?:"[\w ]+"|-?[A-Za-z_][\w-]*)'
 GENERIC_FONT_FAMILY = (
     r"(?:serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-serif|ui-sans-serif"
@@ -293,8 +294,8 @@ def token_block_problems(
     """Anything in the :root block that isn't a token of the expected form.
 
     `--font-*` tokens (other than `--font-size*`) must be font stacks (`FONT_STACK`: two or
-    more families separated by ", ", each a double-quoted name or an unquoted identifier,
-    the last a generic family such as `sans-serif`), `--glyph-*` tokens glyphs, and every
+    more families separated by ", ", each a double-quoted name or an unquoted ASCII name,
+    the last a lower-case generic family such as `sans-serif`), `--glyph-*` tokens glyphs, and every
     other token must fully match `token_value`. `glyph_exempt` holds name
     prefixes of `--glyph-*` tokens that are lengths, not glyphs (matched with startswith).
     The only declaration that isn't a token is `color-scheme: light`.

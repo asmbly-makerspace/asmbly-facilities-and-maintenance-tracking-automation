@@ -205,7 +205,10 @@ def test_font_token_must_be_a_font_stack() -> None:
         return page_style.token_block_problems(_sheet(f":root {{{block}}}"), token_value=TOKEN_VALUE)
 
     assert problems(" --font-x: red; ") == ["--font-x: red"]
-    for value in ("1rem", "0", "Roboto, Arial", "sans-serif", "Roboto,sans-serif", "a, 1x, serif"):
+    rejected = ("1rem", "0", "Roboto, Arial", "sans-serif", "Roboto,sans-serif", "a, 1x, serif")
+    # The rules FONT_STACK's comment states: no `--` or non-ASCII first letter, a lower-case generic.
+    rejected += ("--x, serif", "é, serif", "Roboto, Sans-Serif")
+    for value in rejected:
         assert problems(f" --font-x: {value}; ") == [f"--font-x: {value}"], value
     page_stacks = (
         'Roboto, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
