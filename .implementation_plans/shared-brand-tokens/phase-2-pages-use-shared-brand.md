@@ -237,8 +237,8 @@ def test_class_photo_page_function_reads_nothing() -> None:
     page's.
   - "defined once in the `:root` block … in `page.html`" becomes "defined once: the shared
     ones in `common/brand.py`, the page's own in `page.html`".
-  - Testing: the pins in `tests/fixtures/pinned_*` and how to regenerate them (the phase 1
-    capture command).
+  - Testing: the pins in `tests/fixtures/pinned_*` and how to regenerate them
+    (`.venv/bin/python -m tests.capture_page_pins`, committed in phase 1).
   - A note that a change to `brand.py` changes both pages and the kiln page's CSP hash,
     which is recomputed at import.
 - **Photo README:**
@@ -306,10 +306,11 @@ Each traced to story #138:
 ## Verification
 
 ```bash
-.venv/bin/python -m pytest                                          # all pass; 1865 + 5 = 1870
+.venv/bin/python -m pytest                                          # all pass; 1866 + 5 = 1871
 .venv/bin/cfn-lint template.yaml templates/*.yaml template-cicd.yaml  # same warnings as origin/stage (4 W3005 in template.yaml)
 sam validate --region us-east-2
-sam build    # then: .aws-sam/build/CommonLayer/python/common/brand.py exists, and
+sam build    # then: .aws-sam/build/template.yaml has CommonLayer's ContentUri at ../../layers/common
+             # (SAM copies no layer without a BuildMethod), and
              # .aws-sam/build/ClassesStack/template.yaml lists a layer for ClassPhotoUploadPageFunction
 ```
 

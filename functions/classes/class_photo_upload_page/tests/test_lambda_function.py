@@ -10,7 +10,7 @@ import pytest
 from functions.classes.class_photo_upload_api import lambda_function as api
 from functions.classes.class_photo_upload_api import photo_checks
 from functions.classes.class_photo_upload_page import lambda_function
-from tests import page_style
+from tests import capture_page_pins, page_style
 
 FIXTURES = Path(__file__).parent / "fixtures"
 PAGE_HTML = (Path(lambda_function.__file__).parent / "page.html").read_text(encoding="utf-8")
@@ -449,6 +449,40 @@ def test_tokens_are_defined_once() -> None:
 
 def test_every_token_used_is_defined() -> None:
     assert page_style.undefined_token_problems(SHEET) == []
+
+
+# The pins: the tokens and rules the page serves, as on stage 6fd11c9 before story #138. The
+# served <style> carries the request's nonce.
+SERVED_STYLE_BLOCK = re.compile(r'<style nonce="[A-Za-z0-9_-]+">(.*?)</style>', re.S)
+
+
+def _served_sheet() -> page_style.Stylesheet:
+    response = _call(_event())
+    assert response["statusCode"] == 200
+    return page_style.Stylesheet.from_page(response["body"], SERVED_STYLE_BLOCK)
+
+
+def test_served_tokens_are_the_stage_tokens() -> None:
+    """Story #138 criterion 3: the served page has stage 6fd11c9's :root tokens, by name and value.
+
+    After a deliberate change to the page's look, regenerate the pins with
+    `.venv/bin/python -m tests.capture_page_pins` and commit them with the change.
+    """
+    sheet = _served_sheet()
+
+    assert sheet.tokens() == json.loads((FIXTURES / "pinned_tokens.json").read_text(encoding="utf-8"))
+    assert "color-scheme: light;" in sheet.root_block()
+
+
+def test_served_rules_are_the_stage_rules() -> None:
+    """Story #138 criterion 3: the served page has stage 6fd11c9's CSS rules after :root.
+
+    After a deliberate change to the page's look, regenerate the pins with
+    `.venv/bin/python -m tests.capture_page_pins` and commit them with the change.
+    """
+    pinned = (FIXTURES / "pinned_rules.css").read_text(encoding="utf-8")
+
+    assert capture_page_pins.pinned_rules_text(_served_sheet()) == pinned
 
 
 def test_page_has_no_pure_white_or_black() -> None:

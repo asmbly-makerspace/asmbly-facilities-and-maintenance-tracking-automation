@@ -437,6 +437,12 @@ states: the progress bars (labelled, hidden, coloured from tokens, no animation)
 again** and **Refresh class list** (named by their text), the elapsed seconds kept out of
 the live regions, every loading and progress message, the disabled look of busy buttons
 and of **Choose a photo**, and that the submission goes to the page's own origin.
+Two pins hold the page's look as it was on `stage` before story #138, which shares
+the brand tokens and logo through `layers/common/python/common/brand.py`: the served page must
+have the `:root` tokens in `tests/fixtures/pinned_tokens.json` and the CSS rules in
+`tests/fixtures/pinned_rules.css`. After a deliberate change to the look, regenerate them
+with `.venv/bin/python -m tests.capture_page_pins` from the repository root and commit
+them with the change.
 
 Some things the tests can't see; check them by hand when you change the styles:
 

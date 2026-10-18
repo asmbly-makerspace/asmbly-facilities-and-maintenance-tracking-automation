@@ -12,7 +12,7 @@ import pytest
 
 # Now we can import the lambda function module directly
 from functions.ceramics.kiln_dropoff_recent_entries_viewer import lambda_function
-from tests import page_style
+from tests import capture_page_pins, page_style
 
 LAMBDA_FUNCTION_PATH = "functions.ceramics.kiln_dropoff_recent_entries_viewer.lambda_function"
 
@@ -765,6 +765,35 @@ def test_every_token_is_used() -> None:
 
 def test_every_token_used_is_defined() -> None:
     assert page_style.undefined_token_problems(SHEET) == []
+
+
+# The pins: the tokens and rules the page serves, as on stage 6fd11c9 before story #138.
+PINS = pathlib.Path(__file__).parent / "fixtures"
+
+
+def test_served_tokens_are_the_stage_tokens() -> None:
+    """Story #138 criterion 3: each served page has stage 6fd11c9's :root tokens, by name and value.
+
+    After a deliberate change to the page's look, regenerate the pins with
+    `.venv/bin/python -m tests.capture_page_pins` and commit them with the change.
+    """
+    pinned = json.loads((PINS / "pinned_tokens.json").read_text(encoding="utf-8"))
+    for name, page in _pages().items():
+        sheet = page_style.Stylesheet.from_page(page, STYLE_BLOCK)
+        assert sheet.tokens() == pinned, name
+        assert "color-scheme: light;" in sheet.root_block(), name
+
+
+def test_served_rules_are_the_stage_rules() -> None:
+    """Story #138 criterion 3: each served page has stage 6fd11c9's CSS rules after :root.
+
+    After a deliberate change to the page's look, regenerate the pins with
+    `.venv/bin/python -m tests.capture_page_pins` and commit them with the change.
+    """
+    pinned = (PINS / "pinned_rules.css").read_text(encoding="utf-8")
+    for name, page in _pages().items():
+        sheet = page_style.Stylesheet.from_page(page, STYLE_BLOCK)
+        assert capture_page_pins.pinned_rules_text(sheet) == pinned, name
 
 
 def test_page_has_no_pure_white_black_or_old_colours() -> None:
