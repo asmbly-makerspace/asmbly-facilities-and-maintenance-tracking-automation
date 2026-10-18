@@ -34,10 +34,25 @@
         "cfn_lint": "4 pre-existing W3005 only",
         "sam_validate": "pass",
         "sam_build": "pass"
-      }
+      },
+      "squashed_sha": "4012492"
     }
   ],
-  "integration": null,
+  "integration": {
+    "result": "clean",
+    "checks": {
+      "pytest": "1943 passed, 8 subtests",
+      "cfn_lint": "0 errors; 4 W3005 byte-identical to origin/stage",
+      "sam_validate": "pass",
+      "sam_build": "pass"
+    },
+    "preexisting": [
+      "cfn-lint W3005 x4 in template.yaml"
+    ],
+    "skipped": [],
+    "byte_identical": "28 render cases from origin/stage vs HEAD: 25 identical (status, full headers, body); the 3 intended differences are the trailing-newline cases (Host or path with \\n: 200 -> 400; STAFF_AUTH_DOMAIN with \\n: 200 with the newline written into the CSP header -> logged 500). Pins unchanged; capture script reproduces them; csp.py/brand.py stdlib only; no CSP directive string in any lambda_function.py; ruff F clean",
+    "commits": 0
+  },
   "final_pr_number": null,
   "admin_actions": [],
   "events": [
@@ -157,10 +172,47 @@
         ".claude/agents/review/lambda.md:46 still calls the kiln viewer 'the only HTML page today' (pre-existing, agent config)",
         "The trailing-newline fix can't be exercised on stage (API Gateway sets domainName and path)"
       ]
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "phase_squashed",
+      "phase": 2,
+      "sha": "4012492"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "integration_start",
+      "pre_sha": "4012492"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "integration",
+      "result": "clean"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "docs_start",
+      "pre_sha": "4012492"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "docs_done",
+      "regression_check": "no file shrank"
     }
   ],
   "closes": [
     139,
     136
-  ]
+  ],
+  "docs": {
+    "updated": [
+      "functions/classes/class_photo_upload_page/README.md (527->530)"
+    ],
+    "verified_unchanged": [
+      "docs/CONTRIBUTING.md Adding a Public Page",
+      "kiln viewer README",
+      "docs/README.md"
+    ],
+    "regression": false
+  }
 }

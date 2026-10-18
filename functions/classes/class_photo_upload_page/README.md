@@ -60,7 +60,10 @@ sign-in return address and the base of the API calls, so it must be a callback U
 the app client. A host or path that doesn't look like that answers 400; a missing or
 invalid `STAFF_AUTH_DOMAIN` or `CLASS_PHOTO_APP_CLIENT_ID` answers 500. Both are plain
 pages with no details. The host, the path and `STAFF_AUTH_DOMAIN` are each matched as a
-whole value, so one that ends in a line break is refused too.
+whole value (`fullmatch`), so one that ends in a line break is refused too: a Host or
+path with a trailing newline now answers 400 (before, `$` let it through), and a
+`STAFF_AUTH_DOMAIN` with one answers 500.
+`test_domain_or_path_with_a_trailing_newline_returns_400` covers the 400.
 
 Headers:
 
