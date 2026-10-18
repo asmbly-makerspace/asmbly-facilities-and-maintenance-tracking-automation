@@ -332,8 +332,9 @@ These tests enforce the rule:
   `fill` only as `url(#…)`.
 - `test_token_block_holds_only_tokens` checks that the one `:root` block holds only
   tokens, and that each token is a `#rrggbb` colour, a `var()`, a length or number,
-  (for `--font-*`) a font stack, or (for the four `--glyph-*` glyphs) one character with
-  an empty alternative text.
+  (for `--font-*`) a font stack (two or more families, the last a generic family such as
+  `sans-serif`), or (for the four `--glyph-*` glyphs) one character with an empty
+  alternative text.
 - `test_tokens_are_defined_once` catches a duplicate token, colour, font stack or other
   literal. Two tokens of different kinds may share a number only when the pair is listed
   in `SHARED_LITERALS`, with the reason (for example, `--font-size-body` and `--space-4`
