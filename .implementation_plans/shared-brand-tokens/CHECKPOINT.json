@@ -199,6 +199,11 @@
       "type": "docs_done",
       "regression_check": "no file shrank",
       "note": "scribe returned an empty hand-back; the docs agent verified its commit against the code itself"
+    },
+    {
+      "ts": "2026-10-17",
+      "type": "manual_qa",
+      "steps": 17
     }
   ],
   "docs": {
@@ -211,5 +216,12 @@
       "docs/README.md"
     ],
     "regression": false
+  },
+  "manual_qa": {
+    "stories_covered": [
+      138
+    ],
+    "stories_without_surface": [],
+    "total_steps": 17
   }
 }
