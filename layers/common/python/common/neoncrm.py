@@ -1,6 +1,7 @@
 import requests
 import base64
 import logging
+import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -14,8 +15,56 @@ DEFAULT_TIMEOUT_SECONDS = 8.0
 MAX_SEARCH_PAGES = 50
 
 
+# Neon v2 answers a rejected request with a JSON list of {"code", "message"} errors. A
+# message can quote values from the account (Neon validates the whole account on a
+# PATCH), so only this much of it is logged, with emails and long numbers masked.
+MAX_LOGGED_ERRORS = 5
+MAX_LOGGED_MESSAGE_CHARS = 200
+_NEON_ERROR_CODE_PATTERN = re.compile(r"[A-Za-z0-9_.-]{1,64}")
+_EMAIL_PATTERN = re.compile(r"[^\s@]+@[^\s@]+")
+# Phone numbers, dates and other IDs: a digit, then 3 or more digits or separators, then a digit.
+_LONG_NUMBER_PATTERN = re.compile(r"\d[\d\s().+/-]{3,}\d")
+_CONTROL_CHARS_PATTERN = re.compile(r"[\x00-\x1f\x7f]+")
+
+
 class NeonCRMError(Exception):
     """A Neon call failed. The message carries the operation and HTTP status only."""
+
+
+def _mask_message(message: str) -> str:
+    """Masks emails and long numbers in a Neon error message, flattens it to one line, truncates it."""
+    message = _CONTROL_CHARS_PATTERN.sub(" ", message)
+    message = _EMAIL_PATTERN.sub("<email>", message)
+    message = _LONG_NUMBER_PATTERN.sub("<number>", message)
+    if len(message) > MAX_LOGGED_MESSAGE_CHARS:
+        message = message[:MAX_LOGGED_MESSAGE_CHARS] + "..."
+    return message
+
+
+def _neon_errors_for_log(response: requests.Response | None) -> str:
+    """
+    Summarizes Neon's error body for a log line: each error's code (if it looks like a
+    code, '<invalid>' if not) and its masked message. Never returns the raw body.
+    """
+    if response is None:
+        return "no body"
+    try:
+        body = response.json()
+    except ValueError:
+        return "body is not JSON"
+    errors = body if isinstance(body, list) else [body]
+    parts = []
+    for error in errors[:MAX_LOGGED_ERRORS]:
+        if not isinstance(error, dict):
+            parts.append("<invalid>")
+            continue
+        code = error.get("code")
+        code = str(code) if isinstance(code, (str, int)) and _NEON_ERROR_CODE_PATTERN.fullmatch(str(code)) else "<invalid>"
+        message = error.get("message")
+        parts.append(f"{code}: {_mask_message(message)}" if isinstance(message, str) else code)
+    if len(errors) > MAX_LOGGED_ERRORS:
+        parts.append(f"and {len(errors) - MAX_LOGGED_ERRORS} more")
+    return "; ".join(parts) if parts else "no errors listed"
 
 
 class NeonCRM:
@@ -83,6 +132,11 @@ class NeonCRM:
             account_id (str): The ID of the account to update.
             field_id (str): The ID of the custom field to update.
             field_value (str): The new value for the custom field.
+
+        Raises:
+            NeonCRMError: the update failed, timed out, or Neon rejected it. The log line
+                has the status and Neon's masked error codes and messages; the exception's
+                message has the HTTP status only.
         """
         url = f"{self.base_url}/accounts/{account_id}"
         update_payload = {
@@ -96,7 +150,11 @@ class NeonCRM:
             logger.info("Updated custom field %s for NeonCRM account %s", field_id, account_id)
         except requests.exceptions.RequestException as e:
             status = e.response.status_code if e.response is not None else "no response"
-            logger.error("Error updating NeonCRM account %s: %s (status %s)", account_id, type(e).__name__, status)
+            logger.error(
+                "Error updating NeonCRM account %s: %s (status %s): %s",
+                account_id, type(e).__name__, status, _neon_errors_for_log(e.response),
+            )
+            raise NeonCRMError(f"accounts/{account_id} update failed (status {status})") from None
 
     def search_events(
         self,
