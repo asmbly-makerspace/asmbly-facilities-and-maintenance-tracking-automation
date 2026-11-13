@@ -4,6 +4,7 @@
 
 - [Purpose](#purpose)
 - [Routes](#routes)
+- [Who Is Admitted: the class-photos Group](#who-is-admitted-the-class-photos-group)
 - [How It Works](#how-it-works)
 - [The Class List Cache](#the-class-list-cache)
 - [Responses](#responses)
@@ -50,6 +51,40 @@ Who can call:
    (`CLASS_PHOTO_APP_CLIENT_ID`, compared with `hmac.compare_digest`), `token_use` to be
    `id`, and non-empty `sub` and `cognito:username`. Otherwise it answers **403** and
    reads nothing.
+3. When `CLASS_PHOTO_REQUIRED_GROUP` is set (`class-photos`), the token's
+   `cognito:groups` must hold that group, on both routes. Otherwise it answers **403**
+   with `"reason": "not_in_group"`, reads nothing (no Neon, SSM, Secrets Manager or
+   GitHub, so no pull request), and logs `Rejected caller: not_in_group (user <username>,
+   sub <sub>)`. A token with no `cognito:groups` claim is refused the same way. Empty
+   (the default on every stage today) turns the check off: any signed-in staff user of
+   the page's app client is admitted, as before. See
+   [Who Is Admitted](#who-is-admitted-the-class-photos-group).
+
+## Who Is Admitted: the class-photos Group
+
+The staff pool (asmbly-staff-login, `staff-login.asmbly.org`) has one access group per
+app; this page's is `class-photos` (asmbly-staff-login's
+`docs/decisions/0005-access-group-names.md`). Cognito puts a user's groups in the ID
+token's `cognito:groups`. API Gateway's authorizer passes the claims on as strings, so
+the function accepts the claim as a list, `a,b`, `[a b]` or a JSON list (`token_groups`).
+The page's own Lambda never sees a token (it serves a fixed sign-in shell), so the check
+is in this function, and the page only shows its result: on a 403 with reason
+`not_in_group` it hides the upload form and says "You don't have access to class
+photos. Ask the person who manages staff sign-in to add you to the class-photos group."
+
+The setting is the template parameter `ClassPhotoRequiredGroup` (`template.yaml`, passed
+to `templates/classes.yaml`), set per stage in `samconfig.toml`'s `parameter_overrides`.
+It is given in every environment, even as `""`, because `sam deploy` keeps a
+parameter's previous value when the overrides leave it out: deleting the line would not
+turn the check off.
+
+- **Turn it on** (stage first, then prod through the promote): in `samconfig.toml`,
+  `ClassPhotoRequiredGroup=\"\"` becomes `ClassPhotoRequiredGroup=\"class-photos\"` in
+  `[stage.deploy.parameters]` (then `[prod.deploy.parameters]`), and the merge deploys
+  it.
+- **Turn it off:** the same line back to `\"\"`, and deploy.
+- **Someone refused who should upload:** add them to `class-photos` with Manage users;
+  they sign out of the page and in again (a new token carries the group).
 
 ## How It Works
 
@@ -207,6 +242,7 @@ on a normal load and, on `?refresh=1`, `"refreshed"`, `"too_soon"` or `"failed"`
 | 400 | `Pick a class from the list.` | The class isn't in the server's class list (the cached copy, or Neon's on a miss; empty when Neon answers no classes and no copy exists), or is empty or over 200 characters |
 | 400 | `The class name "..." contains "/", which can't be in a file name. Rename the class in Neon first.` | The class's name can't be a file name |
 | 403 | `You're not allowed to use this page.` | Wrong app client, an access token, or missing claims |
+| 403 | `You don't have access to class photos. Ask the person who manages staff sign-in to add you to the class-photos group.` (with `"reason": "not_in_group"`) | `CLASS_PHOTO_REQUIRED_GROUP` is set and the token's `cognito:groups` doesn't hold it |
 | 404 | `Not found.` | Any other method or path |
 | 409 | `Someone else just submitted a photo for this class. Try again.` | Another submission moved the class's branch first |
 | 500 | `Something went wrong on our side. Try again later.` | A missing environment variable, an unreadable config or App secret, anything unexpected |
@@ -265,8 +301,9 @@ Environment variables (all set by `templates/classes.yaml`):
 | `CLASS_PHOTO_APP_CLIENT_ID` | The page's app client ID, from `/config/cognito/staff/class-photo-app-client-id` |
 | `CLASS_PHOTO_DRY_RUN` | `false` on prod, `true` elsewhere |
 | `CLASS_CACHE_TABLE_NAME` | `ClassPhotoClassListCache-${Stage}` |
+| `CLASS_PHOTO_REQUIRED_GROUP` | The staff pool group a caller must be in (`class-photos`), from the parameter `ClassPhotoRequiredGroup`; empty (today, every stage) turns the check off |
 
-All but `CLASS_PHOTO_DRY_RUN` (five) are required; without one the function logs its name
+All but `CLASS_PHOTO_DRY_RUN` and `CLASS_PHOTO_REQUIRED_GROUP` (five) are required; without one the function logs its name
 and answers 500.
 
 The GitHub App secret, `github/class-photo-upload-app` (us-east-2), is a JSON object with
@@ -290,8 +327,10 @@ asked for a refresh (`Class list refresh by sub <sub>: refreshed`). A submission
 the time left before the GitHub writes (`Time left before the GitHub writes: 17250 ms`;
 on a dry run, `Time left after planning (dry run): … ms`), how long the writes took
 (`GitHub writes took 2310 ms`), and on a GitHub failure the call, its status and whether
-it came `(before any write)` or `(during the writes, after … ms)`. They never carry the username (it
-appears only in the pull request, as "Requested by"), the `Authorization` header, the
+it came `(before any write)` or `(during the writes, after … ms)`. They carry the Cognito
+username only on a `not_in_group` refusal, so the account can be found in Manage users
+and added to the group; otherwise it appears only in the pull request, as "Requested
+by". They never carry the `Authorization` header, the
 request body, the photo, a token or the App's key.
 
 ## Limits
@@ -347,5 +386,8 @@ unless a test fills it), patches `aws`, `NeonCRM` and `github_app` where the
 handler uses them and the two `submission` calls, uses the real photo checks and class
 rules with JPEGs from `tests/jpeg_builder.py`, and reads the API Gateway events in
 `tests/fixtures/api_event_*.json` (fake claims, no real token) and
-`tests/fixtures/scheduled_event.json`. One test runs the default DynamoDB wiring against
+`tests/fixtures/scheduled_event.json`. The group check's tests cover a caller in the
+group, not in it, a token with no `cognito:groups` claim, every form the claim can
+arrive in, and the setting empty or unset (nothing changes); a refused caller reaches
+no Neon, SSM, Secrets Manager or GitHub call. One test runs the default DynamoDB wiring against
 `moto`.
