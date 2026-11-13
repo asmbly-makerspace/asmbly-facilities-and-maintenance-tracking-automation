@@ -27,6 +27,11 @@ Parameters:
     Type: String
     AllowedPattern: '^[A-Za-z0-9.-]+$'
     Description: Host name of the staff pool's hosted sign-in (no scheme), for the page's sign-in.
+  ClassPhotoRequiredGroup:
+    Type: String
+    Default: ''
+    AllowedPattern: '^[A-Za-z0-9._-]*$'
+    Description: The staff pool group a caller must be in to use the class photo API (class-photos). Empty turns the check off.
 
 Conditions:
   IsProd: !Equals [!Ref Stage, 'prod']
@@ -103,6 +108,8 @@ Resources:
           # Only prod writes to asmbly-classes; every other stage is a dry run.
           CLASS_PHOTO_DRY_RUN: !If [IsProd, 'false', 'true']
           CLASS_CACHE_TABLE_NAME: !Ref ClassPhotoClassListCacheTable
+          # Empty: any signed-in staff user may upload. Set per stage in samconfig.toml.
+          CLASS_PHOTO_REQUIRED_GROUP: !Ref ClassPhotoRequiredGroup
       Policies:
         - Version: '2012-10-17'
           Statement:

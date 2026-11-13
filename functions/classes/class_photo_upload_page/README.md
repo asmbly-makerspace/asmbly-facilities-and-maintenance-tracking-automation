@@ -132,7 +132,13 @@ public: no client secret exists).
    just issued, a wrong `state` or a failed exchange shows "Sign-in didn't finish. Sign in
    again." with a button, so the page never loops between itself and the sign-in. A 403
    shows "You're not allowed to use this page."
-5. **Sign out** clears `sessionStorage` and goes to `https://<auth domain>/logout` with
+5. A 403 with `"reason": "not_in_group"` (the API's `CLASS_PHOTO_REQUIRED_GROUP` check,
+   off on every stage today) hides the upload form and shows only "You don't have access
+   to class photos. Ask the person who manages staff sign-in to add you to the
+   class-photos group." (`#no-access`), with **Sign out** to switch accounts. The page
+   only shows the API's decision; the API refuses every call from that token whatever
+   the page does ([the API's README](../class_photo_upload_api/README.md#who-is-admitted-the-class-photos-group)).
+6. **Sign out** clears `sessionStorage` and goes to `https://<auth domain>/logout` with
    `client_id` and `logout_uri=<pageUrl>`.
 
 A 401 during a submission sends the person to sign in again; they choose the photo again

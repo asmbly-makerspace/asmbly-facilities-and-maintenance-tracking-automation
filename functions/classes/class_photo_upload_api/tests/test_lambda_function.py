@@ -253,6 +253,135 @@ def test_non_ascii_audience_is_refused_not_an_error(mocks: Any) -> None:
     assert_forbidden(response, mocks)
 
 
+# --- The required group (CLASS_PHOTO_REQUIRED_GROUP) ---
+
+GROUP = "class-photos"
+
+
+def assert_not_in_group(response: dict[str, Any], mocks: Any) -> None:
+    assert response["statusCode"] == 403
+    assert body_of(response) == {
+        "error": lambda_function.NOT_IN_GROUP_ERROR,
+        "reason": lambda_function.NOT_IN_GROUP_REASON,
+    }
+    assert_json_headers(response)
+    mocks.aws.get_secret.assert_not_called()
+    mocks.aws.get_secret_json.assert_not_called()
+    mocks.aws.get_json_parameter.assert_not_called()
+    assert_nothing_outside_called(mocks)
+    mocks.github_app.GitHubRepo.assert_not_called()
+
+
+@pytest.mark.parametrize("make_event", [classes_event, submit_event])
+@pytest.mark.parametrize(
+    "groups",
+    [["door"], ["door", "ceramics"], [], "door", "door,ceramics", "[door ceramics]", '["door"]', "", 5, ["class-photosX"]],
+)
+def test_not_in_group_returns_403_and_calls_nothing(
+    mocks: Any, monkeypatch: pytest.MonkeyPatch, make_event: Any, groups: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("CLASS_PHOTO_REQUIRED_GROUP", GROUP)
+    event = _with_claims(make_event(), **{"cognito:groups": groups})
+
+    with caplog.at_level(logging.INFO):
+        response = lambda_function.lambda_handler(event, FakeContext())
+
+    assert_not_in_group(response, mocks)
+    assert f"Rejected caller: not_in_group (user {USERNAME}, sub {SUB})" in caplog.text
+    assert "photo_base64" not in caplog.text
+
+
+@pytest.mark.parametrize("make_event", [classes_event, submit_event])
+def test_no_groups_claim_returns_403_when_a_group_is_required(
+    mocks: Any, monkeypatch: pytest.MonkeyPatch, make_event: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("CLASS_PHOTO_REQUIRED_GROUP", GROUP)
+    event = make_event()
+    assert "cognito:groups" not in event["requestContext"]["authorizer"]["claims"]
+
+    with caplog.at_level(logging.INFO):
+        response = lambda_function.lambda_handler(event, FakeContext())
+
+    assert_not_in_group(response, mocks)
+    assert "Rejected caller: not_in_group" in caplog.text
+
+
+def test_group_check_comes_after_the_audience_check(mocks: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLASS_PHOTO_REQUIRED_GROUP", GROUP)
+    event = _with_claims(submit_event(), aud="another-client", **{"cognito:groups": [GROUP]})
+
+    response = lambda_function.lambda_handler(event, FakeContext())
+
+    assert_forbidden(response, mocks)
+
+
+@pytest.mark.parametrize(
+    "groups",
+    [[GROUP], ["door", GROUP], GROUP, f"door,{GROUP}", f"[door {GROUP}]", f'["door", "{GROUP}"]', f" {GROUP} "],
+)
+def test_in_group_lists_classes(mocks: Any, monkeypatch: pytest.MonkeyPatch, groups: Any) -> None:
+    monkeypatch.setenv("CLASS_PHOTO_REQUIRED_GROUP", GROUP)
+    event = _with_claims(classes_event(), **{"cognito:groups": groups})
+
+    response = lambda_function.lambda_handler(event, FakeContext())
+
+    assert response["statusCode"] == 200
+    assert "classes" in body_of(response)
+
+
+def test_in_group_submits(mocks: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLASS_PHOTO_REQUIRED_GROUP", GROUP)
+    event = _with_claims(submit_event(), **{"cognito:groups": f"door,{GROUP}"})
+
+    response = lambda_function.lambda_handler(event, FakeContext())
+
+    assert response["statusCode"] == 200
+    mocks.github_app.installation_token.assert_called_once()
+    mocks.plan_submission.assert_called_once()
+
+
+@pytest.mark.parametrize("setting", [None, "", "   "])
+@pytest.mark.parametrize("groups", [None, [], ["door"]])
+def test_group_setting_empty_admits_any_signed_in_user(
+    mocks: Any, monkeypatch: pytest.MonkeyPatch, setting: str | None, groups: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    if setting is None:
+        monkeypatch.delenv("CLASS_PHOTO_REQUIRED_GROUP", raising=False)
+    else:
+        monkeypatch.setenv("CLASS_PHOTO_REQUIRED_GROUP", setting)
+    event = _with_claims(submit_event(), **{"cognito:groups": groups})
+
+    with caplog.at_level(logging.INFO):
+        response = lambda_function.lambda_handler(event, FakeContext())
+
+    assert response["statusCode"] == 200
+    mocks.plan_submission.assert_called_once()
+    assert "not_in_group" not in caplog.text
+    assert "USERMARKER" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (None, []),
+        (["door", "class-photos"], ["door", "class-photos"]),
+        (["door", 5, " "], ["door"]),
+        ("class-photos", ["class-photos"]),
+        ("door,class-photos", ["door", "class-photos"]),
+        ("door, class-photos", ["door", "class-photos"]),
+        ("[door class-photos]", ["door", "class-photos"]),
+        ('["door","class-photos"]', ["door", "class-photos"]),
+        ("[door", ["door"]),
+        ("", []),
+        (7, []),
+    ],
+)
+def test_token_groups_reads_every_form_of_the_claim(value: Any, expected: list[str]) -> None:
+    claims = {} if value is None else {"cognito:groups": value}
+
+    assert lambda_function.token_groups(claims) == expected
+
+
 @pytest.mark.parametrize(
     "method, resource",
     [("POST", "/class-photo-upload/classes"), ("GET", "/class-photo-upload/submit"), ("GET", "/other"), (None, None)],

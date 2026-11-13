@@ -804,3 +804,11 @@ def test_page_sends_submission_to_its_own_origin() -> None:
     assert "xhr.withCredentials = false;" in script
     # The only other request the page makes is the sign-in's token exchange.
     assert re.findall(r"\bfetch\(([^,]*),", script) == ['"https://" + config.authDomain + "/oauth2/token"', "config.pageUrl + path"]
+
+
+def test_no_access_page_says_the_api_message_and_is_hidden_until_needed() -> None:
+    tag = _tag("no-access")
+    assert tag.startswith("<section ") and " hidden" in tag
+    section = MARKUP.split('id="no-access"', 1)[1].split("</section>", 1)[0]
+    assert api.NOT_IN_GROUP_ERROR in section
+    assert f'const NOT_IN_GROUP_REASON = "{api.NOT_IN_GROUP_REASON}";' in _script()
