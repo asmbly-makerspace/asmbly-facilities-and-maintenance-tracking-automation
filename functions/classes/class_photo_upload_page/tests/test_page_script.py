@@ -41,6 +41,9 @@ SCENARIOS = [
     "classes_refresh_too_soon_says_so",
     "classes_refresh_failed_keeps_list",
     "classes_refresh_keeps_chosen_class",
+    "classes_not_in_group_shows_no_access",
+    "classes_other_403_keeps_not_allowed_message",
+    "submit_not_in_group_shows_no_access",
     "submit_disables_refresh",
 ]
 TIMEOUT_SECONDS = 60

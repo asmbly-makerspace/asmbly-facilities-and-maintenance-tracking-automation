@@ -100,7 +100,13 @@ def update_neon_with_waiver_info(email: str, waiver_date: str, waiver_id: str | 
 
     # 2. Update the custom field for that account ID
     # Note: The NeonCRM API requires the ID for the custom field, not the name, for PATCH updates.
-    client.update_account_custom_field(account_id=account_id, field_id="179", field_value=waiver_date)
+    try:
+        client.update_account_custom_field(account_id=account_id, field_id="179", field_value=waiver_date)
+    except neoncrm.NeonCRMError as e:
+        # The helper already logged the status and Neon's masked errors. A non-2xx answer
+        # makes Smartwaiver retry the webhook (every 5 minutes, up to five times).
+        logger.error("WaiverDate not saved for waiver %s on NeonCRM account %s: %s", waiver_id, account_id, e)
+        return {"statusCode": 502, "body": json.dumps("Bad Gateway: the NeonCRM update failed.")}
 
     return {"statusCode": 200, "body": json.dumps(f"Successfully updated waiver date for {email}.")}
 

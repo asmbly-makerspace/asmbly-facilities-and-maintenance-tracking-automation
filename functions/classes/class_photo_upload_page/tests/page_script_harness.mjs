@@ -32,6 +32,10 @@ function pageText(name) {
 const CLASS_A = "Woodshop Safety";
 const CLASS_B = "Intro to Laser Cutting";
 const CLASS_C = "Wheel Throwing 101";
+const NOT_IN_GROUP_ANSWER = {
+  error: "You don't have access to class photos. Ask the person who manages staff sign-in to add you to the class-photos group.",
+  reason: pageText("NOT_IN_GROUP_REASON"),
+};
 const NOTHING_CHANGED = "Couldn't open the pull request. Nothing was changed on GitHub. Try again in a minute.";
 
 // ---- Fake DOM ----
@@ -158,7 +162,7 @@ class FakeDocument {
     placeholder._text = "Choose a class…";
     select.children.push(placeholder);
     this.byId.get("submit")._disabled = true;
-    for (const id of ["class-retry", "class-refresh", "class-progress", "class-freshness", "submit-progress", "submit-elapsed", "app", "sign-out", "result", "sign-in-problem", "photo-note", "preview", "dry-run-banner"]) {
+    for (const id of ["class-retry", "class-refresh", "class-progress", "class-freshness", "submit-progress", "submit-elapsed", "app", "sign-out", "result", "sign-in-problem", "no-access", "photo-note", "preview", "dry-run-banner"]) {
       this.byId.get(id)._hidden = true;
     }
     for (const id of ["class-retry", "class-refresh", "submit", "sign-out", "sign-in-again"]) this.byId.get(id).tagName = "BUTTON";
@@ -926,6 +930,39 @@ const SCENARIOS = {
     await page.pending().respond(200, classesAnswer({ names: [CLASS_C], refresh: "refreshed" }));
     assert.equal(page.el("class-select").value, "", "gone: back to the placeholder");
     assert.equal(page.el("submit").disabled, true);
+  },
+
+  async classes_not_in_group_shows_no_access() {
+    const page = new Page();
+    await settle();
+    assert.equal(page.el("app").hidden, false, "the form shows while the list loads");
+    await page.pending().respond(403, NOT_IN_GROUP_ANSWER);
+    assert.equal(page.el("no-access").hidden, false, "the no-access message shows");
+    assert.equal(page.el("app").hidden, true, "no upload form");
+    assert.equal(page.el("sign-in-problem").hidden, true);
+    assert.equal(page.el("signing-in").hidden, true);
+    assert.equal(page.el("sign-out").hidden, false, "Sign out stays, to switch accounts");
+    assert.deepEqual(page.navigations, [], "no sign-in loop");
+    assert.equal(page.requests.length, 1, "nothing else is asked");
+  },
+
+  async classes_other_403_keeps_not_allowed_message() {
+    const page = new Page();
+    await settle();
+    await page.pending().respond(403, { error: pageText("FORBIDDEN_ERROR") });
+    assert.equal(page.el("no-access").hidden, true, "only not_in_group shows the no-access page");
+    assert.equal(page.el("app").hidden, false);
+    assert.equal(page.status("class-status"), pageText("FORBIDDEN_ERROR"));
+  },
+
+  async submit_not_in_group_shows_no_access(photo) {
+    const page = await readyPage(photo);
+    await page.click("submit");
+    await page.pending().respond(403, NOT_IN_GROUP_ANSWER);
+    assert.equal(page.el("no-access").hidden, false);
+    assert.equal(page.el("app").hidden, true);
+    assert.equal(submissions(page).length, 1);
+    assert.deepEqual(page.navigations, []);
   },
 
   async submit_disables_refresh(photo) {

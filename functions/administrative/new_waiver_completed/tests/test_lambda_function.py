@@ -3,6 +3,7 @@ import os
 from unittest import TestCase
 from unittest.mock import patch, MagicMock
 
+from common import neoncrm
 from functions.administrative.new_waiver_completed import lambda_function
 
 LAMBDA_FUNCTION_PATH = "functions.administrative.new_waiver_completed.lambda_function"
@@ -129,6 +130,30 @@ class TestNewWaiverCompleted(TestCase):
         mock_neon_client.get_account_by_email.assert_called_once_with("notfound@example.com")
         mock_neon_client.update_account_custom_field.assert_not_called()
 
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.NeonCRM")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    def test_update_neon_update_fails_returns_502(self, mock_aws, mock_neoncrm_class):
+        """A failed Neon update is a 502 with a plain body, logged at ERROR by IDs."""
+        mock_aws.get_secret.side_effect = ["test_org_id", "test_api_key"]
+        mock_neon_client = MagicMock()
+        mock_neon_client.get_account_by_email.return_value = "12345"
+        mock_neon_client.update_account_custom_field.side_effect = neoncrm.NeonCRMError(
+            "accounts/12345 update failed (status 400)"
+        )
+        mock_neoncrm_class.return_value = mock_neon_client
+
+        with patch.dict(os.environ, self.env_vars), self.assertLogs(level="DEBUG") as logs:
+            response = lambda_function.update_neon_with_waiver_info("test@example.com", "10/26/2023", "W-123")
+
+        self.assertEqual(response["statusCode"], 502)
+        self.assertEqual(response["body"], json.dumps("Bad Gateway: the NeonCRM update failed."))
+        errors = [r.getMessage() for r in logs.records if r.levelname == "ERROR"]
+        self.assertEqual(errors, [
+            "WaiverDate not saved for waiver W-123 on NeonCRM account 12345: "
+            "accounts/12345 update failed (status 400)"
+        ])
+        self.assertNotIn("test@example.com", "\n".join(logs.output))
+
     # --- Test `lambda_handler` ---
 
     @patch(f"{LAMBDA_FUNCTION_PATH}.update_neon_with_waiver_info")
@@ -240,6 +265,37 @@ class TestNewWaiverCompletedLogging(TestCase):
         messages = [record.getMessage() for record in logs.records]
         self.assertIn("Parsed waiver W-123", messages)
         self.assertTrue(any("W-123" in m and "No NeonCRM account" in m for m in messages), messages)
+
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.requests.patch")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.neoncrm.requests.post")
+    @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
+    def test_rejected_neon_update_returns_502_and_logs_why_without_personal_data(self, mock_aws, mock_post, mock_patch):
+        """Neon rejecting the PATCH is not a success: 502, and the log says why with the
+        values Neon quotes back masked."""
+        mock_aws.get_secret.side_effect = ["test_org_id", "test_api_key"]
+        mock_post.return_value = MagicMock(**{"json.return_value": {"searchResults": [{"Account ID": "12345"}]}})
+        rejected = MagicMock(status_code=400)
+        rejected.json.return_value = [
+            {"code": "400", "message": "Date of birth 1990-01-02 is invalid for jane.doe@example.com"},
+        ]
+        rejected.raise_for_status.side_effect = neoncrm.requests.exceptions.HTTPError(
+            "400 Client Error for jane.doe@example.com", response=rejected
+        )
+        mock_patch.return_value = rejected
+
+        with patch.dict(os.environ, self.env_vars), self.assertLogs(level="DEBUG") as logs:
+            response = lambda_function.lambda_handler(self.event, None)
+
+        self.assertEqual(response["statusCode"], 502)
+        self._assert_no_personal_data("\n".join(logs.output))
+        errors = [record.getMessage() for record in logs.records if record.levelname == "ERROR"]
+        self.assertEqual(errors, [
+            "Error updating NeonCRM account 12345: HTTPError (status 400): "
+            "400: Date of birth <number> is invalid for <email>",
+            "WaiverDate not saved for waiver W-123 on NeonCRM account 12345: "
+            "accounts/12345 update failed (status 400)",
+        ])
+        self.assertNotIn("Successfully updated", response["body"])
 
     @patch(f"{LAMBDA_FUNCTION_PATH}.aws")
     def test_unexpected_error_logs_type_and_waiver_id_not_message(self, mock_aws):

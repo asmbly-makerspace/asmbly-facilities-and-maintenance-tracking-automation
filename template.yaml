@@ -59,6 +59,14 @@ Parameters:
     Type: String
     Default: "github/class-photo-upload-app"
     Description: Secrets Manager secret with the class photo GitHub App's app_id, installation_id and private_key.
+  ClassPhotoRequiredGroup:
+    Type: String
+    Default: ""
+    AllowedPattern: '^[A-Za-z0-9._-]*$'
+    Description: >
+      The staff pool group (class-photos) a caller must be in to use the class photo
+      upload. Empty turns the check off. Set per stage in samconfig.toml, always
+      explicitly: sam deploy keeps a parameter's previous value when it isn't given.
 
 Conditions:
   IsProd: !Equals [!Ref Stage, 'prod']
@@ -451,6 +459,7 @@ Resources:
         ClassPhotoGitHubAppSecretName: !Ref ClassPhotoGitHubAppSecretName
         ClassPhotoAppClientId: !Ref ClassPhotoAppClientId
         StaffAuthDomain: !Ref StaffAuthDomain
+        ClassPhotoRequiredGroup: !Ref ClassPhotoRequiredGroup
       Tags:
         Application: facilities-automation-hub
         Workspace: classes

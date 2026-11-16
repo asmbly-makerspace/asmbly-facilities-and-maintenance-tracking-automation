@@ -254,6 +254,10 @@
     <button type="button" id="sign-in-again">Sign in again</button>
   </section>
 
+  <section id="no-access" hidden>
+    <p class="message error">You don't have access to class photos. Ask the person who manages staff sign-in to add you to the class-photos group.</p>
+  </section>
+
   <section id="app" hidden>
     <h2><label for="class-select">Class</label></h2>
     <select id="class-select" disabled aria-describedby="class-status class-freshness">
@@ -315,6 +319,8 @@
   const GENERIC_ERROR = "Something went wrong on our side. Try again later.";
   const NEON_ERROR = "Couldn't load the class list. Try again in a minute.";
   const FORBIDDEN_ERROR = "You're not allowed to use this page.";
+  // A 403 with this reason: signed in, but not in the group the API requires.
+  const NOT_IN_GROUP_REASON = "not_in_group";
   const TOO_MANY_REQUESTS_MESSAGE = "Too many submissions at once. Wait a minute and try again.";
   const NETWORK_MESSAGE = "Couldn't reach the server. Check your connection and try again.";
 
@@ -806,7 +812,7 @@
     elapsedTimer: null,
   };
   const elements = {};
-  for (const id of ["sign-out", "dry-run-banner", "signing-in", "sign-in-problem", "sign-in-again", "app", "class-select", "class-progress", "class-status", "class-retry", "class-freshness", "class-refresh", "drop-zone", "photo-input", "photo-status", "photo-note", "preview", "submit", "submit-progress", "submit-status", "submit-elapsed", "result"]) {
+  for (const id of ["sign-out", "dry-run-banner", "signing-in", "sign-in-problem", "sign-in-again", "no-access", "app", "class-select", "class-progress", "class-status", "class-retry", "class-freshness", "class-refresh", "drop-zone", "photo-input", "photo-status", "photo-note", "preview", "submit", "submit-progress", "submit-status", "submit-elapsed", "result"]) {
     elements[id] = document.getElementById(id);
   }
   const classPlaceholder = elements["class-select"].firstElementChild;
@@ -950,6 +956,15 @@
     elements["sign-in-problem"].hidden = false;
   }
 
+  // Signed in, but the API says this account isn't in the page's group: no form, only
+  // the message (and Sign out, to switch accounts). The API refuses every call anyway.
+  function showNoAccess() {
+    elements["signing-in"].hidden = true;
+    elements["sign-in-problem"].hidden = true;
+    elements.app.hidden = true;
+    elements["no-access"].hidden = false;
+  }
+
   // A 401 signs in again once per tab; a second one stops, so the page never loops.
   function reauthenticate() {
     if (sessionStorage.getItem(STORAGE.reauthenticated)) {
@@ -975,8 +990,8 @@
   // page's own time limit. The message is the caller's fallback.
   class UnconfirmedError extends PageError {}
 
-  // The answer's JSON body; null when the page is on its way to the sign-in. Throws a
-  // PageError carrying the message to show.
+  // The answer's JSON body; null when the page is on its way to the sign-in or shows its
+  // "no access" message instead of the form. Throws a PageError carrying the message to show.
   function readAnswer(status, text, fallbackMessage) {
     if (status === 401) {
       reauthenticate();
@@ -991,6 +1006,10 @@
     }
     const ok = status >= 200 && status < 300;
     if (ok && body && typeof body === "object") return body;
+    if (status === 403 && body && body.reason === NOT_IN_GROUP_REASON) {
+      showNoAccess();
+      return null;
+    }
     if (status === 403) throw new PageError(FORBIDDEN_ERROR);
     if (body && typeof body.error === "string" && body.error) throw new PageError(body.error);
     if (status === 429) throw new PageError(TOO_MANY_REQUESTS_MESSAGE);

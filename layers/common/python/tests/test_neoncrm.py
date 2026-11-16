@@ -147,18 +147,11 @@ class TestNeonCRM(unittest.TestCase):
 
     @patch('common.neoncrm.requests.patch')
     def test_update_account_custom_field_api_error(self, mock_patch):
-        """Test handling of API errors when updating a custom field."""
+        """A failed update raises NeonCRMError instead of passing for a success."""
         mock_patch.side_effect = requests.exceptions.RequestException("API Error")
 
-        account_id = "12345"
-        field_id = "10"
-        field_value = "New Value"
-
-        # We expect this to fail silently and log an error, not raise an exception
-        try:
-            self.client.update_account_custom_field(account_id, field_id, field_value)
-        except Exception as e:
-            self.fail(f"update_account_custom_field raised an unexpected exception: {e}")
+        with self.assertRaises(NeonCRMError):
+            self.client.update_account_custom_field("12345", "10", "New Value")
 
 
 # --- NeonCRM.search_events (pytest style, requests-mock: no network) ---
@@ -387,44 +380,138 @@ def test_update_account_custom_field_success_logs_ids(neon: NeonCRM, caplog: pyt
     assert "2026-10-17" not in caplog.text
 
 
-def test_update_account_custom_field_failure_logs_status_not_body(neon: NeonCRM, caplog: pytest.LogCaptureFixture) -> None:
+ACCOUNT_URL = "https://api.neoncrm.com/v2/accounts/12345"
+
+
+def _update_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in _neon_records(caplog) if r.levelno == logging.ERROR]
+
+
+def test_update_account_custom_field_rejected_logs_neon_errors_and_raises(
+    neon: NeonCRM, requests_mock: requests_mock_lib.Mocker, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A 400 logs Neon's error codes and messages, and raises with the status only."""
+    caplog.set_level(logging.DEBUG, logger="common.neoncrm")
+    requests_mock.patch(ACCOUNT_URL, status_code=400, json=[
+        {"code": "400", "message": "Date of birth is invalid."},
+        {"code": "INVALID_FIELD", "message": "Custom field 77 is read only."},
+    ])
+
+    with pytest.raises(NeonCRMError) as excinfo:
+        neon.update_account_custom_field("12345", "77", "2026-10-17")
+
+    assert str(excinfo.value) == "accounts/12345 update failed (status 400)"
+    assert excinfo.value.__cause__ is None and excinfo.value.__suppress_context__
+    assert _update_errors(caplog) == [
+        "Error updating NeonCRM account 12345: HTTPError (status 400): "
+        "400: Date of birth is invalid.; INVALID_FIELD: Custom field 77 is read only."
+    ]
+
+
+def test_update_account_custom_field_masks_personal_data_in_neon_messages(
+    neon: NeonCRM, requests_mock: requests_mock_lib.Mocker, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Emails, phone numbers and dates that Neon quotes back are masked in the log."""
+    caplog.set_level(logging.DEBUG, logger="common.neoncrm")
+    requests_mock.patch(ACCOUNT_URL, status_code=400, json=[
+        {"code": "400", "message": f"Email {MEMBER_EMAIL} is already used"},
+        {"code": "400", "message": "Phone 512-555-0142 is invalid"},
+        {"code": "400", "message": "Date of birth 0100-01-02 is out of range"},
+    ])
+
+    with pytest.raises(NeonCRMError):
+        neon.update_account_custom_field("12345", "77", "2026-10-17")
+
+    assert _update_errors(caplog) == [
+        "Error updating NeonCRM account 12345: HTTPError (status 400): "
+        "400: Email <email> is already used; 400: Phone <number> is invalid; "
+        "400: Date of birth <number> is out of range"
+    ]
+    for leaked in (MEMBER_EMAIL, "512-555-0142", "0100-01-02", "2026-10-17"):
+        assert leaked not in caplog.text
+
+
+def test_update_account_custom_field_truncates_and_caps_neon_errors(
+    neon: NeonCRM, requests_mock: requests_mock_lib.Mocker, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A long message is cut to 200 characters, on one line; only the first five errors are logged."""
+    caplog.set_level(logging.DEBUG, logger="common.neoncrm")
+    long_message = "x" * 150 + "\nFORGED LOG LINE " + "y" * 100 + BODY_MARKER
+    requests_mock.patch(ACCOUNT_URL, status_code=400, json=[{"code": "E1", "message": long_message}] + [
+        {"code": f"E{n}", "message": "m"} for n in range(2, 9)
+    ])
+
+    with pytest.raises(NeonCRMError):
+        neon.update_account_custom_field("12345", "77", "2026-10-17")
+
+    [error] = _update_errors(caplog)
+    assert BODY_MARKER not in error
+    assert "\n" not in error
+    assert "E1: " + ("x" * 150 + " FORGED LOG LINE " + "y" * 100)[:200] + "..." in error
+    assert error.endswith("E5: m; and 3 more")
+    assert "E6" not in error
+
+
+@pytest.mark.parametrize(
+    ("body", "summary"),
+    [
+        ({"text": f"<html>{BODY_MARKER}</html>"}, "body is not JSON"),
+        ({"json": {"code": f"{BODY_MARKER} {MEMBER_EMAIL}", "message": 7}}, "<invalid>"),
+        ({"json": [BODY_MARKER, {"message": None}]}, "<invalid>; <invalid>"),
+        ({"json": []}, "no errors listed"),
+    ],
+)
+def test_update_account_custom_field_unexpected_error_body_is_not_logged_raw(
+    neon: NeonCRM, requests_mock: requests_mock_lib.Mocker, caplog: pytest.LogCaptureFixture,
+    body: dict[str, Any], summary: str,
+) -> None:
+    """A body that isn't Neon's error list is summarized, never logged as it came."""
+    caplog.set_level(logging.DEBUG, logger="common.neoncrm")
+    requests_mock.patch(ACCOUNT_URL, status_code=500, **body)
+
+    with pytest.raises(NeonCRMError, match=r"^accounts/12345 update failed \(status 500\)$"):
+        neon.update_account_custom_field("12345", "77", "2026-10-17")
+
+    assert _update_errors(caplog) == [f"Error updating NeonCRM account 12345: HTTPError (status 500): {summary}"]
+    assert BODY_MARKER not in caplog.text
+    assert MEMBER_EMAIL not in caplog.text
+
+
+def test_update_account_custom_field_failure_logs_no_exception_text(neon: NeonCRM, caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.DEBUG, logger="common.neoncrm")
     response = Mock(status_code=400, text="pk_NEON_BODY jane@example.com")
+    response.json.return_value = [{"code": "400", "message": "Invalid"}]
     error = requests.exceptions.HTTPError("400 Client Error: pk_HTTP_TEXT", response=response)
     with patch("common.neoncrm.requests.patch") as mock_patch:
         mock_patch.return_value.raise_for_status.side_effect = error
 
-        assert neon.update_account_custom_field("12345", "77", "2026-10-17") is None
+        with pytest.raises(NeonCRMError):
+            neon.update_account_custom_field("12345", "77", "2026-10-17")
 
-    errors = [r for r in _neon_records(caplog) if r.levelno == logging.ERROR]
-    assert [r.getMessage() for r in errors] == ["Error updating NeonCRM account 12345: HTTPError (status 400)"]
+    assert _update_errors(caplog) == ["Error updating NeonCRM account 12345: HTTPError (status 400): 400: Invalid"]
     assert "pk_NEON_BODY" not in caplog.text
     assert "jane@example.com" not in caplog.text
     assert "pk_HTTP_TEXT" not in caplog.text
 
 
-def test_update_account_custom_field_network_error_logs_type(neon: NeonCRM, caplog: pytest.LogCaptureFixture) -> None:
+@pytest.mark.parametrize(
+    "error",
+    [requests.exceptions.ConnectionError("pk_URL"), requests.exceptions.ReadTimeout("pk_URL")],
+)
+def test_update_account_custom_field_no_response_logs_type_and_raises(
+    neon: NeonCRM, caplog: pytest.LogCaptureFixture, error: Exception
+) -> None:
+    """A dropped connection or a timeout is a failed update too: logged by class, raised."""
     caplog.set_level(logging.DEBUG, logger="common.neoncrm")
     with patch("common.neoncrm.requests.patch") as mock_patch:
-        mock_patch.side_effect = requests.exceptions.ConnectionError("pk_URL")
+        mock_patch.side_effect = error
 
-        neon.update_account_custom_field("12345", "77", "2026-10-17")
+        with pytest.raises(NeonCRMError, match=r"^accounts/12345 update failed \(status no response\)$"):
+            neon.update_account_custom_field("12345", "77", "2026-10-17")
 
-    errors = [r.getMessage() for r in _neon_records(caplog) if r.levelno == logging.ERROR]
-    assert errors == ["Error updating NeonCRM account 12345: ConnectionError (status no response)"]
-    assert "pk_URL" not in caplog.text
-
-
-def test_update_account_custom_field_timeout_logs_type(neon: NeonCRM, caplog: pytest.LogCaptureFixture) -> None:
-    """A timeout is handled like any other failed update: logged by class, None returned."""
-    caplog.set_level(logging.DEBUG, logger="common.neoncrm")
-    with patch("common.neoncrm.requests.patch") as mock_patch:
-        mock_patch.side_effect = requests.exceptions.ReadTimeout("pk_URL")
-
-        assert neon.update_account_custom_field("12345", "77", "2026-10-17") is None
-
-    errors = [r.getMessage() for r in _neon_records(caplog) if r.levelno == logging.ERROR]
-    assert errors == ["Error updating NeonCRM account 12345: ReadTimeout (status no response)"]
+    assert _update_errors(caplog) == [
+        f"Error updating NeonCRM account 12345: {type(error).__name__} (status no response): no body"
+    ]
     assert "pk_URL" not in caplog.text
 
 

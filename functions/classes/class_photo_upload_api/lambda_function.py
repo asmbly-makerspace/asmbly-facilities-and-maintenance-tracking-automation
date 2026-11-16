@@ -11,9 +11,12 @@ Routes (both behind the staff pool's Cognito authorizer in template.yaml):
   prod), reports what it would do with a read-only token.
 
 The authorizer accepts an ID token from any app client of the pool, so the handler also
-requires this page's client ID in ``aud`` and ``token_use`` ``id``. Logs carry the route,
-the caller's ``sub``, the class name and the outcome; never the username, a token, the
-request body or the photo.
+requires this page's client ID in ``aud`` and ``token_use`` ``id``. When
+``CLASS_PHOTO_REQUIRED_GROUP`` is set, the token's ``cognito:groups`` must also hold that
+group, on both routes, or the answer is 403 with reason ``not_in_group`` before Neon or
+GitHub is touched; empty (the default) leaves the check off. Logs carry the route, the
+caller's ``sub``, the class name and the outcome; never a token, the request body or the
+photo, and the Cognito username only on a ``not_in_group`` refusal.
 
 On prod an EventBridge rule also invokes it once a day to refresh the cached class list
 (``is_scheduled_refresh``). This module is the composition root of the cache: it alone
@@ -28,6 +31,7 @@ import json
 import logging
 import math
 import os
+import re
 import time
 import traceback
 from pathlib import Path
@@ -66,6 +70,12 @@ GITHUB_UNFINISHED_ERROR = (
 )
 CONFLICT_ERROR = "Someone else just submitted a photo for this class. Try again."
 FORBIDDEN_ERROR = "You're not allowed to use this page."
+NOT_IN_GROUP_ERROR = (
+    "You don't have access to class photos. Ask the person who manages staff sign-in "
+    "to add you to the class-photos group."
+)
+# The reason the page reads to show its "no access" page instead of the form.
+NOT_IN_GROUP_REASON = "not_in_group"
 NOT_IN_LIST_ERROR = "Pick a class from the list."
 BAD_REQUEST_ERROR = "The photo didn't arrive whole. Choose it again and submit."
 NOT_FOUND_ERROR = "Not found."
@@ -78,6 +88,9 @@ REQUIRED_ENV = (
     "CLASS_CACHE_TABLE_NAME",
 )
 GITHUB_SECRET_KEYS = ("app_id", "installation_id", "private_key")
+
+# The staff pool group a caller must be in; empty or unset: no group check.
+REQUIRED_GROUP_ENV = "CLASS_PHOTO_REQUIRED_GROUP"
 
 CLASSES_ROUTE = ("GET", "/class-photo-upload/classes")
 SUBMIT_ROUTE = ("POST", "/class-photo-upload/submit")
@@ -161,6 +174,36 @@ def caller_claims(event: dict[str, Any], client_id: str) -> tuple[dict[str, Any]
         if not isinstance(value, str) or not value.strip():
             return None, "claims"
     return claims, None
+
+
+def token_groups(claims: dict[str, Any]) -> list[str]:
+    """The groups in the token's ``cognito:groups`` claim; [] when it has none.
+
+    Cognito puts a list in the token. API Gateway's authorizer hands the claims on as
+    strings, so the list can arrive as one string: "a,b", "[a b]" or '["a","b"]'. A
+    group name has no spaces or commas (the staff pool's are door, ceramics and
+    class-photos), so splitting on them is safe.
+    """
+    value = claims.get("cognito:groups")
+    if isinstance(value, list):
+        return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+    if not isinstance(value, str):
+        return []
+    text = value.strip()
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, list):
+            return [item.strip() for item in parsed if isinstance(item, str) and item.strip()]
+        text = text[1:-1] if text.endswith("]") else text[1:]
+    return [item for item in re.split(r"[,\s]+", text) if item]
+
+
+def required_group() -> str:
+    """The group the caller must be in, from CLASS_PHOTO_REQUIRED_GROUP; "" means no check."""
+    return os.environ.get(REQUIRED_GROUP_ENV, "").strip()
 
 
 def photo_problem_kind(message: str) -> str:
@@ -479,6 +522,17 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     if claims is None:
         logger.warning("Rejected caller: %s", reason)
         return _error(403, FORBIDDEN_ERROR)
+    group = required_group()
+    if group and group not in token_groups(claims):
+        # The username is the account name Manage users made, so the person who manages
+        # staff sign-in can find the account to add to the group.
+        logger.warning(
+            "Rejected caller: %s (user %s, sub %s)",
+            NOT_IN_GROUP_REASON,
+            claims["cognito:username"],
+            claims["sub"],
+        )
+        return _response(403, {"error": NOT_IN_GROUP_ERROR, "reason": NOT_IN_GROUP_REASON})
 
     route = (event.get("httpMethod"), event.get("resource"))
     logger.info("%s %s from sub %s (dry run: %s)", route[0], route[1], claims["sub"], dry_run)

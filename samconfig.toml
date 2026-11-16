@@ -1,5 +1,9 @@
 version = 0.1
 
+# ClassPhotoRequiredGroup: the staff pool group the class photo upload admits
+# (class-photos); "" turns the check off. Give it in every environment, even empty:
+# sam deploy keeps a parameter's previous value when the overrides leave it out.
+
 # This is the 'dev' environment, used when running 'sam deploy' without a --config-env flag.
 [dev.deploy.parameters]
 stack_name = "AsmblyFacilitiesMaintTrackingStack-dev"
@@ -8,7 +12,7 @@ s3_prefix = "AsmblyFacilitiesMaintTrackingStack-dev"
 region = "us-east-2"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
-parameter_overrides = "Stage=\"dev\""
+parameter_overrides = "Stage=\"dev\" ClassPhotoRequiredGroup=\"\""
 image_repositories = []
 
 # This is the 'prod' environment, used with 'sam deploy --config-env prod'
@@ -19,7 +23,7 @@ s3_prefix = "AsmblyFacilitiesMaintTrackingStack-prod"
 region = "us-east-2"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
-parameter_overrides = "Stage=\"prod\""
+parameter_overrides = "Stage=\"prod\" ClassPhotoRequiredGroup=\"\""
 image_repositories = []
 
 # This is the 'stage' environment, used with 'sam deploy --config-env stage'
@@ -30,5 +34,5 @@ s3_prefix = "AsmblyFacilitiesMaintTrackingStack-stage"
 region = "us-east-2"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
-parameter_overrides = "Stage=\"stage\""
+parameter_overrides = "Stage=\"stage\" ClassPhotoRequiredGroup=\"\""
 image_repositories = []
