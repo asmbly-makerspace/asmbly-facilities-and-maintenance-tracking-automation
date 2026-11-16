@@ -52,8 +52,14 @@ None.
     `logger.error("workspace_channel_map in the PM schedule config is invalid; posting to default channels")`
     and return `{}`. The weekly run still posts; a valid config is enforced in CI by
     `test_pm_schedule_config_channel_map_is_valid`.
-  - Otherwise: keys lowercased and stripped (so `"Woodshop "` matches the derived
-    `woodshop`), values stripped with any leading `#` removed.
+  - Keys go through the same normalization as the derived channel name, in one shared
+    helper `workspace_slug(name: str) -> str` (strip, lowercase, spaces → dashes), so
+    `"Woodshop "` and `"Metal Shop"` match `woodshop` and `metal-shop`.
+  - Values: stripped, leading `#` removed, then must match
+    `^[a-z0-9][a-z0-9_-]{0,79}$` (a Slack channel name). Any value that fails makes the
+    whole map invalid (error log, `{}`).
+  - The signature changes from the draft's JSON string to the parsed value; drop the
+    draft's `json.loads` branch.
 - Handler: replace the `get_json_parameter(..., expected_key='list_id')` call with one
   call without `expected_key`: `pm_config = get_json_parameter(CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME)`.
   `list_id` missing → `KeyError` caught by the existing `except` → logged 500 with the
@@ -62,8 +68,11 @@ None.
   `logger.info("Workspace channel map has %d entries", len(channel_map))`.
 - `process_tasks_for_slack(tasks, workspace_field_id, asset_field_id, frequency_field_id, channel_map=None)`
   with type hints (as in the draft): after deriving `channel_name`, replace it with
-  `channel_map.get(channel_name, channel_name)`. `ClickUpTask.channel` and the message
-  text use the mapped name.
+  `channel_map.get(channel_name, channel_name)` for `ClickUpTask.channel` (the post
+  target). Add `ClickUpTask`-independent workspace labelling: `format_slack_message` keeps
+  the derived workspace name (e.g. `woodshop`) in the text so two workspaces mapped to one
+  channel stay distinguishable. If `ClickUpTask` (in `common/clickup.py`) has no field for
+  it, keep a parallel value in the function rather than changing the layer.
 - No new environment variables. No change to `common/`.
 
 ### infra
@@ -84,9 +93,12 @@ None.
 
 ### docs
 
+- The draft already wrote these sections citing `WORKSPACE_CHANNEL_MAP`; rewrite them.
 - Function README: the derivation rule, the map's file and key, an example, that the bot
   must be in the target channel, and what an invalid map does.
 - `docs/README.md`: one sentence in the PM Reminder Bot entry.
+- Function README also notes the rename hazards: renaming the Slack channel or the
+  ClickUp Workspace option silently breaks the mapping until the config is updated.
 
 ## Tests
 
@@ -102,6 +114,18 @@ None.
   `configs/clickup_cmms_pmSchedule.json`, asserts `list_id` is present and
   `parse_channel_map` of its map equals the raw map with no error logged, so a typo fails
   CI instead of a Saturday run.
+- **Stale mocks (fix in build):** `test_lambda_handler_no_tasks`,
+  `test_lambda_handler_with_tasks`, `test_lambda_handler_logs_progress_at_info` and
+  `test_lambda_handler_dry_run_mode` mock `get_json_parameter` so the PM config call
+  returns a string. Change each so that call returns a dict with `list_id`
+  (`test_lambda_handler_dry_run_mode` uses one `return_value` for both calls: switch it to
+  `side_effect`).
+- Delete the draft's `test_channel_map_read_from_environment` (the env var is gone).
+- The draft's `test_process_tasks_for_slack_maps_channel` and `test_parse_channel_map`
+  exist; rewrite them for the new signature and cases (including `"Metal Shop"` key,
+  `"Woodshop-Maintenance"`, `"woodshop maintenance"` and `"#"` values → `{}`).
+- `test_format_slack_message_keeps_workspace_label`: a mapped task's text still names
+  `woodshop`.
 - Handler test (existing, updated): `get_json_parameter` is called with the PM schedule
   parameter name and no `expected_key`; the mocked config includes
   `workspace_channel_map: {"woodshop": "woodshop-maintenance"}`, and the woodshop task's
@@ -134,6 +158,13 @@ After the stage deploy (read-only): `aws ssm get-parameter --name /stage/clickup
 shows `workspace_channel_map`. The Saturday stage run (`DRY_RUN=true`) logs
 `Would send to channel: woodshop-maintenance` for woodshop tasks in
 `/asmbly/lambda/PMReminderBotFunction-stage`.
+
+After the first prod run: search `/asmbly/lambda/PMReminderBotFunction-prod` for
+`not_in_channel` / `channel_not_found`. Slack failures are logged, not raised, so the
+run still returns 200 if the bot isn't in the channel.
+
+Before build: confirm `#woodshop-maintenance`'s channel ID is not one of the router's
+(`configs/router_config.json`), so PM posts don't reach a reaction processor.
 
 ## Admin actions
 
