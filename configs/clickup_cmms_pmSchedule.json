@@ -1,3 +1,6 @@
 {
-  "list_id": "901310894771"
+  "list_id": "901310894771",
+  "workspace_channel_map": {
+    "woodshop": "woodshop-maintenance"
+  }
 }

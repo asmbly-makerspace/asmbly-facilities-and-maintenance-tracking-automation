@@ -10,6 +10,7 @@ import pytest
 from functions.facilities.pm_bot_reminder import lambda_function
 
 LAMBDA_FUNCTION_PATH = "functions.facilities.pm_bot_reminder.lambda_function"
+PM_CONFIG = {'list_id': '12345', 'workspace_channel_map': {'woodshop': 'woodshop-maintenance'}}
 
 
 @pytest.fixture
@@ -100,25 +101,56 @@ def test_process_tasks_for_slack_maps_channel():
     assert [f.channel for f in followups] == ['woodshop-maintenance', 'metal-shop']
 
 
-@pytest.mark.parametrize("raw, expected", [
+@pytest.mark.parametrize("value, expected", [
     (None, {}),
-    ('', {}),
-    ('{"Woodshop ": " woodshop-maintenance"}', {'woodshop': 'woodshop-maintenance'}),
-    ('not json', {}),
-    ('["woodshop"]', {}),
+    ({}, {}),
+    ({"Woodshop ": " #woodshop-maintenance"}, {'woodshop': 'woodshop-maintenance'}),
+    ({"Metal Shop": "metal_shop-pm"}, {'metal-shop': 'metal_shop-pm'}),
 ])
-def test_parse_channel_map(raw, expected):
-    assert lambda_function.parse_channel_map(raw) == expected
+def test_parse_channel_map(value, expected):
+    assert lambda_function.parse_channel_map(value) == expected
 
 
-def test_channel_map_read_from_environment(monkeypatch):
-    monkeypatch.setenv('WORKSPACE_CHANNEL_MAP', '{"woodshop": "woodshop-maintenance"}')
-    importlib.reload(lambda_function)
-    try:
-        assert lambda_function.WORKSPACE_CHANNEL_MAP == {'woodshop': 'woodshop-maintenance'}
-    finally:
-        monkeypatch.delenv('WORKSPACE_CHANNEL_MAP')
-        importlib.reload(lambda_function)
+@pytest.mark.parametrize("value", [
+    ["woodshop"],
+    "woodshop-maintenance",
+    {"woodshop": 7},
+    {"woodshop": ""},
+    {"woodshop": "#"},
+    {"woodshop": "Woodshop-Maintenance"},
+    {"woodshop": "woodshop maintenance"},
+    {"  ": "woodshop-maintenance"},
+    {"woodshop": "woodshop-maintenance", "lasers": "bad channel"},
+])
+def test_parse_channel_map_invalid_returns_empty_and_logs(value, caplog):
+    with caplog.at_level(logging.ERROR, logger=""):
+        assert lambda_function.parse_channel_map(value) == {}
+    assert [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR] == [
+        "workspace_channel_map in the PM schedule config is invalid; posting to default channels"
+    ]
+
+
+def test_pm_schedule_config_channel_map_is_valid(caplog):
+    """The committed config parses cleanly, so a typo fails CI rather than a Saturday run."""
+    config_path = pathlib.Path(__file__).parents[4] / "configs" / "clickup_cmms_pmSchedule.json"
+    config = json.loads(config_path.read_text())
+    assert config["list_id"]
+    with caplog.at_level(logging.ERROR, logger=""):
+        parsed = lambda_function.parse_channel_map(config.get("workspace_channel_map"))
+    assert not [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert parsed == config["workspace_channel_map"]
+    assert parsed["woodshop"] == "woodshop-maintenance"
+
+
+def test_format_slack_message_keeps_workspace_label():
+    """A mapped task posts to the mapped channel but its text still names its workspace."""
+    _, followups = lambda_function.process_tasks_for_slack(
+        [_workspace_task('t1', 'Woodshop')], 'ws-field-id', 'asset-field-id', 'freq-field-id',
+        {'woodshop': 'woodshop-maintenance'},
+    )
+    assert followups[0].channel == 'woodshop-maintenance'
+    assert followups[0].workspace == 'woodshop'
+    assert lambda_function.format_slack_message(followups[0]).startswith('[UNKNOWN] woodshop - ')
 
 
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
@@ -130,7 +162,7 @@ def test_lambda_handler_no_tasks(mock_send_slack, mock_get_tasks, mock_get_secre
     # Mock the two calls to get_json_parameter
     mock_get_json_param.side_effect = [
         'ws-field-id',  # for workspace field id
-        '12345'         # for list id
+        PM_CONFIG,      # the PM schedule config
     ]
     mock_get_secret.side_effect = ['clickup-token', 'slack-token']
     mock_get_tasks.return_value = []
@@ -154,7 +186,7 @@ def test_lambda_handler_with_tasks(mock_time_sleep, mock_send_slack, mock_get_ta
     mock_get_secret.side_effect = ['clickup-token', 'slack-token']
     mock_get_json_param.side_effect = [
         'ws-field-id',  # for workspace field id
-        '12345'         # for list id
+        PM_CONFIG,      # the PM schedule config
     ]
 
     # This test requires mock *tasks*, not field definitions.
@@ -183,9 +215,9 @@ def test_lambda_handler_with_tasks(mock_time_sleep, mock_send_slack, mock_get_ta
         # Response for main message of task 2 (Glowforge, sorts first)
         {'ok': True, 'ts': '333.333', 'channel': 'lasers'},
         # Response for main message of task 1 (Table Saw)
-        {'ok': True, 'ts': '111.111', 'channel': 'woodshop'},
+        {'ok': True, 'ts': '111.111', 'channel': 'C0WOODMAINT'},
         # Response for threaded reply of task 1
-        {'ok': True, 'ts': '111.222', 'channel': 'woodshop'},
+        {'ok': True, 'ts': '111.222', 'channel': 'C0WOODMAINT'},
     ]
 
     # --- Execute ---
@@ -200,7 +232,7 @@ def test_lambda_handler_with_tasks(mock_time_sleep, mock_send_slack, mock_get_ta
 
     # Check SSM param was fetched
     mock_get_json_param.assert_any_call('/test/config/clickup/field/workspace', expected_key='workspace_field_id')
-    mock_get_json_param.assert_any_call('/test/config/clickup/cmms/pmSchedule', expected_key='list_id')
+    mock_get_json_param.assert_any_call('/test/config/clickup/cmms/pmSchedule')
     assert mock_get_json_param.call_count == 2
 
     # Check ClickUp tasks were fetched for overdue and upcoming
@@ -218,14 +250,14 @@ def test_lambda_handler_with_tasks(mock_time_sleep, mock_send_slack, mock_get_ta
 
     # Call 2: Main message for overdue task (Table Saw)
     call2_args = mock_send_slack.call_args_list[1].kwargs
-    assert call2_args['channel_to_attempt'] == 'woodshop'
-    assert '[OVERDUE]' in call2_args['text']
+    assert call2_args['channel_to_attempt'] == 'woodshop-maintenance'
+    assert call2_args['text'].startswith('[OVERDUE] woodshop - Table Saw')
     assert 'Table Saw' in call2_args['text']
     assert call2_args.get('thread_ts') is None
 
     # Call 3: Threaded reply for overdue task
     call3_args = mock_send_slack.call_args_list[2].kwargs
-    assert call3_args['channel_to_attempt'] == 'woodshop'
+    assert call3_args['channel_to_attempt'] == 'C0WOODMAINT'
     assert call3_args['text'] == 'Overdue Description'
     assert call3_args['thread_ts'] == '111.111'
 
@@ -259,7 +291,7 @@ def test_lambda_handler_fatal_error(mock_get_secret, reload_lambda_function, cap
 @patch(f'{LAMBDA_FUNCTION_PATH}.send_slack_message')
 def test_lambda_handler_logs_progress_at_info(mock_send_slack, mock_get_tasks, mock_get_secret, mock_get_json_param, reload_lambda_function, capsys, caplog):
     """The run's progress lines are INFO log records; the handler prints nothing."""
-    mock_get_json_param.side_effect = ['ws-field-id', '12345']
+    mock_get_json_param.side_effect = ['ws-field-id', PM_CONFIG]
     mock_get_secret.side_effect = ['clickup-token', 'slack-token']
     mock_get_tasks.return_value = []
 
@@ -271,6 +303,7 @@ def test_lambda_handler_logs_progress_at_info(mock_send_slack, mock_get_tasks, m
     assert "Found 0 overdue tasks." in info
     assert "Found 0 upcoming tasks." in info
     assert "Fetching ClickUp config from SSM Parameter '/test/config/clickup/field/workspace'..." in info
+    assert "Workspace channel map has 1 entries" in info
     assert capsys.readouterr().out == ""
 
 
@@ -283,7 +316,7 @@ def test_lambda_handler_logs_progress_at_info(mock_send_slack, mock_get_tasks, m
 def test_lambda_handler_dry_run_mode(mock_requests_post, mock_time_sleep, mock_get_tasks, mock_get_secret, mock_get_json_param, monkeypatch, reload_lambda_function, capsys):
     """Test that DRY_RUN=true prevents actual Slack API calls and prints to stdout."""
     # --- Mocks & Fixture Setup ---
-    mock_get_json_param.return_value = 'ws-field-id'
+    mock_get_json_param.side_effect = ['ws-field-id', {'list_id': '12345'}]
     # Instead of reloading the module, directly patch the DRY_RUN flag within it.
     monkeypatch.setattr(lambda_function, 'DRY_RUN', True)
  
@@ -319,3 +352,38 @@ def test_lambda_handler_dry_run_mode(mock_requests_post, mock_time_sleep, mock_g
     assert "Would send to channel: woodshop" in stdout
     assert "[OVERDUE] woodshop - Table Saw" in stdout # Check main message
     assert "Overdue Description" in stdout # Check threaded reply
+
+
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.send_slack_message')
+def test_lambda_handler_missing_list_id_returns_500(mock_send_slack, mock_get_tasks, mock_get_secret, mock_get_json_param, reload_lambda_function):
+    """A PM config without list_id fails the run with the plain error and posts nothing."""
+    mock_get_json_param.side_effect = ['ws-field-id', {'workspace_channel_map': {}}]
+    mock_get_secret.side_effect = ['clickup-token', 'slack-token']
+
+    result = lambda_function.lambda_handler({}, None)
+
+    assert result['statusCode'] == 500
+    assert result['body'] == json.dumps("Error: the PM reminder run failed.")
+    mock_get_tasks.assert_not_called()
+    mock_send_slack.assert_not_called()
+
+
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
+@patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')
+@patch(f'{LAMBDA_FUNCTION_PATH}.send_slack_message')
+@patch(f'{LAMBDA_FUNCTION_PATH}.time.sleep')
+def test_lambda_handler_invalid_map_posts_to_default_channel(mock_time_sleep, mock_send_slack, mock_get_tasks, mock_get_secret, mock_get_json_param, reload_lambda_function):
+    """An invalid channel map doesn't stop the run: woodshop reminders go to #woodshop."""
+    mock_get_json_param.side_effect = ['ws-field-id', {'list_id': '12345', 'workspace_channel_map': {'woodshop': 'Bad Name'}}]
+    mock_get_secret.side_effect = ['clickup-token', 'slack-token']
+    mock_get_tasks.side_effect = [[_workspace_task('t1', 'Woodshop')], []]
+    mock_send_slack.return_value = {'ok': True, 'ts': '1.1', 'channel': 'C0WOOD'}
+
+    result = lambda_function.lambda_handler({}, None)
+
+    assert result['statusCode'] == 200
+    assert mock_send_slack.call_args_list[0].kwargs['channel_to_attempt'] == 'woodshop'
