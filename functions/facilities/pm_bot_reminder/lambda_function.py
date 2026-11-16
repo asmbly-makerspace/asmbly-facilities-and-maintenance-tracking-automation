@@ -46,6 +46,11 @@ def workspace_slug(name: str) -> str:
     return name.strip().lower().replace(' ', '-')
 
 
+def _invalid_channel_map() -> dict[str, str]:
+    logger.error("workspace_channel_map in the PM schedule config is invalid; posting to default channels")
+    return {}
+
+
 def parse_channel_map(value: Any) -> dict[str, str]:
     """
     Validate the PM config's workspace_channel_map: {workspace: Slack channel name}.
@@ -55,17 +60,14 @@ def parse_channel_map(value: Any) -> dict[str, str]:
     if value is None:
         return {}
     if not isinstance(value, dict):
-        logger.error("workspace_channel_map in the PM schedule config is invalid; posting to default channels")
-        return {}
+        return _invalid_channel_map()
     channel_map: dict[str, str] = {}
     for key, channel in value.items():
         if not isinstance(key, str) or not isinstance(channel, str) or not workspace_slug(key):
-            logger.error("workspace_channel_map in the PM schedule config is invalid; posting to default channels")
-            return {}
+            return _invalid_channel_map()
         channel_name = channel.strip().lstrip('#')
         if not SLACK_CHANNEL_NAME_PATTERN.fullmatch(channel_name):
-            logger.error("workspace_channel_map in the PM schedule config is invalid; posting to default channels")
-            return {}
+            return _invalid_channel_map()
         channel_map[workspace_slug(key)] = channel_name
     return channel_map
 
