@@ -116,26 +116,53 @@ The core infrastructure consists of an IAM Role, two secrets in Secrets Manager,
 
 ## Configuration
 
-All settings are environment variables set in `templates/facilities.yaml`
-(`PMReminderBotFunction`). Change them there and deploy; don't edit them in the console.
+Most settings are environment variables set in `templates/facilities.yaml`
+(`PMReminderBotFunction`). The ClickUp list and the channel map are JSON in
+`configs/clickup_cmms_pmSchedule.json`, which the template turns into the SSM parameter
+`/<stage>/clickup/cmms/pmSchedule`. Change either file in a pull request and let the
+deploy apply it. Don't edit the parameter in the console or with the AWS CLI: the next
+deploy overwrites it.
 
 ### Which Slack channel a reminder goes to
 
 Each PM task's ClickUp **Workspace** value becomes a channel name: lowercased, spaces
-turned into dashes (`Metal Shop` → `#metal-shop`). `WORKSPACE_CHANNEL_MAP` overrides that
-for chosen workspaces. It is a JSON object from the derived name to the channel to post
-in:
+turned into dashes (`Metal Shop` → `#metal-shop`). `workspace_channel_map` in
+`configs/clickup_cmms_pmSchedule.json` sends chosen workspaces to a different channel:
 
-```yaml
-WORKSPACE_CHANNEL_MAP: '{"woodshop": "woodshop-maintenance"}'
+```json
+{
+  "list_id": "901310894771",
+  "workspace_channel_map": {
+    "woodshop": "woodshop-maintenance"
+  }
+}
 ```
 
-Today woodshop reminders go to `#woodshop-maintenance`; every other workspace posts to its
-own channel. To send another workspace elsewhere, add a key; to undo a mapping, remove
-it. The Maintenance Bot must be a member of the target channel, or Slack refuses the
-post. If the value isn't a valid JSON object, the function logs an error and posts to
-the default channels.
+- Today woodshop reminders go to `#woodshop-maintenance`. Every other workspace posts to
+  the channel named after it.
+- Keys are workspace names, matched the same way (`"Metal Shop"` and `"metal-shop"` both
+  work). Values are Slack channel names: lowercase letters, digits, `-` and `_`, with or
+  without a leading `#`.
+- To send another workspace elsewhere, add a key; to undo a mapping, remove it.
+- The message text still starts with the workspace name (`[OVERDUE] woodshop - …`), even
+  when it posts to a mapped channel.
+- If any entry is invalid (an uppercase or spaced channel name, a value that isn't
+  text), the function logs `workspace_channel_map in the PM schedule config is invalid`
+  and posts every workspace to its own channel. A test checks the committed file, so a
+  typo fails the pull request first.
 
+Renaming things breaks the mapping silently until the config is updated:
+
+- **Renaming the Slack channel:** update the value. Slack refuses posts to the old name
+  (`channel_not_found`).
+- **Renaming the ClickUp Workspace option:** update the key, or reminders go to the
+  channel named after the new option.
+
+The Maintenance Bot must be a member of every target channel. Slack refuses a post to a
+channel the bot isn't in (`not_in_channel`). The function logs that refusal but still
+finishes with 200, so after a change, search the
+`/asmbly/lambda/PMReminderBotFunction-prod` log group for `not_in_channel` and
+`channel_not_found` after the next Saturday run.
 
 ## Testing
 
