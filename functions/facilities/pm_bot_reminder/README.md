@@ -162,7 +162,8 @@ The Maintenance Bot must be a member of every target channel. Slack refuses a po
 channel the bot isn't in (`not_in_channel`). The function logs that refusal but still
 finishes with 200, so after a change, search the
 `/asmbly/lambda/PMReminderBotFunction-prod` log group for `not_in_channel` and
-`channel_not_found` after the next Saturday run.
+`channel_not_found` after the next run (Saturday 04:30 UTC, which is Friday night in
+Austin).
 
 ## Testing
 
