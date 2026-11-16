@@ -77,6 +77,50 @@ def test_process_tasks_for_slack():
     assert followup.task_name == 'Task 1'
     assert followup.task_description == 'Description 1'
 
+def _workspace_task(task_id: str, workspace: str) -> dict:
+    return {
+        'id': task_id, 'name': f'Task {task_id}',
+        'custom_fields': [
+            {'id': 'ws-field-id', 'type': 'drop_down', 'value': 0,
+             'type_config': {'options': [{'name': workspace, 'orderindex': 0}]}},
+        ],
+    }
+
+
+def test_process_tasks_for_slack_maps_channel():
+    """A workspace in the channel map posts to its mapped channel; others are unchanged."""
+    tasks = [_workspace_task('t1', 'Woodshop'), _workspace_task('t2', 'Metal Shop')]
+
+    unique_channels, followups = lambda_function.process_tasks_for_slack(
+        tasks, 'ws-field-id', 'asset-field-id', 'freq-field-id',
+        {'woodshop': 'woodshop-maintenance'},
+    )
+
+    assert sorted(unique_channels) == ['metal-shop', 'woodshop-maintenance']
+    assert [f.channel for f in followups] == ['woodshop-maintenance', 'metal-shop']
+
+
+@pytest.mark.parametrize("raw, expected", [
+    (None, {}),
+    ('', {}),
+    ('{"Woodshop ": " woodshop-maintenance"}', {'woodshop': 'woodshop-maintenance'}),
+    ('not json', {}),
+    ('["woodshop"]', {}),
+])
+def test_parse_channel_map(raw, expected):
+    assert lambda_function.parse_channel_map(raw) == expected
+
+
+def test_channel_map_read_from_environment(monkeypatch):
+    monkeypatch.setenv('WORKSPACE_CHANNEL_MAP', '{"woodshop": "woodshop-maintenance"}')
+    importlib.reload(lambda_function)
+    try:
+        assert lambda_function.WORKSPACE_CHANNEL_MAP == {'woodshop': 'woodshop-maintenance'}
+    finally:
+        monkeypatch.delenv('WORKSPACE_CHANNEL_MAP')
+        importlib.reload(lambda_function)
+
+
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_json_parameter')
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_secret')
 @patch(f'{LAMBDA_FUNCTION_PATH}.get_all_clickup_tasks')

@@ -28,10 +28,37 @@ GENERAL_CHANNEL_NAME = os.environ.get('GENERAL_CHANNEL_NAME')
 STARTER_MESSAGE_TEXT = os.environ.get('STARTER_MESSAGE_TEXT')
 DRY_RUN = os.environ.get('DRY_RUN', 'false').lower() == 'true'
 
-def process_tasks_for_slack(tasks, workspace_field_id, asset_field_id, frequency_field_id):
+
+def parse_channel_map(raw: str | None) -> dict[str, str]:
+    """Parse WORKSPACE_CHANNEL_MAP: a JSON object of workspace channel -> Slack channel."""
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.error("WORKSPACE_CHANNEL_MAP is not valid JSON; posting to default channels")
+        return {}
+    if not isinstance(parsed, dict):
+        logger.error("WORKSPACE_CHANNEL_MAP is not a JSON object; posting to default channels")
+        return {}
+    return {str(k).strip().lower(): str(v).strip() for k, v in parsed.items()}
+
+
+# Sends a workspace's reminders to a different channel, e.g. {"woodshop": "woodshop-maintenance"}
+WORKSPACE_CHANNEL_MAP = parse_channel_map(os.environ.get('WORKSPACE_CHANNEL_MAP'))
+
+def process_tasks_for_slack(
+    tasks: list[dict[str, Any]],
+    workspace_field_id: str,
+    asset_field_id: str,
+    frequency_field_id: str,
+    channel_map: dict[str, str] | None = None,
+) -> tuple[list[str], list[ClickUpTask]]:
     """
     Processes tasks to extract data and prepare follow-up messages using field IDs.
+    A channel in channel_map is replaced by its mapped channel.
     """
+    channel_map = channel_map or {}
     unique_channels = set()
     processed_tasks = []
 
@@ -45,6 +72,7 @@ def process_tasks_for_slack(tasks, workspace_field_id, asset_field_id, frequency
         # Transform the channel name to match Slack's format.
         # Converts "3D Printing" to "3d-printing"
         channel_name = workspace_channel_original.strip().lower().replace(' ', '-')
+        channel_name = channel_map.get(channel_name, channel_name)
         unique_channels.add(channel_name)
 
         processed_tasks.append(ClickUpTask(
@@ -128,7 +156,8 @@ def lambda_handler(event: Any, context: Any) -> dict[str, Any]:
 
         logger.info("Processing all tasks for Slack...")
         unique_channels, processed_tasks = process_tasks_for_slack(
-            all_tasks, clickup_workspace_field_id, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID
+            all_tasks, clickup_workspace_field_id, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID,
+            WORKSPACE_CHANNEL_MAP,
         )
         logger.info(
             "Found %d unique channels and %d tasks with valid workspace data.",

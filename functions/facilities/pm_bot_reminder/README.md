@@ -116,7 +116,25 @@ The core infrastructure consists of an IAM Role, two secrets in Secrets Manager,
 
 ## Configuration
 
-All settings are managed via environment variables within the AWS Lambda function's configuration section. This allows for easy updates to things like the ClickUp List ID, bot name, or optional features without changing the code.
+All settings are environment variables set in `templates/facilities.yaml`
+(`PMReminderBotFunction`). Change them there and deploy; don't edit them in the console.
+
+### Which Slack channel a reminder goes to
+
+Each PM task's ClickUp **Workspace** value becomes a channel name: lowercased, spaces
+turned into dashes (`Metal Shop` → `#metal-shop`). `WORKSPACE_CHANNEL_MAP` overrides that
+for chosen workspaces. It is a JSON object from the derived name to the channel to post
+in:
+
+```yaml
+WORKSPACE_CHANNEL_MAP: '{"woodshop": "woodshop-maintenance"}'
+```
+
+Today woodshop reminders go to `#woodshop-maintenance`; every other workspace posts to its
+own channel. To send another workspace elsewhere, add a key; to undo a mapping, remove
+it. The Maintenance Bot must be a member of the target channel, or Slack refuses the
+post. If the value isn't a valid JSON object, the function logs an error and posts to
+the default channels.
 
 
 ## Testing
