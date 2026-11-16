@@ -1,7 +1,9 @@
 import json
 import logging
 import os
+import re
 import time
+from dataclasses import dataclass
 from typing import Any
 from datetime import datetime, timezone, timedelta
 
@@ -28,10 +30,60 @@ GENERAL_CHANNEL_NAME = os.environ.get('GENERAL_CHANNEL_NAME')
 STARTER_MESSAGE_TEXT = os.environ.get('STARTER_MESSAGE_TEXT')
 DRY_RUN = os.environ.get('DRY_RUN', 'false').lower() == 'true'
 
-def process_tasks_for_slack(tasks, workspace_field_id, asset_field_id, frequency_field_id):
+
+# A Slack channel name: lowercase letters, digits, dashes and underscores, at most 80.
+SLACK_CHANNEL_NAME_PATTERN = re.compile(r'[a-z0-9][a-z0-9_-]{0,79}')
+
+
+@dataclass
+class PMTask(ClickUpTask):
+    """A ClickUpTask that also remembers its workspace, which may differ from its channel."""
+    workspace: str = ''
+
+
+def workspace_slug(name: str) -> str:
+    """Turn a ClickUp Workspace value into its channel-style name: "Metal Shop" -> "metal-shop"."""
+    return name.strip().lower().replace(' ', '-')
+
+
+def _invalid_channel_map() -> dict[str, str]:
+    logger.error("workspace_channel_map in the PM schedule config is invalid; posting to default channels")
+    return {}
+
+
+def parse_channel_map(value: Any) -> dict[str, str]:
+    """
+    Validate the PM config's workspace_channel_map: {workspace: Slack channel name}.
+    Returns {} when it is absent, or when any entry is invalid (logged), so every
+    workspace then posts to its own channel.
+    """
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        return _invalid_channel_map()
+    channel_map: dict[str, str] = {}
+    for key, channel in value.items():
+        if not isinstance(key, str) or not isinstance(channel, str) or not workspace_slug(key):
+            return _invalid_channel_map()
+        channel_name = channel.strip().lstrip('#')
+        if not SLACK_CHANNEL_NAME_PATTERN.fullmatch(channel_name):
+            return _invalid_channel_map()
+        channel_map[workspace_slug(key)] = channel_name
+    return channel_map
+
+
+def process_tasks_for_slack(
+    tasks: list[dict[str, Any]],
+    workspace_field_id: str,
+    asset_field_id: str,
+    frequency_field_id: str,
+    channel_map: dict[str, str] | None = None,
+) -> tuple[list[str], list[PMTask]]:
     """
     Processes tasks to extract data and prepare follow-up messages using field IDs.
+    A channel in channel_map is replaced by its mapped channel.
     """
+    channel_map = channel_map or {}
     unique_channels = set()
     processed_tasks = []
 
@@ -42,12 +94,13 @@ def process_tasks_for_slack(tasks, workspace_field_id, asset_field_id, frequency
         if not workspace_channel_original:
             continue
 
-        # Transform the channel name to match Slack's format.
-        # Converts "3D Printing" to "3d-printing"
-        channel_name = workspace_channel_original.strip().lower().replace(' ', '-')
+        # "3D Printing" -> "3d-printing", then any mapped channel for that workspace.
+        workspace = workspace_slug(workspace_channel_original)
+        channel_name = channel_map.get(workspace, workspace)
         unique_channels.add(channel_name)
 
-        processed_tasks.append(ClickUpTask(
+        processed_tasks.append(PMTask(
+            workspace=workspace,
             channel=channel_name,
             asset_name=get_custom_field_value(task, asset_field_id),
             frequency=get_custom_field_value(task, frequency_field_id),
@@ -60,7 +113,7 @@ def process_tasks_for_slack(tasks, workspace_field_id, asset_field_id, frequency
 
     return list(unique_channels), processed_tasks
 
-def format_slack_message(task: ClickUpTask) -> str:
+def format_slack_message(task: PMTask) -> str:
     """Formats the main Slack message for a given task."""
     time_status = task.time_status.upper() if task.time_status else 'UNKNOWN'
     asset_name = task.asset_name or 'N/A'
@@ -68,7 +121,7 @@ def format_slack_message(task: ClickUpTask) -> str:
     frequency = task.frequency or 'N/A'
     task_id = task.task_id or 'N/A'
 
-    return (f"[{time_status}] {task.channel} - {asset_name} - "
+    return (f"[{time_status}] {task.workspace or task.channel} - {asset_name} - "
             f"{task_name} - Frequency: {frequency} - "
             f"ClickUp ID: {task_id}")
 
@@ -92,8 +145,11 @@ def lambda_handler(event: Any, context: Any) -> dict[str, Any]:
 
         logger.info("Fetching ClickUp config from SSM Parameter '%s'...", CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME)
         clickup_workspace_field_id = get_json_parameter(CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME, expected_key='workspace_field_id')
-        logger.info("Fetching ClickUp PM Schedule List ID from SSM Parameter '%s'...", CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME)
-        clickup_list_id = get_json_parameter(CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME, expected_key='list_id')
+        logger.info("Fetching PM schedule config from SSM Parameter '%s'...", CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME)
+        pm_config = get_json_parameter(CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME)
+        clickup_list_id = pm_config['list_id']
+        channel_map = parse_channel_map(pm_config.get('workspace_channel_map'))
+        logger.info("Workspace channel map has %d entries", len(channel_map))
 
         # --- 2. Fetch and Process Tasks from ClickUp ---
         now_utc = datetime.now(timezone.utc)
@@ -128,7 +184,8 @@ def lambda_handler(event: Any, context: Any) -> dict[str, Any]:
 
         logger.info("Processing all tasks for Slack...")
         unique_channels, processed_tasks = process_tasks_for_slack(
-            all_tasks, clickup_workspace_field_id, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID
+            all_tasks, clickup_workspace_field_id, CLICKUP_ASSET_FIELD_ID, CLICKUP_FREQUENCY_FIELD_ID,
+            channel_map,
         )
         logger.info(
             "Found %d unique channels and %d tasks with valid workspace data.",

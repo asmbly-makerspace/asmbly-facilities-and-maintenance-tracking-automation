@@ -112,7 +112,7 @@ These services automate administrative tasks, such as member data synchronizatio
 
 These services automate tasks related to facilities management, problem reporting, and purchasing.
 * **PM Reminder Bot** (`PMReminderBot`)
-    * **What it does:** Automatically fetches upcoming and overdue maintenance tasks from ClickUp and posts them as weekly reminders in the relevant Slack channels.
+    * **What it does:** Automatically fetches upcoming and overdue maintenance tasks from ClickUp and posts them as weekly reminders in the relevant Slack channels: the channel named after the task's ClickUp Workspace, except where `workspace_channel_map` in `configs/clickup_cmms_pmSchedule.json` sends it elsewhere (woodshop → `#woodshop-maintenance`).
     * **How it's triggered:** A scheduled cron job (via Amazon EventBridge), defined in `facilities.yaml`.
 * **Slack Reorder Item** (`FacilitiesSlackPurchaseReorderFunction`)
     * **What it does:** Handles the `/reorder` slash command, which opens an interactive modal in Slack. Users can filter a list of master items, select one, and submit a new purchase request to ClickUp. The same function also handles all in-modal interactions (filtering, submission).
