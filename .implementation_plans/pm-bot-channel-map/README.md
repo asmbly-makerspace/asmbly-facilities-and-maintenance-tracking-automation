@@ -21,7 +21,7 @@ Legacy mode: no epic or story issues.
 
 | Phase | Title | Domain | Size | Status |
 | --- | --- | --- | --- | --- |
-| 1 | Workspace channel map | lambda, infra, docs | S | [~] In progress |
+| 1 | Workspace channel map | lambda, infra, docs | S | [x] Complete |
 
 ## Dependencies
 

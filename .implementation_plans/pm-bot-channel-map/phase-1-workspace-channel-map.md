@@ -1,6 +1,6 @@
 # Phase 1: Workspace channel map
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-11-16 on branch fix/pm-bot-woodshop-maintenance-channel
 
 ## Required reading
 
@@ -172,4 +172,12 @@ Invite the Maintenance Bot to `#woodshop-maintenance` before the first prod run.
 
 ## Hand-off
 
-Filled in when the phase is done.
+- Config key: `workspace_channel_map` in `configs/clickup_cmms_pmSchedule.json` (SSM
+  `/${Stage}/clickup/cmms/pmSchedule`), committed as `{"woodshop": "woodshop-maintenance"}`.
+- Code: `workspace_slug`, `parse_channel_map`, `PMTask` (a local `ClickUpTask` subclass
+  with `workspace`) in `functions/facilities/pm_bot_reminder/lambda_function.py`. No layer
+  change; no env var.
+- Checked 2026-11-16: `#woodshop-maintenance` is public channel `C0CJAK1D725`, not in
+  `configs/router_config.json`.
+- Deferred: channel IDs as map values (the validator accepts names only); a fallback to
+  the default channel when a mapped post fails.
