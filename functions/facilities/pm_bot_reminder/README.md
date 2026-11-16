@@ -123,6 +123,18 @@ Most settings are environment variables set in `templates/facilities.yaml`
 deploy apply it. Don't edit the parameter in the console or with the AWS CLI: the next
 deploy overwrites it.
 
+### Environment variables
+
+| Variable | Value | Used for |
+| --- | --- | --- |
+| `DRY_RUN` | `false` in prod, `true` on stage | Prints messages instead of posting them |
+| `BOT_NAME`, `BOT_ICON_EMOJI` | `PM Bot`, `:hammer_and_wrench:` | Name and icon on each Slack post |
+| `CLICKUP_SECRET_NAME` | `clickup/api/token` | Secrets Manager secret with the ClickUp token |
+| `SLACK_MAINTENANCE_BOT_SECRET_NAME` | `slack-maintenancebot-token` | Secrets Manager secret with the Slack bot token |
+| `CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME` | `/<stage>/clickup/cmms/pmSchedule` | SSM parameter with `list_id` and `workspace_channel_map` |
+| `CLICKUP_WORKSPACE_FIELD_ID_PARAM_NAME` | SSM parameter name | SSM parameter with `workspace_field_id` |
+| `CLICKUP_ASSET_FIELD_ID`, `CLICKUP_FREQUENCY_FIELD_ID` | ClickUp custom field IDs | Read the asset and frequency of a task |
+
 ### Which Slack channel a reminder goes to
 
 Each PM task's ClickUp **Workspace** value becomes a channel name: lowercased, spaces
