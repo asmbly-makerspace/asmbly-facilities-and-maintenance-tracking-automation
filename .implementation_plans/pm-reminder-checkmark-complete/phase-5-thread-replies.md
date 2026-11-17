@@ -10,7 +10,7 @@ estimated_size: M
 
 # Phase 5: Thread replies in Slack
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-11-16 on branch feature/pm-reminder-checkmark-complete
 
 ## Required reading
 
@@ -41,7 +41,10 @@ nothing.
 - `functions/facilities/pm_reminder_reaction/lambda_function.py`
 - `functions/facilities/pm_reminder_reaction/tests/test_pm_reminder_reaction.py`
 - `functions/facilities/pm_reminder_reaction/README.md`: "What the person sees".
-- `templates/facilities.yaml`: two environment variables.
+- `templates/facilities.yaml`: two environment variables, and `dynamodb:PutItem` on the
+  completions table in `PMReminderReactionPolicy`.
+- `.github/dependabot.yml`: add `/functions/facilities/pm_reminder_reaction` to the pip
+  `directories` (`tests/test_dependabot.py` checks the list against `git ls-files`).
 - `docs/README.md`: the handler's "What it does" mentions the thread reply.
 
 ## Implementation details
@@ -192,8 +195,9 @@ sam build
 
 (`sam build` because of the new `requirements.txt`.)
 
-On stage: the hand invocation from phase 2 logs `Dry run: would reply completed to
-<ts>` and posts nothing. On prod, after the first real ✅: one thread reply with the next
+On stage: the hand invocation from phase 2 logs `Dry run: would complete task <id>` and
+no reply line (amendment 7), and posts nothing; a ✅ on an older reminder logs
+`Dry run: would reply stale to <ts>`. On prod, after the first real ✅: one thread reply with the next
 due date, matching ClickUp; a second ✅ adds nothing; a ✅ on last week's reminder gets
 the "Already marked done" reply once.
 
@@ -201,8 +205,81 @@ the "Already marked done" reply once.
 
 None (the Maintenance Bot already has `chat:write`; README admin action 3 confirms it).
 
+## Prep amendments (2026-11-16)
+
+These override the sections above where they disagree.
+
+1. **Failure reply text.** After a failed ClickUp update the claim stays `pending` for
+   300 seconds and a re-added ✅ answers `duplicate` silently, so the reply is
+   `Couldn't mark this done in ClickUp. Try again later. Wait 5 minutes, then remove and
+   add the ✅ again.` It starts with #164's exact text.
+2. **"Doesn't repeat" only when the reminder says so.** A task closed on the 2-second
+   re-read may still be a recurring task that ClickUp hasn't reopened yet. Send the
+   "doesn't repeat" text only when the re-read shows it closed *and* the reminder's
+   `Frequency:` is `N/A` or empty (the PM Bot writes `N/A` when the field is unset).
+   Closed with a real frequency → `Marked done in ClickUp.` and
+   `logger.warning("Task %s: closed after completion although its frequency says it repeats", task_id)`.
+3. **Order on success:** `_mark_done` first, then the recurrence check (step 1, the
+   2-second sleep and re-read), then the reply. A timeout after `_mark_done` loses the
+   reply (the retry is a silent duplicate); accepted.
+4. **An update that failed but landed** (`_update_landed` True) has no returned task:
+   start at step 2 (or reuse the task `_update_landed` read).
+5. **Due dates** are millisecond strings: compare as `int`; an empty or non-numeric value
+   is "unknown". `_austin_date` takes epoch seconds, a `float` (cast `Decimal` and divide
+   milliseconds by 1000).
+6. **The reply step never raises.** Catch `(ClientError, BotoCoreError)` on marker
+   writes, and wrap the whole reply step so that any exception is logged and the outcome
+   is returned unchanged.
+7. **Dry run writes no marker and sends no reply**, including on the `already_closed` and
+   ClickUp-date `stale` paths that return before the dry-run branch. The dry-run log is
+   `Dry run: would reply <outcome> to <ts>` for the outcomes that would reply (a dry run
+   itself returns `would_complete`, which never replies).
+8. **`already_closed`:** a record with `reminder_ts == ts`, in any state, is a duplicate
+   (no reply). Otherwise the date is the record's `completed_at` when its state is
+   `done`, else the task's `date_closed`. With no date at all, reply
+   `Already marked done in ClickUp; nothing changed.` (same marker rule). The returned
+   outcome stays `already_closed`.
+9. **`stale` with no date** (the takeover path when `claimed_at` isn't a number): use the
+   no-date text from 8.
+10. **Failure marker key:** only an `event_id` matching `Ev[A-Za-z0-9]+` gets a
+    `reply#failed#<event_id>` marker; any other value (forged or missing) gets no failure
+    reply, so forged events can't make the bot post.
+11. **Passing reply details:** `_handle` returns the result plus an internal reply plan
+    (outcome, task ID, date, frequency, event ID, confirmed-reminder flag); the handler
+    sends the reply once at the end. The returned result is unchanged from phase 3.
+12. **Known limits, documented in "What the person sees":** the marker is written before
+    the reply, so a failed Slack post means that reminder never gets its "Already marked
+    done" or failure reply; and an update that reports an error but lands later is
+    answered with the failure text.
+
 ## Hand-off
 
-_Filled in when the phase is done._ Phase 6 relies on: the success path (completion
-recorded, then reply) as the one place a comment is added; `_austin_date`; the
-`BOT_NAME` environment pattern.
+Done on 2026-11-16. Phase 6 can rely on:
+
+- **The success path:** `_handle` records the completion (`_mark_done`), returns
+  `completed`, and `lambda_handler` then calls `_send_reply(ctx, result)` in its own
+  `try`. The completed branch of `_send_reply` (after `_completed_text(ctx)`) is the one
+  place to add the ClickUp comment; it never runs in a dry run.
+- **`_ReplyContext`** (a dataclass `_handle` fills in as checks pass) instead of
+  amendment 11's returned reply plan: `dry_run`, `slack_token`, `clickup_token`,
+  `channel`, `ts`, `event_id`, `task_id` (set only once the message is a confirmed
+  reminder), `frequency`, `task` (the Get Task result), `due_before`, `updated_task`
+  (None when the update errored but landed). Phase 6 can add the reacting `user` to it.
+- **The completed branch of `_send_reply`** runs `_completed_text(ctx)`, then writes the
+  reminder's `reply#<channel>#<ts>` marker (so a later stale ✅ on it gets no second
+  reply; the reply is sent even if the marker write fails), then `_reply`.
+- **Helpers:** `_austin_date(epoch_seconds: float) -> str` (`"Wed Nov 25"`; loads the
+  time zone on each call), `_date_or_none(epoch_seconds) -> str | None` (the reply leaves
+  out a date it can't format, including when tzdata is missing),
+  `_reply(slack_token, channel, ts, text) -> bool`, `_put_reply_marker(pk) -> bool | None`,
+  `parse_reminder_frequency(text) -> str`, `_millis(value) -> int | None`.
+- **Environment:** `BOT_NAME` and `BOT_ICON_EMOJI`, read with `os.environ.get` and
+  defaults. The role has `dynamodb:GetItem`, `PutItem` and `UpdateItem` on the table.
+- **Timing:** the reply step adds a possible 2-second wait, a Get Task and a Slack post;
+  the timeout stays 90 seconds (a run cut off after `_mark_done` loses only the reply).
+- **Failure reply text** (prep amendment 1) extends #164's text with "Wait 5 minutes, then
+  remove and add the :white_check_mark: again."; a test ties the minutes to
+  `CLAIM_EXPIRY_SECONDS`. The pull request should say so.
+- **Deferred:** a forged event with a fresh `Ev…` ID can still get a failure reply while
+  ClickUp or DynamoDB is failing on a real ✅'d reminder; #79 (the router's signature check)
+  closes it.

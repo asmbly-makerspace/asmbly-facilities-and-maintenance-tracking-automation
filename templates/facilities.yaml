@@ -208,6 +208,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - dynamodb:GetItem
+                  - dynamodb:PutItem
                   - dynamodb:UpdateItem
                 Resource: !GetAtt PMReminderCompletionsTable.Arn
       Tags:
@@ -222,8 +223,9 @@ Resources:
       CodeUri: ../functions/facilities/pm_reminder_reaction/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
-      # auth.test, conversations.history, Get Task, Update Task and a re-read after a
-      # failed update, each with an 8-second connect and read timeout, plus SSM, Secrets
+      # auth.test, conversations.history, Get Task, Update Task, a re-read after a failed
+      # update, a 2-second wait and re-read to see whether the task recurred, and the
+      # thread reply, each with an 8-second connect and read timeout, plus SSM, Secrets
       # Manager and DynamoDB; later phases add calls. The worst case of every timeout adds
       # up to more than this; a run cut off leaves a pending claim the code resolves.
       # CLAIM_EXPIRY_SECONDS in the code must stay at least three times this (a test checks it).
@@ -237,6 +239,8 @@ Resources:
       Environment:
         Variables:
           DRY_RUN: !If [IsProd, 'false', 'true']
+          BOT_NAME: 'PM Bot'
+          BOT_ICON_EMOJI: ':hammer_and_wrench:'
           CLICKUP_SECRET_NAME: 'clickup/api/token'
           SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
           CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME: !Ref ClickUpPMScheduleParameter

@@ -30,6 +30,7 @@ updates:
       - "/"
       - "/functions/ceramics/kiln_dropoff_recent_entries_viewer"
       - "/functions/classes/class_photo_upload_api"
+      - "/functions/facilities/pm_reminder_reaction"
       - "/functions/problem_report/slack_reaction_webhook"
       - "/functions/purchase_request/slack_reaction_webhook"
     target-branch: "stage"

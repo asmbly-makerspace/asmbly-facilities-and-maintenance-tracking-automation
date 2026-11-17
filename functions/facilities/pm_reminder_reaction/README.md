@@ -8,6 +8,7 @@
 - [What it checks, in order](#what-it-checks-in-order)
 - [Completed once](#completed-once)
 - [Outcomes](#outcomes)
+- [What the person sees](#what-the-person-sees)
 - [Configuration](#configuration)
 - [AWS infrastructure](#aws-infrastructure)
 - [Logs](#logs)
@@ -151,6 +152,61 @@ whether the earlier update landed. If a ✅ seems to do nothing (Slack or ClickU
 remove the ✅ and add it again. If that still does nothing, wait 5 minutes (a claim left
 `pending` by a failed update expires then) and try once more.
 
+## What the person sees
+
+The PM Bot replies in the reminder's thread (never as a new channel message), under the
+name and icon in `BOT_NAME` and `BOT_ICON_EMOJI`. Dates are Austin (Central) dates, such
+as `Wed Nov 25`.
+
+| Outcome | Reply in the thread |
+| --- | --- |
+| `completed`, the task recurred | `Marked done in ClickUp. Next due <date>` |
+| `completed`, the task closed and the reminder's `Frequency:` is `N/A` | `Marked done in ClickUp. This task doesn't repeat, so it's now closed.` |
+| `completed`, anything else (closed although it has a frequency, or unclear) | `Marked done in ClickUp.` |
+| `stale`, or `already_closed` when the completion record doesn't name this reminder (including a task closed by hand in ClickUp) | `Already marked done on <date>; nothing changed.` (without a known date: `Already marked done in ClickUp; nothing changed.`) |
+| `failed`, after the message was confirmed as a PM reminder | `Couldn't mark this done in ClickUp. Try again later. Wait 5 minutes, then remove and add the :white_check_mark: again.` |
+| `ignored`, `duplicate`, `misconfigured`, `error`, `would_complete`, a Slack read failure | No reply |
+
+How the next due date is found: if ClickUp's answer to the update shows the task open with
+a later due date, that is the next due date. Otherwise the function waits 2 seconds and
+reads the task again. A task closed on that re-read gets the "doesn't repeat" reply only
+when its reminder has no frequency; a closed task that has one may simply not have been
+reopened yet, so it gets the plain reply (and a warning in the log). `Frequency:` is the
+ClickUp custom field, not ClickUp's own recurrence setting: a recurring task with the field
+unset that ClickUp hasn't reopened within 2 seconds would wrongly get "doesn't repeat".
+Check this on the first prod ✅ of such a task.
+
+Once only:
+
+- **Completed:** the completion is recorded before the reply, so a reply problem can't
+  complete the task twice. A second ✅ or a repeated event is a `duplicate`, with no
+  reply. The completion also writes the reminder's `reply#<channel>#<ts>` marker, so a
+  later ✅ on it that turns out stale adds no "Already marked done" under the "Marked done".
+- **Already marked done:** one reply per reminder, however many times it is ticked. A
+  marker item `reply#<channel>#<ts>` is written first (kept 60 days through the table's
+  TTL); the reply is sent only if the marker was new.
+- **Failure:** one reply per Slack event, through a marker `reply#failed#<event_id>`. If
+  the marker can't be written (DynamoDB is what failed), the reply is sent anyway. An
+  event without a well-formed `event_id` (`Ev` and up to 32 letters or digits) gets no
+  failure reply. This limits, but doesn't prevent, forged failure replies: until the
+  router checks Slack's signature (#79), a forged event with a fresh ID on a real ✅'d
+  reminder still gets one while ClickUp or DynamoDB is failing.
+
+A reply that fails (the bot isn't in the channel, Slack is down) is logged and changes
+nothing. Known limits: because the marker is written before the reply, a failed post
+means that reminder never gets its "Already marked done" or failure reply; an update that
+reports an error but lands later is answered with the failure text, and re-adding the ✅
+after that is a silent `duplicate`, so the thread's last word stays "Couldn't mark this
+done" although ClickUp shows the task done; a run that times out after recording the
+completion sends no reply (the retry is a silent duplicate); a date that can't be
+formatted is left out of the reply; and a permanent ClickUp failure (a deleted task, a
+revoked token) still gets "Try again later".
+
+On stage (`DRY_RUN=true`) nothing is posted and no marker is written. For `stale`,
+`already_closed` and `failed` the log shows `Dry run: would reply <outcome> to <ts>`; the
+usual stage result, `would_complete`, logs no reply line (stage never completes, so it
+never reaches the "Marked done" reply).
+
 ## Configuration
 
 The JSON files in `configs/` are copied into AWS Systems Manager (SSM) Parameter Store
@@ -172,14 +228,18 @@ takes effect on the next deploy.
 | `CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME` | `/<stage>/clickup/cmms/pmSchedule` | SSM parameter built from `configs/clickup_cmms_pmSchedule.json`. |
 | `ROUTER_CONFIG_PARAMETER_NAME` | `/<stage>/config/router/slack-event-router` | SSM parameter built from `configs/router_config.json`. |
 | `PM_COMPLETIONS_TABLE_NAME` | `PMReminderCompletions-<stage>` | The completions table. |
+| `BOT_NAME` | `PM Bot` | The name the thread replies are posted under (default `PM Bot`). |
+| `BOT_ICON_EMOJI` | `:hammer_and_wrench:` | The icon of the thread replies (default `:hammer_and_wrench:`). |
 | `DRY_RUN` | `true` on stage, `false` on prod | On stage, log what would be completed and write nothing, to ClickUp or the table (it reads the table to report `duplicate` or `stale`). Only the exact value `false` writes; unset or anything else is a dry run. |
 
 ## AWS infrastructure
 
 - **Role** `PMReminderReactionLambdaRole`: writes logs to its own log group only;
   `ssm:GetParameter` on the two parameters above; `secretsmanager:GetSecretValue` on the
-  two secrets above; `dynamodb:GetItem` and `UpdateItem` on the completions table.
-- **Table** `PMReminderCompletions-<stage>`, pay per request, TTL on `expires_at`.
+  two secrets above; `dynamodb:GetItem`, `PutItem` (reply markers) and `UpdateItem` on
+  the completions table.
+- **Table** `PMReminderCompletions-<stage>`, pay per request, TTL on `expires_at`. It
+  holds one `task#<id>` item per task and the short-lived `reply#…` markers.
 - **Log group** `/asmbly/lambda/PMReminderReactionFunction-<stage>`, kept 14 days.
 - **Timeout** 90 seconds. The worst case of every Slack, ClickUp and DynamoDB timeout
   added up is longer than that; a run cut off by the timeout leaves a `pending` claim,
@@ -187,7 +247,8 @@ takes effect on the next deploy.
 - **Output** `PMReminderReactionFunctionArn` of the Facilities stack, used by the router.
 
 The Maintenance Bot needs `channels:history` (and `groups:history` for a private
-channel) and must be a member of each PM channel.
+channel), `chat:write` and `chat:write.customize` (the replies use the PM Bot's name and
+icon, as its reminders do), and must be a member of each PM channel.
 
 ## Logs
 
@@ -211,6 +272,18 @@ The log lines to look for:
 - `The claim on task <id> expired before it was recorded as done`
 - `Task <id>: an earlier update landed but could not be recorded; check the record`
 - `Dry run: task <id>: <duplicate or stale> for reminder <ts>` (stage)
+- `Replied <outcome> for task <id> in the thread of <ts> in <channel>` (only when Slack
+  accepted the reply)
+- `Dry run: would reply <outcome> to <ts>` (stage; `stale`, `already_closed` or `failed` only)
+- `Could not reply in the thread of <ts> in <channel>` (the reply failed; the outcome stands)
+- `Could not write reply marker <pk>: <DynamoDB error code>`, `Reminder <ts> in <channel>
+  already got an already-done reply`, `Event '<event_id>' already got a failure reply`
+- `Task <id>: could not tell whether it recurred`, `Task <id>: closed after completion
+  although its frequency says it repeats`, `Could not re-read task <id> after completing it`
+- `No failure reply for reminder <ts>: the event has no usable event ID`
+- `Could not turn timestamp <value> into a date` (the reply leaves the date out)
+- `Could not reply for event ...` (with a traceback): the reply step failed unexpectedly;
+  the outcome stands.
 - `Missing environment variables: ...` and `PM schedule config is missing list_id or
   complete_status` (`misconfigured`)
 - `Unexpected error handling event ...` (with a traceback): an AWS call (SSM, Secrets
@@ -262,3 +335,8 @@ check the log: one `Completed task` line and one `duplicate` line, and the task'
 date in ClickUp moved one cycle. Also check that the reopened task's `date_done` and
 `date_closed` are not later than its next reminder; if ClickUp stamps them on reopening,
 every later ✅ would be `stale`. This check is required before relying on the feature.
+
+In Slack, the reminder's thread should hold exactly one `Marked done in ClickUp. Next due
+<date>` reply (the PM Bot's own description reply may be there too), with the date matching the task's new due date in ClickUp; the second
+✅ adds nothing. A ✅ on last week's reminder for the same task gets `Already marked done
+on <date>; nothing changed.` once.

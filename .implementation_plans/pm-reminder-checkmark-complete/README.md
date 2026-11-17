@@ -46,7 +46,7 @@ Only the pull request that lands the last phase in a row says `Closes #N`; insid
 | 2 | PM reminder reaction handler | lambda, infra, docs | L | [x] Complete |
 | 3 | Complete once per cycle | lambda, infra, docs | M | [x] Complete |
 | 4 | Route PM channel reactions to the handler | lambda, infra, docs | M | [x] Complete |
-| 5 | Thread replies in Slack | lambda, docs | M | [ ] Pending |
+| 5 | Thread replies in Slack | lambda, docs | M | [x] Complete |
 | 6 | ClickUp comment naming who ticked it | lambda, layer, infra, docs | S | [ ] Pending |
 
 ## Dependencies
@@ -88,7 +88,8 @@ Run the phases in order 1 → 6.
    confirm is listed in the pull request's **Risk** section for an admin to supply.
 3. **Before phase 4 reaches `prod`:** in the Slack app (Maintenance Bot), confirm the
    bot is a member of all 7 channels and has `channels:history` (and `groups:history` if
-   any of them is private), `reactions:read`, `chat:write` and `users:read` (phase 6).
+   any of them is private), `reactions:read`, `chat:write`, `chat:write.customize` (replies under the PM Bot's name
+   and icon, as the reminders already do) and `users:read` (phase 6).
    Events and `conversations.history` only work in channels the bot is in.
 4. **Before prod:** turn on recurrence for Clean Metal Shop Sink (`86a8be2bc`) in
    ClickUp (recurs on "complete", skip missed dates), as for the other PM tasks.

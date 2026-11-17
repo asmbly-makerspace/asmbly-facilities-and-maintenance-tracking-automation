@@ -35,6 +35,8 @@ TS = "1763100000.000100"
 KEY = {"pk": f"task#{TASK_ID}"}
 NOW = 1763200000
 DUE = "1762300800000"
+# 2025-11-26 03:00 UTC, which is Tue Nov 25 21:00 in Austin.
+NEXT_DUE = "1764126000000"
 
 
 def _fixture(name: str) -> Any:
@@ -46,7 +48,9 @@ def _body(result: dict[str, Any]) -> str:
 
 
 class Mocks:
-    def __init__(self, aws: MagicMock, clickup: MagicMock, slack: MagicMock, table: Any) -> None:
+    def __init__(
+        self, aws: MagicMock, clickup: MagicMock, slack: MagicMock, table: Any, sleep: MagicMock
+    ) -> None:
         self.table = table
         self.now = NOW
         self.aws = aws
@@ -61,7 +65,12 @@ class Mocks:
         slack.get_bot_id.return_value = "B0PMBOT"
         slack.get_channel_message.side_effect = lambda token, channel, ts: self.message
         clickup.get_task.side_effect = lambda token, task_id: self.task
-        clickup.update_task.side_effect = lambda token, task_id, payload: {"id": task_id}
+        # A recurring task comes back open with its next due date (NEXT_DUE).
+        clickup.update_task.side_effect = lambda token, task_id, payload: {
+            "id": task_id, "status": {"status": "to do", "type": "open"}, "due_date": NEXT_DUE,
+        }
+        slack.send_slack_message.return_value = {"ok": True, "ts": "1763200000.000200"}
+        self.sleep = sleep
 
     def _parameter(self, name: str) -> Any:
         return {
@@ -101,8 +110,13 @@ def mocks(monkeypatch: pytest.MonkeyPatch) -> Iterator[Mocks]:
             BillingMode="PAY_PER_REQUEST",
         )
         table = boto3.resource("dynamodb").Table(ENV["PM_COMPLETIONS_TABLE_NAME"])
-        with patch(f"{MODULE}.aws") as aws, patch(f"{MODULE}.clickup") as clickup, patch(f"{MODULE}.slack") as slack:
-            m = Mocks(aws, clickup, slack, table)
+        with (
+            patch(f"{MODULE}.aws") as aws,
+            patch(f"{MODULE}.clickup") as clickup,
+            patch(f"{MODULE}.slack") as slack,
+            patch(f"{MODULE}.time.sleep") as sleep,
+        ):
+            m = Mocks(aws, clickup, slack, table, sleep)
             monkeypatch.setattr(lambda_function, "_now", lambda: m.now)
             yield m
 
@@ -948,3 +962,416 @@ def test_reread_with_unexpected_status_type_fails_cleanly(mocks: Mocks, event: d
     result = lambda_function.lambda_handler(event, None)
     assert result["statusCode"] == 200
     assert _body(result) == "failed"
+
+
+# --- Thread replies ---
+
+CHANNEL = "C0CJAK1D725"
+FAILED_TEXT = (
+    "Couldn't mark this done in ClickUp. Try again later. "
+    "Wait 5 minutes, then remove and add the :white_check_mark: again."
+)
+
+
+def _replies(mocks: Mocks) -> list[str]:
+    """The texts posted, after checking each went to the reminder's thread with the bot's name."""
+    texts = []
+    for call in mocks.slack.send_slack_message.call_args_list:
+        token, channel, text, bot_name, icon = call.args
+        assert (token, channel) == ("xoxb-slack-token", CHANNEL)
+        assert call.kwargs == {"thread_ts": TS}
+        assert (bot_name, icon) == ("PM Bot", ":hammer_and_wrench:")
+        texts.append(text)
+    return texts
+
+
+def _marker(mocks: Mocks, pk: str) -> dict[str, Any] | None:
+    return mocks.table.get_item(Key={"pk": pk}, ConsistentRead=True).get("Item")
+
+
+def test_austin_date_uses_central_time() -> None:
+    # 03:00 UTC on Nov 26 is still Nov 25 in Austin.
+    assert lambda_function._austin_date(1764126000) == "Tue Nov 25"
+    assert lambda_function._austin_date(Decimal("1763150000")) == "Fri Nov 14"
+
+
+@pytest.mark.parametrize(
+    ("text", "frequency"),
+    [
+        ("[OVERDUE] woodshop - A - B - Frequency: Every 2 weeks - ClickUp ID: abc123", "Every 2 weeks"),
+        ("[UPCOMING] woodshop - A - B - Frequency: N/A - ClickUp ID: abc123", "N/A"),
+        ("no frequency here", ""),
+    ],
+)
+def test_parses_reminder_frequency(text: str, frequency: str) -> None:
+    assert lambda_function.parse_reminder_frequency(text) == frequency
+
+
+def test_completed_recurring_task_replies_next_due_date(mocks: Mocks, event: dict[str, Any]) -> None:
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _replies(mocks) == ["Marked done in ClickUp. Next due Tue Nov 25"]
+    mocks.sleep.assert_not_called()
+    mocks.clickup.get_task.assert_called_once()
+
+
+def test_completed_task_recurrence_seen_on_reread(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.clickup.update_task.side_effect = lambda token, task_id, payload: {
+        "id": task_id, "status": {"status": "complete", "type": "closed"}, "due_date": DUE,
+    }
+    reads = [copy.deepcopy(mocks.task), {**mocks.task, "due_date": NEXT_DUE}]
+    mocks.clickup.get_task.side_effect = lambda token, task_id: reads.pop(0)
+
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _replies(mocks) == ["Marked done in ClickUp. Next due Tue Nov 25"]
+    mocks.sleep.assert_called_once_with(2)
+
+
+def _closed_after_update(mocks: Mocks) -> None:
+    closed = {**mocks.task, "status": {"status": "complete", "type": "closed"}}
+    mocks.clickup.update_task.side_effect = lambda token, task_id, payload: closed
+    reads = [copy.deepcopy(mocks.task), closed]
+    mocks.clickup.get_task.side_effect = lambda token, task_id: reads.pop(0)
+
+
+def test_completed_non_recurring_task_replies_closed(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.message["text"] = mocks.message["text"].replace("Every 3 weeks", "N/A")
+    _closed_after_update(mocks)
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _replies(mocks) == ["Marked done in ClickUp. This task doesn't repeat, so it's now closed."]
+
+
+def test_closed_task_with_a_frequency_replies_plain(
+    mocks: Mocks, event: dict[str, Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    _closed_after_update(mocks)
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _replies(mocks) == ["Marked done in ClickUp."]
+    assert f"Task {TASK_ID}: closed after completion although its frequency says it repeats" in caplog.text
+
+
+@pytest.mark.parametrize("reread_fails", [False, True])
+def test_unknown_recurrence_replies_plain_marked_done(
+    mocks: Mocks, event: dict[str, Any], caplog: pytest.LogCaptureFixture, reread_fails: bool
+) -> None:
+    mocks.clickup.update_task.side_effect = lambda token, task_id, payload: {"id": task_id}
+    reads: list[Any] = [copy.deepcopy(mocks.task), ValueError("503") if reread_fails else copy.deepcopy(mocks.task)]
+
+    def get_task(token: str, task_id: str) -> Any:
+        value = reads.pop(0)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    mocks.clickup.get_task.side_effect = get_task
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _replies(mocks) == ["Marked done in ClickUp."]
+    assert f"Task {TASK_ID}: could not tell whether it recurred" in caplog.text
+
+
+def test_update_error_that_landed_replies_from_reread(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.clickup.update_task.side_effect = ValueError("timeout")
+    reads = [copy.deepcopy(mocks.task), {**mocks.task, "due_date": NEXT_DUE}, {**mocks.task, "due_date": NEXT_DUE}]
+    mocks.clickup.get_task.side_effect = lambda token, task_id: reads.pop(0)
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _replies(mocks) == ["Marked done in ClickUp. Next due Tue Nov 25"]
+
+
+def test_stale_reminder_replies_once(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.put_record(state="done", completed_at=1763150000, reminder_ts="1763140000.000200", due_before=DUE)
+    assert _body(lambda_function.lambda_handler(event, None)) == "stale"
+    second = copy.deepcopy(event)
+    second["event_id"] = "Ev2"
+    assert _body(lambda_function.lambda_handler(second, None)) == "stale"
+
+    assert _replies(mocks) == ["Already marked done on Fri Nov 14; nothing changed."]
+    marker = _marker(mocks, f"reply#{CHANNEL}#{TS}")
+    assert marker["expires_at"] == NOW + 60 * 86400
+    mocks.clickup.update_task.assert_not_called()
+
+
+def test_stale_from_clickup_date_replies_with_that_date(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.task["date_done"] = "1763150000000"
+    assert _body(lambda_function.lambda_handler(event, None)) == "stale"
+    assert _replies(mocks) == ["Already marked done on Fri Nov 14; nothing changed."]
+
+
+def test_stale_marker_write_error_sends_no_reply(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.task["date_done"] = "1763150000000"
+    table = MagicMock()
+    table.put_item.side_effect = _client_error("ProvisionedThroughputExceededException", "PutItem")
+    with patch(f"{MODULE}._get_table", return_value=table):
+        assert _body(lambda_function.lambda_handler(event, None)) == "stale"
+    assert _replies(mocks) == []
+
+
+def test_already_closed_task_on_other_reminder_replies_already_done(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.task["status"] = {"status": "complete", "type": "closed"}
+    mocks.put_record(state="done", completed_at=1763150000, reminder_ts="1763140000.000200", due_before=DUE)
+    assert _body(lambda_function.lambda_handler(event, None)) == "already_closed"
+    assert _body(lambda_function.lambda_handler(copy.deepcopy(event), None)) == "already_closed"
+    assert _replies(mocks) == ["Already marked done on Fri Nov 14; nothing changed."]
+
+
+def test_already_closed_without_record_uses_date_closed(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.task["status"] = {"status": "complete", "type": "closed"}
+    mocks.task["date_closed"] = "1763150000000"
+    assert _body(lambda_function.lambda_handler(event, None)) == "already_closed"
+    assert _replies(mocks) == ["Already marked done on Fri Nov 14; nothing changed."]
+
+
+def test_already_closed_without_any_date_replies_without_date(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.task["status"] = {"status": "complete", "type": "closed"}
+    assert _body(lambda_function.lambda_handler(event, None)) == "already_closed"
+    assert _replies(mocks) == ["Already marked done in ClickUp; nothing changed."]
+
+
+@pytest.mark.parametrize("state", ["done", "pending"])
+def test_already_closed_task_on_same_reminder_is_silent(mocks: Mocks, event: dict[str, Any], state: str) -> None:
+    mocks.task["status"] = {"status": "complete", "type": "closed"}
+    mocks.put_record(state=state, completed_at=1763150000, reminder_ts=TS, due_before=DUE)
+    assert _body(lambda_function.lambda_handler(event, None)) == "already_closed"
+    assert _replies(mocks) == []
+
+
+def test_duplicate_checkmark_adds_no_reply(mocks: Mocks, event: dict[str, Any]) -> None:
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    mocks.task["due_date"] = NEXT_DUE
+    mocks.message["reactions"] = [{"name": "white_check_mark", "users": ["U0REACTOR", "U0OTHER2"], "count": 2}]
+    second = copy.deepcopy(event)
+    second["event_id"] = "Ev2"
+    second["event"]["user"] = "U0OTHER2"
+    assert _body(lambda_function.lambda_handler(second, None)) == "duplicate"
+    assert len(_replies(mocks)) == 1
+
+
+def test_non_recurring_task_second_checkmark_is_silent(mocks: Mocks, event: dict[str, Any]) -> None:
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    mocks.task["status"] = {"status": "complete", "type": "closed"}
+    assert _body(lambda_function.lambda_handler(copy.deepcopy(event), None)) == "already_closed"
+    assert len(_replies(mocks)) == 1
+
+
+def test_clickup_failure_replies_couldnt_mark(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.clickup.update_task.side_effect = ValueError("ClickUp API HTTP Error: 503 secret-detail")
+    assert _body(lambda_function.lambda_handler(event, None)) == "failed"
+    assert _body(lambda_function.lambda_handler(copy.deepcopy(event), None)) == "duplicate"
+    redelivered = lambda_function.lambda_handler(copy.deepcopy(event), None)
+    assert _replies(mocks) == [FAILED_TEXT]
+    assert _body(redelivered) == "duplicate"
+    assert _marker(mocks, "reply#failed#Ev1")["expires_at"] == NOW + 60 * 86400
+
+
+def test_clickup_read_failure_replies_couldnt_mark(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.clickup.get_task.side_effect = ValueError("ClickUp API HTTP Error: 500 secret-detail")
+    assert _body(lambda_function.lambda_handler(event, None)) == "failed"
+    # A redelivery of the same event fails again but adds no second reply.
+    assert _body(lambda_function.lambda_handler(copy.deepcopy(event), None)) == "failed"
+    assert _replies(mocks) == [FAILED_TEXT]
+    assert all("secret-detail" not in text for text in _replies(mocks))
+
+
+def test_failure_reply_sent_when_marker_cannot_be_written(mocks: Mocks, event: dict[str, Any]) -> None:
+    table = MagicMock()
+    table.update_item.side_effect = _client_error("InternalServerError")
+    table.put_item.side_effect = _client_error("InternalServerError", "PutItem")
+    with patch(f"{MODULE}._get_table", return_value=table):
+        assert _body(lambda_function.lambda_handler(event, None)) == "failed"
+    assert _replies(mocks) == [FAILED_TEXT]
+
+
+@pytest.mark.parametrize("event_id", [None, "", "Ev1#x", "forged id", 12, "Ev" + "A" * 33])
+def test_failure_without_a_valid_event_id_replies_nothing(
+    mocks: Mocks, event: dict[str, Any], event_id: Any
+) -> None:
+    event["event_id"] = event_id
+    mocks.clickup.get_task.side_effect = ValueError("503")
+    assert _body(lambda_function.lambda_handler(event, None)) == "failed"
+    assert _replies(mocks) == []
+
+
+def test_slack_read_failure_replies_nothing(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.slack.get_channel_message.side_effect = SlackRequestError("conversations.history failed")
+    assert _body(lambda_function.lambda_handler(event, None)) == "failed"
+    mocks.slack.send_slack_message.assert_not_called()
+
+
+@pytest.mark.parametrize("case", ["emoji", "channel", "thread_reply", "person", "other_list", "misconfigured"])
+def test_ignored_cases_reply_nothing(mocks: Mocks, event: dict[str, Any], case: str) -> None:
+    if case == "emoji":
+        event["event"]["reaction"] = "eyes"
+    elif case == "channel":
+        mocks.router_config = {"pm_channels": {"C0OTHER": "other"}}
+    elif case == "thread_reply":
+        mocks.message["thread_ts"] = "1763000000.000100"
+    elif case == "person":
+        mocks.message.pop("bot_id")
+        mocks.message["user"] = "U0PERSON"
+    elif case == "other_list":
+        mocks.task["list"] = {"id": "999"}
+    else:
+        mocks.pm_config = {"list_id": "901310894771"}
+    lambda_function.lambda_handler(event, None)
+    mocks.slack.send_slack_message.assert_not_called()
+
+
+def test_reply_failure_keeps_outcome(
+    mocks: Mocks, event: dict[str, Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    mocks.slack.send_slack_message.return_value = {"ok": False, "error": "not_in_channel"}
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert mocks.record()["state"] == "done"
+    assert f"Could not reply in the thread of {TS} in {CHANNEL}" in caplog.text
+    assert "Replied completed" not in caplog.text
+
+
+def test_reply_exception_keeps_outcome(
+    mocks: Mocks, event: dict[str, Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    mocks.slack.send_slack_message.side_effect = RuntimeError("boom")
+    result = lambda_function.lambda_handler(event, None)
+    assert result["statusCode"] == 200
+    assert _body(result) == "completed"
+    assert "Could not reply for event 'Ev1'" in caplog.text
+
+
+@pytest.mark.parametrize("case", ["would_complete", "stale_clickup", "already_closed", "failed"])
+def test_dry_run_replies_nothing(
+    mocks: Mocks, event: dict[str, Any], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+    case: str,
+) -> None:
+    monkeypatch.setenv("DRY_RUN", "true")
+    caplog.set_level(logging.INFO)
+    if case == "stale_clickup":
+        mocks.task["date_done"] = "1763150000000"
+    elif case == "already_closed":
+        mocks.task["status"] = {"status": "complete", "type": "closed"}
+    elif case == "failed":
+        mocks.clickup.get_task.side_effect = ValueError("503")
+    result = lambda_function.lambda_handler(event, None)
+
+    mocks.slack.send_slack_message.assert_not_called()
+    assert mocks.table.scan()["Items"] == []
+    if case == "would_complete":
+        assert _body(result) == "would_complete"
+        assert "would reply" not in caplog.text
+    else:
+        assert f"Dry run: would reply {_body(result)} to {TS}" in caplog.text
+
+
+def test_reply_uses_bot_name_and_icon_from_env(
+    mocks: Mocks, event: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BOT_NAME", "Maintenance Helper")
+    monkeypatch.setenv("BOT_ICON_EMOJI", ":wrench:")
+    lambda_function.lambda_handler(event, None)
+    call = mocks.slack.send_slack_message.call_args
+    assert call.args[3:] == ("Maintenance Helper", ":wrench:")
+    assert call.kwargs == {"thread_ts": TS}
+
+
+def test_failure_reply_wait_matches_claim_expiry() -> None:
+    assert f"Wait {lambda_function.CLAIM_EXPIRY_SECONDS // 60} minutes" in lambda_function.REPLY_FAILED
+
+
+def test_already_done_text_without_a_date() -> None:
+    assert lambda_function._already_done_text(None) == "Already marked done in ClickUp; nothing changed."
+    assert lambda_function._already_done_text("soon") == "Already marked done in ClickUp; nothing changed."
+
+
+def test_stale_takeover_of_a_landed_claim_replies_already_done(mocks: Mocks, event: dict[str, Any]) -> None:
+    # An expired claim from another, newer reminder whose update landed: this reminder is stale.
+    mocks.put_record(
+        state="pending", claim_id="dead", claimed_at=1763150000, reminder_ts="1763140000.000200",
+        channel=CHANNEL, due_before="1761696000000",
+    )
+    assert _body(lambda_function.lambda_handler(event, None)) == "stale"
+    assert _replies(mocks) == ["Already marked done on Fri Nov 14; nothing changed."]
+    mocks.clickup.update_task.assert_not_called()
+
+
+def test_unformattable_date_replies_without_a_date(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.task["status"] = {"status": "complete", "type": "closed"}
+    mocks.task["date_closed"] = str(10**20)
+    lambda_function.lambda_handler(event, None)
+    assert _replies(mocks) == ["Already marked done in ClickUp; nothing changed."]
+
+
+def test_unformattable_next_due_replies_plain(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.clickup.update_task.side_effect = lambda token, task_id, payload: {
+        "id": task_id, "status": {"status": "to do", "type": "open"}, "due_date": str(10**20),
+    }
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _replies(mocks) == ["Marked done in ClickUp."]
+
+
+def test_already_closed_with_unreadable_record_uses_date_closed(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.task["status"] = {"status": "complete", "type": "closed"}
+    mocks.task["date_closed"] = "1763150000000"
+    table = MagicMock()
+    table.get_item.side_effect = _client_error("InternalServerError", "GetItem")
+    table.put_item.return_value = {}
+    with patch(f"{MODULE}._get_table", return_value=table):
+        assert _body(lambda_function.lambda_handler(event, None)) == "already_closed"
+    assert _replies(mocks) == ["Already marked done on Fri Nov 14; nothing changed."]
+
+
+def test_completed_reminder_gets_no_later_already_done_reply(mocks: Mocks, event: dict[str, Any]) -> None:
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _marker(mocks, f"reply#{CHANNEL}#{TS}") is not None
+    # A newer reminder completes the next cycle; a check mark on this one is now stale.
+    mocks.put_record(state="done", completed_at=1763150000, reminder_ts="1763140000.000200", due_before=DUE)
+    mocks.task["due_date"] = NEXT_DUE
+    second = copy.deepcopy(event)
+    second["event_id"] = "Ev2"
+    assert _body(lambda_function.lambda_handler(second, None)) == "stale"
+    assert len(_replies(mocks)) == 1
+
+
+def test_send_slack_message_call_matches_the_helper(mocks: Mocks, event: dict[str, Any]) -> None:
+    import inspect
+
+    from common import slack as real_slack
+
+    lambda_function.lambda_handler(event, None)
+    call = mocks.slack.send_slack_message.call_args
+    inspect.signature(real_slack.send_slack_message).bind(*call.args, **call.kwargs)
+
+
+def test_missing_time_zone_data_replies_without_dates(mocks: Mocks, event: dict[str, Any]) -> None:
+    from zoneinfo import ZoneInfoNotFoundError
+
+    with patch(f"{MODULE}.ZoneInfo", side_effect=ZoneInfoNotFoundError("America/Chicago")):
+        assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+        mocks.put_record(state="done", completed_at=1763150000, reminder_ts="1763140000.000200", due_before=DUE)
+        other = copy.deepcopy(event)
+        other["event_id"] = "Ev2"
+        other["event"]["item"]["ts"] = "1763000000.000100"
+        mocks.message["ts"] = "1763000000.000100"
+        assert _body(lambda_function.lambda_handler(other, None)) == "stale"
+    texts = [call.args[2] for call in mocks.slack.send_slack_message.call_args_list]
+    assert texts == ["Marked done in ClickUp.", "Already marked done in ClickUp; nothing changed."]
+
+
+def test_completed_reply_sent_when_marker_cannot_be_written(mocks: Mocks, event: dict[str, Any]) -> None:
+    real_table = mocks.table
+    table = MagicMock(wraps=real_table)
+    table.put_item.side_effect = _client_error("InternalServerError", "PutItem")
+    with patch(f"{MODULE}._get_table", return_value=table):
+        assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _replies(mocks) == ["Marked done in ClickUp. Next due Tue Nov 25"]
+
+
+def test_already_closed_date_is_the_latest_known(mocks: Mocks, event: dict[str, Any]) -> None:
+    # Completed from Slack earlier, then reopened and closed again by hand in ClickUp.
+    mocks.task["status"] = {"status": "complete", "type": "closed"}
+    mocks.task["date_closed"] = "1763160000000"
+    mocks.put_record(state="done", completed_at=1762900000, reminder_ts="1762800000.000200", due_before=DUE)
+    lambda_function.lambda_handler(event, None)
+    assert _replies(mocks) == ["Already marked done on Fri Nov 14; nothing changed."]
+
+
+def test_already_closed_falls_back_to_date_done(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.task["status"] = {"status": "done", "type": "done"}
+    mocks.task["date_done"] = "1763150000000"
+    lambda_function.lambda_handler(event, None)
+    assert _replies(mocks) == ["Already marked done on Fri Nov 14; nothing changed."]
