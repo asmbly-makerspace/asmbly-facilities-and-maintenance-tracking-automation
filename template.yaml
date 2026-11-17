@@ -357,6 +357,7 @@ Resources:
         ClickUpWorkspaceFieldIdParameterName: !Ref ClickUpWorkspaceFieldIdParameter
         CommonLayerARN: !Ref CommonLayer
         RequestsLayerARN: !Ref RequestsLambdaLayer
+        RouterConfigParameterName: !Ref RouterConfigParameter
       Tags:
         Application: facilities-automation-hub
         Workspace: facilities
@@ -412,6 +413,7 @@ Resources:
         CommonLayerARN: !Ref CommonLayer
         PurchaseRequestReactionFunctionArn: !GetAtt PurchaseRequestStack.Outputs.PurchaseRequestReactionFunctionArn
         ProblemReportReactionFunctionArn: !GetAtt ProblemReportStack.Outputs.ProblemReportReactionFunctionArn
+        PMReminderReactionFunctionArn: !GetAtt FacilitiesStack.Outputs.PMReminderReactionFunctionArn
         RouterConfigParameterName: !Ref RouterConfigParameter
       Tags:
         Application: facilities-automation-hub

@@ -16,6 +16,9 @@ Parameters:
     Description: The ARN of the shared Common Utilities Lambda Layer.
 
   ClickUpWorkspaceFieldIdParameterName: { Type: String }
+  RouterConfigParameterName:
+    Type: String
+    Description: The name of the Slack event router's SSM parameter, which lists the PM channels (pm_channels).
 
 Conditions:
   IsProd: !Equals [!Ref Stage, 'prod']
@@ -27,7 +30,7 @@ Resources:
     Properties:
       Name: !Sub "/${Stage}/clickup/cmms/pmSchedule"
       Type: String
-      Description: "JSON configuration for the PM reminder bot: the ClickUp PM Schedule list ID and the workspace-to-Slack-channel map."
+      Description: "JSON configuration for the PM reminder bot: the ClickUp PM Schedule list ID, the status that marks a task done, and the workspace-to-Slack-channel map."
       Value:
         Fn::ToJsonString:
           Fn::Transform:
@@ -139,7 +142,119 @@ Resources:
       Principal: "events.amazonaws.com"
       SourceArn: !GetAtt PMReminderBotScheduleRule.Arn
 
+  # --- Facilities: PM reminder checkmark reactions ---
+  # One item per PM task: whether a completion from Slack is in flight or done, and for
+  # which reminder. It makes duplicate and stale check marks harmless. Phase 5 adds
+  # short-lived reply markers, which expire through the TTL.
+  PMReminderCompletionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "PMReminderCompletions-${Stage}"
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: facilities:pm-reminder-reaction
+
+  PMReminderReactionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/asmbly/lambda/PMReminderReactionFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: facilities:pm-reminder-reaction
+
+  PMReminderReactionLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: PMReminderReactionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt PMReminderReactionLogGroup.Arn
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RouterConfigParameterName}'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/cmms/pmSchedule'
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt PMReminderCompletionsTable.Arn
+      Tags:
+        - Key: Project
+          Value: facilities:pm-reminder-reaction
+
+  PMReminderReactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "PMReminderReactionFunction-${Stage}"
+      Description: "Completes a PM Schedule task in ClickUp when someone adds a white check mark to its PM Bot reminder in Slack (invoked by the Slack event router)."
+      CodeUri: ../functions/facilities/pm_reminder_reaction/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      # auth.test, conversations.history, Get Task, Update Task, a re-read after a failed
+      # update, a 2-second wait and re-read to see whether the task recurred, and the
+      # thread reply, then users.info and the ClickUp comment (last, so a cut-off run only
+      # loses the comment), each with an 8-second connect and read timeout, plus SSM,
+      # Secrets Manager and DynamoDB. The worst case of every timeout adds up to more than
+      # this; a run cut off leaves a pending claim the code resolves.
+      # CLAIM_EXPIRY_SECONDS in the code must stay at least three times this (a test checks it).
+      Timeout: 90
+      Role: !GetAtt PMReminderReactionLambdaRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref PMReminderReactionLogGroup
+      Layers:
+        - !Ref RequestsLayerARN
+        - !Ref CommonLayerARN
+      Environment:
+        Variables:
+          DRY_RUN: !If [IsProd, 'false', 'true']
+          BOT_NAME: 'PM Bot'
+          BOT_ICON_EMOJI: ':hammer_and_wrench:'
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
+          CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME: !Ref ClickUpPMScheduleParameter
+          ROUTER_CONFIG_PARAMETER_NAME: !Ref RouterConfigParameterName
+          PM_COMPLETIONS_TABLE_NAME: !Ref PMReminderCompletionsTable
+          SLACK_WORKSPACE_URL: 'https://asmbly-makerspace.slack.com'
+      Tags:
+        Project: facilities:pm-reminder-reaction
+
 Outputs:
   PMReminderBotFunctionArn:
     Description: "The ARN of the PM Reminder Bot Lambda Function"
     Value: !GetAtt PMReminderBotFunction.Arn
+  PMReminderReactionFunctionArn:
+    Description: "The ARN of the PM Reminder Reaction Lambda Function"
+    Value: !GetAtt PMReminderReactionFunction.Arn

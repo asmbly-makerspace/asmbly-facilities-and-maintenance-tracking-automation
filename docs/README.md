@@ -76,10 +76,10 @@ The project is organized into several functional areas, with a core infrastructu
 
 These services provide core functionality used by other parts of the system.
 * **Slack Event Router** (`SlackEventSubscriptionsRouterFunction`)
-    * **What it does:** Acts as the single entry point for all Slack `reaction_added` events. It inspects the event and forwards it to the correct handler function based on the channel where the reaction occurred.
+    * **What it does:** Acts as the single entry point for all Slack `reaction_added` events. It inspects the event and forwards it to the correct handler function based on the channel where the reaction occurred: reactions in the purchase-request channel, the problem-report channel and the PM channels (`pm_channels` in `configs/router_config.json`).
     * **How it's triggered:** An HTTP `POST` from a Slack Event Subscription.
     * **Webhook URL:** `https://facilities.asmbly.org/slack/events`
-    * **Config Location:** Slack Bot - Maintenance Bot -> Event Subscriptions
+    * **Config Location:** Slack Bot - Maintenance Bot -> Event Subscriptions; the routed channel IDs are in `configs/router_config.json`, and each handler's ARN is an environment variable set in `templates/routers.yaml`.
 
 #### Ceramics
 
@@ -114,6 +114,10 @@ These services automate tasks related to facilities management, problem reportin
 * **PM Reminder Bot** (`PMReminderBot`)
     * **What it does:** Automatically fetches upcoming and overdue maintenance tasks from ClickUp and posts them as weekly reminders in the relevant Slack channels: the channel named after the task's ClickUp Workspace, except where `workspace_channel_map` in `configs/clickup_cmms_pmSchedule.json` sends it elsewhere (woodshop → `#woodshop-maintenance`).
     * **How it's triggered:** A scheduled cron job (via Amazon EventBridge), defined in `facilities.yaml`.
+* **PM Reminder Reaction Handler** (`PMReminderReactionFunction`)
+    * **What it does:** When someone adds :white_check_mark: to a PM Bot reminder in a PM channel, sets that task to "complete" in the ClickUp PM Schedule list; ClickUp's recurrence brings it back at its next due date. Any other reaction or message is ignored. A task is completed once per reminder cycle: a second ✅, a repeated event or a ✅ on an older reminder changes nothing. The PM Bot replies in the reminder's thread with the next due date, or why nothing changed (already done, or ClickUp failed), and adds a ClickUp comment naming who marked it done and when, with a link to the reminder. Stage is a dry run and replies or comments nothing. See `functions/facilities/pm_reminder_reaction/README.md`.
+    * **How it's triggered:** Asynchronously invoked by the **Slack Event Router** for reactions in the channels listed in `pm_channels` in `configs/router_config.json`.
+    * **Config Location:** `configs/router_config.json` (`pm_channels`) and `configs/clickup_cmms_pmSchedule.json` (`list_id`, `complete_status`); the DynamoDB table `PMReminderCompletions-${Stage}` (created by `templates/facilities.yaml`) records each completion.
 * **Slack Reorder Item** (`FacilitiesSlackPurchaseReorderFunction`)
     * **What it does:** Handles the `/reorder` slash command, which opens an interactive modal in Slack. Users can filter a list of master items, select one, and submit a new purchase request to ClickUp. The same function also handles all in-modal interactions (filtering, submission).
     * **How it's triggered:** An HTTP `POST` from a Slack slash command and subsequent `block_actions` or `view_submission` events.

@@ -120,3 +120,81 @@ def get_slack_user_info(api_token: str, user_id: str, http_session: requests.Ses
         logger.error("Slack users.info failed: %s", type(e).__name__)
         raise
     return response.json()
+
+
+class SlackRequestError(Exception):
+    """A Slack Web API call failed. The message holds the method and Slack's error code only."""
+
+
+def _slack_api_get(token: str, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    """
+    Call a Slack Web API read method and return its JSON answer when Slack says ok=true.
+    Logs and raises SlackRequestError otherwise, naming the method, the HTTP status and
+    Slack's error code only: never the token, the URL with parameters, or the body.
+    """
+    try:
+        response = requests.get(
+            f"https://slack.com/api/{method}",
+            headers={"Authorization": f"Bearer {token}"},
+            params=params,
+            timeout=DEFAULT_TIMEOUT_SECONDS,
+        )
+    except requests.exceptions.RequestException as e:
+        logger.error("Slack %s failed: %s", method, type(e).__name__)
+        raise SlackRequestError(f"Slack {method} failed ({type(e).__name__})") from None
+
+    try:
+        data = response.json()
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        logger.error("Slack %s returned a body that is not a JSON object (HTTP %s)", method, response.status_code)
+        raise SlackRequestError(f"Slack {method} returned an unreadable answer")
+
+    if not data.get("ok"):
+        error = _slack_error_for_log(data)
+        logger.error("Slack %s failed: HTTP %s, error %s", method, response.status_code, error)
+        raise SlackRequestError(f"Slack {method} failed ({error})")
+    return data
+
+
+def get_bot_id(token: str) -> str:
+    """Returns the bot_id of the app that owns `token` (auth.test). Raises SlackRequestError."""
+    data = _slack_api_get(token, "auth.test")
+    bot_id = data.get("bot_id")
+    if not isinstance(bot_id, str) or not bot_id:
+        logger.error("Slack auth.test returned no bot_id")
+        raise SlackRequestError("auth.test returned no bot_id")
+    return bot_id
+
+
+def get_channel_message(token: str, channel_id: str, ts: str) -> dict[str, Any] | None:
+    """
+    Returns the top-level message at exactly `ts` in `channel_id`, or None when there is
+    none (a thread reply, a deleted message, a wrong ts). Raises SlackRequestError when
+    Slack can't be reached or answers ok=false.
+
+    The request asks for exactly `ts` (oldest = latest = ts, inclusive), and the returned
+    message's ts is compared with it anyway, so a looser answer from Slack can never
+    point at another message. conversations.history leaves out thread replies, except a
+    reply also sent to the channel (subtype thread_broadcast), which carries a different
+    thread_ts and is not a top-level message.
+    """
+    data = _slack_api_get(
+        token,
+        "conversations.history",
+        {"channel": channel_id, "latest": ts, "oldest": ts, "inclusive": "true", "limit": 1},
+    )
+    messages = data.get("messages")
+    if not isinstance(messages, list) or not messages or not isinstance(messages[0], dict):
+        logger.info("No message at %s in channel %s", ts, channel_id)
+        return None
+    message = messages[0]
+    if message.get("ts") != ts:
+        logger.info("No message at exactly %s in channel %s", ts, channel_id)
+        return None
+    thread_ts = message.get("thread_ts")
+    if thread_ts is not None and thread_ts != ts:
+        logger.info("Message %s in channel %s is a thread reply", ts, channel_id)
+        return None
+    return message

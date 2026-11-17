@@ -1,8 +1,10 @@
 import logging
 import os
 import sys
+from typing import Any, Callable
 from unittest.mock import patch, MagicMock
 
+import pytest
 import requests
 
 # Add the python directory to the path to allow common module imports
@@ -266,3 +268,199 @@ def test_get_slack_user_info_http_error_logs_and_reraises(caplog):
 
     assert [r.getMessage() for r in _slack_errors(caplog)] == ["Slack users.info failed: HTTPError"]
     assert "pk_URL_MARKER" not in caplog.text
+
+
+# --- get_bot_id and get_channel_message ---
+
+TOKEN = 'xoxb-TOKEN-MARKER'
+
+
+def _slack_answer(body: Any, status_code: int = 200) -> MagicMock:
+    response = MagicMock()
+    response.status_code = status_code
+    response.json.return_value = body
+    return response
+
+
+def _raises_slack_request_error(func: Callable[..., Any], *args: str) -> slack.SlackRequestError:
+    try:
+        func(*args)
+    except slack.SlackRequestError as raised:
+        return raised
+    raise AssertionError("SlackRequestError was not raised")
+
+
+@patch('common.slack.requests.get')
+def test_get_bot_id_returns_bot_id(mock_get: MagicMock) -> None:
+    mock_get.return_value = _slack_answer({"ok": True, "bot_id": "B1", "user_id": "U1"})
+
+    assert slack.get_bot_id(TOKEN) == "B1"
+
+    assert mock_get.call_args.args[0] == "https://slack.com/api/auth.test"
+    assert mock_get.call_args.kwargs['headers'] == {"Authorization": f"Bearer {TOKEN}"}
+    assert mock_get.call_args.kwargs['timeout'] == slack.DEFAULT_TIMEOUT_SECONDS
+
+
+@patch('common.slack.requests.get')
+def test_get_bot_id_without_bot_id_raises(mock_get: MagicMock, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_get.return_value = _slack_answer({"ok": True, "user_id": "U1"})
+
+    raised = _raises_slack_request_error(slack.get_bot_id, TOKEN)
+
+    assert str(raised) == "auth.test returned no bot_id"
+    assert TOKEN not in caplog.text
+
+
+@patch('common.slack.requests.get')
+def test_get_bot_id_error_logs_code_only(mock_get: MagicMock, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_get.return_value = _slack_answer({"ok": False, "error": "invalid_auth"})
+
+    raised = _raises_slack_request_error(slack.get_bot_id, TOKEN)
+
+    assert [r.getMessage() for r in _slack_errors(caplog)] == [
+        "Slack auth.test failed: HTTP 200, error invalid_auth"
+    ]
+    assert str(raised) == "Slack auth.test failed (invalid_auth)"
+    assert TOKEN not in caplog.text
+    assert TOKEN not in str(raised)
+
+
+@patch('common.slack.requests.get')
+def test_get_channel_message_returns_exact_message(mock_get: MagicMock) -> None:
+    message = {"type": "message", "ts": "1700000000.000100", "bot_id": "B1", "text": "hi"}
+    mock_get.return_value = _slack_answer({"ok": True, "messages": [message], "has_more": False})
+
+    assert slack.get_channel_message(TOKEN, "C0CJAK1D725", "1700000000.000100") == message
+
+    assert mock_get.call_args.args[0] == "https://slack.com/api/conversations.history"
+    assert mock_get.call_args.kwargs['headers'] == {"Authorization": f"Bearer {TOKEN}"}
+    assert mock_get.call_args.kwargs['params'] == {
+        "channel": "C0CJAK1D725",
+        "latest": "1700000000.000100",
+        "oldest": "1700000000.000100",
+        "inclusive": "true",
+        "limit": 1,
+    }
+    assert mock_get.call_args.kwargs['timeout'] == slack.DEFAULT_TIMEOUT_SECONDS
+
+
+@patch('common.slack.requests.get')
+def test_get_channel_message_thread_parent_is_returned(mock_get: MagicMock) -> None:
+    """A reminder that has a description reply is a thread parent: its thread_ts equals its ts."""
+    message = {"ts": "1700000000.000100", "thread_ts": "1700000000.000100", "reply_count": 1}
+    mock_get.return_value = _slack_answer({"ok": True, "messages": [message]})
+
+    assert slack.get_channel_message(TOKEN, "C1", "1700000000.000100") == message
+
+
+@patch('common.slack.requests.get')
+def test_get_channel_message_other_ts_returns_none(mock_get: MagicMock) -> None:
+    """A message at another ts is never returned, whatever Slack answers."""
+    mock_get.return_value = _slack_answer({"ok": True, "messages": [{"ts": "1699999999.000001"}]})
+
+    assert slack.get_channel_message(TOKEN, "C1", "1700000000.000100") is None
+
+
+@patch('common.slack.requests.get')
+def test_get_channel_message_thread_broadcast_returns_none(mock_get: MagicMock) -> None:
+    """A reply also sent to the channel shows in history but is not a top-level message."""
+    mock_get.return_value = _slack_answer({"ok": True, "messages": [
+        {"ts": "1700000000.000200", "thread_ts": "1700000000.000100", "subtype": "thread_broadcast"}
+    ]})
+
+    assert slack.get_channel_message(TOKEN, "C1", "1700000000.000200") is None
+
+
+@patch('common.slack.requests.get')
+def test_get_channel_message_no_messages_returns_none(mock_get: MagicMock) -> None:
+    mock_get.return_value = _slack_answer({"ok": True, "messages": []})
+
+    assert slack.get_channel_message(TOKEN, "C1", "1700000000.000100") is None
+
+
+@patch('common.slack.requests.get')
+def test_get_channel_message_api_error_raises_and_logs_code_only(mock_get: MagicMock, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_get.return_value = _slack_answer({"ok": False, "error": "not_in_channel", "pk": "BODY_MARKER"})
+
+    raised = _raises_slack_request_error(slack.get_channel_message, TOKEN, "C1", "1700000000.000100")
+
+    assert [r.getMessage() for r in _slack_errors(caplog)] == [
+        "Slack conversations.history failed: HTTP 200, error not_in_channel"
+    ]
+    assert str(raised) == "Slack conversations.history failed (not_in_channel)"
+    for marker in (TOKEN, "BODY_MARKER", "latest="):
+        assert marker not in caplog.text
+        assert marker not in str(raised)
+
+
+@patch('common.slack.requests.get')
+def test_get_channel_message_rate_limited_keeps_status_and_code(mock_get: MagicMock, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_get.return_value = _slack_answer({"ok": False, "error": "ratelimited"}, status_code=429)
+
+    raised = _raises_slack_request_error(slack.get_channel_message, TOKEN, "C1", "1700000000.000100")
+
+    assert [r.getMessage() for r in _slack_errors(caplog)] == [
+        "Slack conversations.history failed: HTTP 429, error ratelimited"
+    ]
+    assert str(raised) == "Slack conversations.history failed (ratelimited)"
+
+
+@patch('common.slack.requests.get')
+def test_get_channel_message_body_not_json_raises(mock_get: MagicMock, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    response = _slack_answer(None, status_code=502)
+    response.json.side_effect = ValueError("BODY_MARKER")
+    mock_get.return_value = response
+
+    raised = _raises_slack_request_error(slack.get_channel_message, TOKEN, "C1", "1700000000.000100")
+
+    assert [r.getMessage() for r in _slack_errors(caplog)] == [
+        "Slack conversations.history returned a body that is not a JSON object (HTTP 502)"
+    ]
+    assert "BODY_MARKER" not in caplog.text
+    assert "BODY_MARKER" not in str(raised)
+
+
+@patch('common.slack.requests.get')
+def test_get_channel_message_timeout_raises(mock_get: MagicMock, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_get.side_effect = requests.exceptions.ReadTimeout("https://slack.com/api?pk_URL_MARKER")
+
+    raised = _raises_slack_request_error(slack.get_channel_message, TOKEN, "C1", "1700000000.000100")
+
+    assert [r.getMessage() for r in _slack_errors(caplog)] == [
+        "Slack conversations.history failed: ReadTimeout"
+    ]
+    assert str(raised) == "Slack conversations.history failed (ReadTimeout)"
+    assert raised.__cause__ is None
+    assert "pk_URL_MARKER" not in caplog.text
+    assert "pk_URL_MARKER" not in str(raised)
+    assert TOKEN not in caplog.text
+
+
+@pytest.mark.parametrize("body", [
+    {"ok": True},
+    {"ok": True, "messages": "not a list"},
+    {"ok": True, "messages": ["not a dict"]},
+    {"ok": True, "messages": [{"text": "no ts"}]},
+])
+@patch('common.slack.requests.get')
+def test_get_channel_message_odd_messages_return_none(mock_get: MagicMock, body: dict[str, Any]) -> None:
+    mock_get.return_value = _slack_answer(body)
+
+    assert slack.get_channel_message(TOKEN, "C1", "1700000000.000100") is None
+
+
+@patch('common.slack.requests.get')
+def test_get_channel_message_json_not_an_object_raises(mock_get: MagicMock, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="common.slack")
+    mock_get.return_value = _slack_answer(["BODY_MARKER"])
+
+    raised = _raises_slack_request_error(slack.get_channel_message, TOKEN, "C1", "1700000000.000100")
+
+    assert str(raised) == "Slack conversations.history returned an unreadable answer"
+    assert "BODY_MARKER" not in caplog.text
