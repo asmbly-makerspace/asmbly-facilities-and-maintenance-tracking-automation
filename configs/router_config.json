@@ -2,6 +2,12 @@
   "purchase_request_channel_id": "C026YVA7TK3",
   "problem_report_channel_id": "C063LH7MB45",
   "pm_channels": {
+    "C0214AL9LGN": "3d-printing",
+    "C088D62HJQ7": "ceramics",
+    "C07PRUZV7D1": "electronics",
+    "C07QTNZJA1Y": "lasers",
+    "C04D1JC7EMB": "metal-shop",
+    "C07QD6RDELF": "textiles",
     "C0CJAK1D725": "woodshop-maintenance"
   }
 }
