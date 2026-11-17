@@ -2,7 +2,7 @@
   "plan_name": "pm-reminder-checkmark-complete",
   "feature_branch": "feature/pm-reminder-checkmark-complete",
   "epic": 7,
-  "status": "in-progress",
+  "status": "complete",
   "phases": [
     {
       "id": 1,
@@ -67,7 +67,7 @@
     ],
     "commits": 0
   },
-  "final_pr_number": null,
+  "final_pr_number": 170,
   "admin_actions": [
     "FIRST, before this reaches stage: redeploy AsmblyFacilitiesMaintTrackingStack-cicd by hand. Adds PMReminderReactionFunction-{stage,prod} + log groups (deploy policies) and table PMReminderCompletions-{stage,prod} (data policies; Sid AllowClassListCacheTableReads renamed AllowTableReadsAfterCreate).",
     "Before phase 4 reaches prod: supply Slack channel IDs for 3d-printing, ceramics, electronics, lasers, metal-shop, textiles in configs/router_config.json pm_channels (only woodshop-maintenance C0CJAK1D725 is filled in).",
@@ -549,6 +549,33 @@
         165
       ],
       "total_steps": 22
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "followups_opened",
+      "issues": [
+        167,
+        168,
+        169
+      ],
+      "commented": [
+        79
+      ]
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "pr_start"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "pr_ready",
+      "pr": 170,
+      "checks": "green",
+      "rounds": 0
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "complete"
     }
   ]
 }
