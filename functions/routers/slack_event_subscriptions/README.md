@@ -99,6 +99,12 @@ The router's configuration is managed in a single SSM Parameter, which is create
   "purchase_request_channel_id": "C026YVA7TK3",
   "problem_report_channel_id": "C063LH7MB45",
   "pm_channels": {
+    "C0214AL9LGN": "3d-printing",
+    "C088D62HJQ7": "ceramics",
+    "C07PRUZV7D1": "electronics",
+    "C07QTNZJA1Y": "lasers",
+    "C04D1JC7EMB": "metal-shop",
+    "C07QD6RDELF": "textiles",
     "C0CJAK1D725": "woodshop-maintenance"
   }
 }
@@ -110,9 +116,8 @@ forwards every reaction in these channels to the PM Reminder Reaction Handler, w
 acts only on a ✅ on a PM Bot reminder and ignores everything else. To add or remap a PM
 channel, see "Adding or remapping a PM channel" in
 `functions/facilities/pm_bot_reminder/README.md`.
-The list is partial: only `#woodshop-maintenance` is in it until an admin confirms the
-IDs of the other PM channels (3d-printing, ceramics, electronics, lasers, metal-shop,
-textiles). A reaction in a channel that isn't listed is ignored.
+It lists all seven PM channels; the Maintenance Bot must be a member of each one. A
+reaction in a channel that isn't listed is ignored.
 
 To stop ✅s completing PM tasks in an emergency, set the PM Reminder Reaction Handler's
 `DRY_RUN` to `'true'` for prod in `templates/facilities.yaml`
