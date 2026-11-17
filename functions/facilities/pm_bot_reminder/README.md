@@ -144,6 +144,7 @@ turned into dashes (`Metal Shop` → `#metal-shop`). `workspace_channel_map` in
 ```json
 {
   "list_id": "901310894771",
+  "complete_status": "complete",
   "workspace_channel_map": {
     "woodshop": "woodshop-maintenance"
   }
@@ -156,6 +157,10 @@ turned into dashes (`Metal Shop` → `#metal-shop`). `workspace_channel_map` in
   work). Values are Slack channel names: lowercase letters, digits, `-` and `_`, with or
   without a leading `#`.
 - To send another workspace elsewhere, add a key; to undo a mapping, remove it.
+- When you map a workspace to a new channel, also add that channel's ID to
+  `pm_channels` in `configs/router_config.json`; a test fails otherwise.
+- `complete_status` is not read by this function. It names the ClickUp status that
+  marks a PM task done, for the PM reminder ✅ handler that is being built.
 - The message text still starts with the workspace name (`[OVERDUE] woodshop - …`), even
   when it posts to a mapped channel.
 - If any entry is invalid (an uppercase or spaced channel name, a value that isn't

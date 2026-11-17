@@ -1,0 +1,129 @@
+{
+  "plan_name": "pm-reminder-checkmark-complete",
+  "feature_branch": "feature/pm-reminder-checkmark-complete",
+  "epic": 7,
+  "status": "in-progress",
+  "phases": [
+    {
+      "id": 1,
+      "title": "PM channel config and Slack message helpers",
+      "file": "phase-1-config-and-slack-helpers.md",
+      "status": "done",
+      "review_rounds": 1
+    },
+    {
+      "id": 2,
+      "title": "PM reminder reaction handler",
+      "file": "phase-2-reaction-handler.md",
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "title": "Complete once per cycle",
+      "file": "phase-3-complete-once.md",
+      "status": "pending"
+    },
+    {
+      "id": 4,
+      "title": "Route PM channel reactions to the handler",
+      "file": "phase-4-router-wiring.md",
+      "status": "pending"
+    },
+    {
+      "id": 5,
+      "title": "Thread replies in Slack",
+      "file": "phase-5-thread-replies.md",
+      "status": "pending"
+    },
+    {
+      "id": 6,
+      "title": "ClickUp comment naming who ticked it",
+      "file": "phase-6-clickup-comment.md",
+      "status": "pending"
+    }
+  ],
+  "integration": null,
+  "final_pr_number": null,
+  "admin_actions": [
+    "Before phase 2 reaches stage: redeploy AsmblyFacilitiesMaintTrackingStack-cicd by hand (adds PMReminderReactionFunction-{stage,prod}, log groups, table PMReminderCompletions-{stage,prod}).",
+    "Before phase 4 reaches prod: supply Slack channel IDs for 3d-printing, ceramics, electronics, lasers, metal-shop, textiles in configs/router_config.json pm_channels (only woodshop-maintenance C0CJAK1D725 is filled in).",
+    "Before phase 4 reaches prod: confirm the Maintenance Bot is in all 7 PM channels with channels:history (groups:history if private), reactions:read, chat:write, users:read.",
+    "Before prod: turn on ClickUp recurrence for Clean Metal Shop Sink (86a8be2bc).",
+    "On the first prod check mark: confirm API v2 PUT /task status=complete brings a recurring task back as to do with next due date."
+  ],
+  "events": [
+    {
+      "ts": "2026-11-16T00:00:00Z",
+      "type": "preflight",
+      "python": "3.12.11",
+      "sam": "1.166.2",
+      "gh": "ok"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "planned",
+      "commit": "21b199c",
+      "decisions": 12,
+      "notes": "#165 included as phase 6; #79/#92 open with no PR, phase 4 runs first"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "phase_start",
+      "phase": 1
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 1,
+      "text": "Prep READY; no amendments."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 1,
+      "text": "Six PM channel IDs left out instead of guessed (Slack MCP unavailable)."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 1,
+      "text": "Slack helpers share private _slack_api_get; logs HTTP status and Slack error code."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 1,
+      "text": "get_channel_message returns None for thread_broadcast replies."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 1,
+      "text": "complete_status 'complete' not verified against ClickUp list 901310894771 statuses; confirm before prod."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 1,
+      "text": "auth.test called with GET; first real call is the stage run."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 1,
+      "text": "conversations.history may truncate reactions[].users; phase 2 decides."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 1,
+      "text": "Phase 2 Timeout must cover two 8s Slack calls plus ClickUp calls."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "phase_done",
+      "phase": 1,
+      "checks": "pytest 2045 passed; cfn-lint ok (4 preexisting W3005); sam validate ok; sam build ok"
+    }
+  ]
+}

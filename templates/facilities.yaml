@@ -27,7 +27,7 @@ Resources:
     Properties:
       Name: !Sub "/${Stage}/clickup/cmms/pmSchedule"
       Type: String
-      Description: "JSON configuration for the PM reminder bot: the ClickUp PM Schedule list ID and the workspace-to-Slack-channel map."
+      Description: "JSON configuration for the PM reminder bot: the ClickUp PM Schedule list ID, the status that marks a task done, and the workspace-to-Slack-channel map."
       Value:
         Fn::ToJsonString:
           Fn::Transform:

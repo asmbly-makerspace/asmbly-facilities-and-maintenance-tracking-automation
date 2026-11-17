@@ -10,7 +10,7 @@ estimated_size: S
 
 # Phase 1: PM channel config and Slack message helpers
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-11-16 on branch feature/pm-reminder-checkmark-complete
 
 ## Required reading
 
@@ -199,7 +199,32 @@ None for this phase. Channel IDs it can't confirm feed README admin action 2.
 
 ## Hand-off
 
-_Filled in when the phase is done._ Phase 2 relies on: `common.slack.get_bot_id`,
-`common.slack.get_channel_message`, `common.slack.SlackRequestError`; config keys
-`pm_channels` (router config) and `complete_status`, `list_id` (PM schedule config); the
-list of PM channels whose IDs are still missing.
+Phase 2 can rely on:
+
+- `common.slack.SlackRequestError(Exception)`: its message holds the Slack method and
+  error code only.
+- `common.slack.get_bot_id(token: str) -> str` (`auth.test`). Raises `SlackRequestError`
+  on a network error, `ok: false`, an unreadable body, or no `bot_id`.
+- `common.slack.get_channel_message(token: str, channel_id: str, ts: str) -> dict | None`
+  (`conversations.history`, `oldest = latest = ts`, inclusive, `limit=1`). Returns the
+  message only when its `ts` equals `ts` and it isn't a thread reply (a `thread_ts`
+  other than its own `ts`, e.g. `thread_broadcast`). A thread parent (`thread_ts == ts`)
+  is returned. Raises `SlackRequestError` like `get_bot_id`.
+- Both use `requests.get` with `DEFAULT_TIMEOUT_SECONDS` (8 s) each: phase 2's function
+  `Timeout` must cover two Slack calls plus ClickUp.
+- Config keys: `pm_channels` (`{channel_id: channel_name}`) in
+  `/${Stage}/config/router/slack-event-router`; `complete_status` (`"complete"`) and
+  `list_id` in `/${Stage}/clickup/cmms/pmSchedule`. `tests/test_configs.py` checks both.
+
+Deferred or unconfirmed:
+
+- **Channel IDs missing from `pm_channels`** (no read-only Slack tool was available):
+  3d-printing, ceramics, electronics, lasers, metal-shop, textiles. Only
+  `woodshop-maintenance` (`C0CJAK1D725`) is in. README admin action 2; list them in the
+  pull request's **Risk** section.
+- `complete_status: "complete"` wasn't checked against list `901310894771`'s statuses
+  (no ClickUp tool available). Confirm before phase 2 reaches prod.
+- `auth.test` is called with GET. Slack's Web API accepts arguments as query parameters,
+  but this hasn't been tried against Slack. Phase 2's stage run is the first real call.
+- `conversations.history` can truncate `reactions[].users` on busy messages (audit, not
+  confirmed). Phase 2 decides whether to accept this or fall back to `reactions.get`.

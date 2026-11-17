@@ -92,9 +92,19 @@ The router's configuration is managed in a single SSM Parameter, which is create
 ```json
 {
   "purchase_request_channel_id": "C026YVA7TK3",
-  "problem_report_channel_id": "C063LH7MB45"
+  "problem_report_channel_id": "C063LH7MB45",
+  "pm_channels": {
+    "C0CJAK1D725": "woodshop-maintenance"
+  }
 }
 ```
+
+`pm_channels` lists the channels the PM Reminder Bot posts to, by ID (`{channel_id:
+channel_name}`). The router doesn't read it yet; it is for the PM reminder ✅ handler
+that is being built (plan `pm-reminder-checkmark-complete`).
+The list is partial: only `#woodshop-maintenance` is in it until an admin confirms the
+IDs of the other PM channels (3d-printing, ceramics, electronics, lasers, metal-shop,
+textiles). A ✅ in a channel that isn't listed will be ignored.
 
 The name of the SSM parameter itself is passed to the Lambda function via the `ROUTER_CONFIG_PARAMETER_NAME` environment variable.
 

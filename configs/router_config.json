@@ -1,4 +1,7 @@
 {
   "purchase_request_channel_id": "C026YVA7TK3",
-  "problem_report_channel_id": "C063LH7MB45"
+  "problem_report_channel_id": "C063LH7MB45",
+  "pm_channels": {
+    "C0CJAK1D725": "woodshop-maintenance"
+  }
 }
