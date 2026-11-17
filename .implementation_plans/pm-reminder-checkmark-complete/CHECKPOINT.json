@@ -41,13 +41,15 @@
       "title": "Thread replies in Slack",
       "file": "phase-5-thread-replies.md",
       "status": "done",
-      "review_rounds": 3
+      "review_rounds": 3,
+      "squashed_sha": "b86ceee923c3a01b18be40717300ddab9242243b"
     },
     {
       "id": 6,
       "title": "ClickUp comment naming who ticked it",
       "file": "phase-6-clickup-comment.md",
-      "status": "pending"
+      "status": "done",
+      "review_rounds": 1
     }
   ],
   "integration": null,
@@ -63,7 +65,8 @@
     "On the first prod \u2705: add a second \u2705 to the same reminder, expect one completed and one duplicate with the due date moved one cycle; check ClickUp doesn't stamp date_done later than the next reminder (README check, required).",
     "Optional, for a person with AWS access: stage router-path test (invoke facilities-slack-event-router-stage with an API Gateway-shaped event; steps in the handler README). Invokes functions, so not read-only.",
     "Emergency stop: set prod DRY_RUN to 'true' on PMReminderReactionFunction (templates/facilities.yaml).",
-    "On the first prod \u2705: check the reply's 'Next due <date>' matches ClickUp; for a recurring task with Frequency unset, check it isn't told 'doesn't repeat'."
+    "On the first prod \u2705: check the reply's 'Next due <date>' matches ClickUp; for a recurring task with Frequency unset, check it isn't told 'doesn't repeat'.",
+    "On the first prod \u2705: check whether ClickUp notify_all:false still notifies assignees/watchers of the comment; the comment shows as posted by the ClickUp token's owner."
   ],
   "events": [
     {
@@ -451,6 +454,48 @@
       "type": "phase_done",
       "phase": 5,
       "checks": "pytest 2216 passed; cfn-lint no new; sam validate ok; sam build ok"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "phase_start",
+      "phase": 6
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 6,
+      "text": "Prep NEEDS_REVISION (1 HIGH); comment is a separate step after the Slack reply in its own try/except, so it can't change the outcome or skip the reply."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 6,
+      "text": "When Slack only counted the user on a truncated list, the comment names 'Slack user <id>' and no name is looked up (forged-name guard until #79)."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 6,
+      "text": "Display name sanitized and capped at 80 chars; falls back to real_name then user ID."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 6,
+      "text": "Comment only on 'completed' and not dry_run; name and comment text never logged (tested)."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 6,
+      "text": "notify_all:false behavior for assignees/watchers unconfirmed.",
+      "recommend": "first prod check"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "phase_done",
+      "phase": 6,
+      "checks": "pytest 2246 passed; cfn-lint no new; sam validate ok; sam build ok"
     }
   ]
 }

@@ -9,6 +9,7 @@
 - [Completed once](#completed-once)
 - [Outcomes](#outcomes)
 - [What the person sees](#what-the-person-sees)
+- [What ClickUp shows](#what-clickup-shows)
 - [Configuration](#configuration)
 - [AWS infrastructure](#aws-infrastructure)
 - [Logs](#logs)
@@ -25,7 +26,8 @@ This function makes that work: when someone adds `:white_check_mark:` (exactly t
 emoji; `:heavy_check_mark:` and `:ballot_box_with_check:` are ignored) to a PM Bot
 reminder, it sets the task to "complete" in the ClickUp PM Schedule list. ClickUp's own
 recurrence, configured on each task in ClickUp, then brings the task back as "to do" with
-its next due date.
+its next due date. The PM Bot replies in the reminder's thread, and the task gets a
+ClickUp comment naming who marked it done and when.
 
 ## How it is triggered
 
@@ -207,6 +209,39 @@ On stage (`DRY_RUN=true`) nothing is posted and no marker is written. For `stale
 usual stage result, `would_complete`, logs no reply line (stage never completes, so it
 never reaches the "Marked done" reply).
 
+## What ClickUp shows
+
+- **The status change:** the task moves to `complete_status` (`complete`). ClickUp's own
+  recurrence, configured on each task in ClickUp, then brings it back as "to do" with its
+  next due date.
+- **A comment, once per completion from Slack**, posted after the thread reply:
+
+  ```text
+  Marked done from Slack by Jamie on Mon Nov 16, 2026 3:04 PM CST.
+  Reminder: https://asmbly-makerspace.slack.com/archives/C0CJAK1D725/p1763100000000100
+  ```
+
+  The name is the person's Slack display name, else their full name. It shows
+  `Slack user U…` (their Slack user ID) when the Maintenance Bot lacks `users:read`, the
+  lookup fails, or Slack only counted the person on a long ✅ list without naming them
+  (until the router checks Slack's signature, #79, a forged event could otherwise put
+  anyone's name there). Control characters are dropped and the name is cut at 80
+  characters. The time is Austin (Central) time, when the completion was recorded; if the
+  time can't be formatted the comment leaves out "on …". The `Reminder:` line needs
+  `SLACK_WORKSPACE_URL` and is left out without it.
+
+  ClickUp shows the comment as written by the owner of the ClickUp API token (the
+  `clickup/api/token` secret). It is sent with `notify_all` false, which only stops
+  ClickUp from also notifying that owner; assignees and watchers may still get ClickUp's
+  usual comment notification.
+
+  No comment for `duplicate`, `stale`, `already_closed`, `failed`, `ignored`, or on stage
+  (`DRY_RUN=true`). A comment that fails is logged (`Could not comment on task <id>`)
+  and changes nothing: the task stays completed and the reply is already sent. Known
+  gaps: a run that dies after the update lands, or a `failed` outcome whose update
+  landed later, leaves no comment; a comment request that times out after ClickUp stored
+  it is logged as a failure.
+
 ## Configuration
 
 The JSON files in `configs/` are copied into AWS Systems Manager (SSM) Parameter Store
@@ -230,6 +265,7 @@ takes effect on the next deploy.
 | `PM_COMPLETIONS_TABLE_NAME` | `PMReminderCompletions-<stage>` | The completions table. |
 | `BOT_NAME` | `PM Bot` | The name the thread replies are posted under (default `PM Bot`). |
 | `BOT_ICON_EMOJI` | `:hammer_and_wrench:` | The icon of the thread replies (default `:hammer_and_wrench:`). |
+| `SLACK_WORKSPACE_URL` | `https://asmbly-makerspace.slack.com` | Builds the reminder's link in the ClickUp comment. Optional: without it the comment has no link. |
 | `DRY_RUN` | `true` on stage, `false` on prod | On stage, log what would be completed and write nothing, to ClickUp or the table (it reads the table to report `duplicate` or `stale`). Only the exact value `false` writes; unset or anything else is a dry run. |
 
 ## AWS infrastructure
@@ -248,7 +284,8 @@ takes effect on the next deploy.
 
 The Maintenance Bot needs `channels:history` (and `groups:history` for a private
 channel), `chat:write` and `chat:write.customize` (the replies use the PM Bot's name and
-icon, as its reminders do), and must be a member of each PM channel.
+icon, as its reminders do), and `users:read` (the name in the ClickUp comment; without it
+the comment names the Slack user ID), and must be a member of each PM channel.
 
 ## Logs
 
@@ -282,6 +319,11 @@ The log lines to look for:
   although its frequency says it repeats`, `Could not re-read task <id> after completing it`
 - `No failure reply for reminder <ts>: the event has no usable event ID`
 - `Could not turn timestamp <value> into a date` (the reply leaves the date out)
+- `Commented on task <id>`, `Could not comment on task <id>` (the outcome stands),
+  `Could not look up Slack user <user>` (the comment names the user ID), `Could not format
+  the completion time of task <id>` (the comment leaves out the time)
+- `Could not comment for event ...` (with a traceback): the comment step failed
+  unexpectedly; the outcome and the reply stand.
 - `Could not reply for event ...` (with a traceback): the reply step failed unexpectedly;
   the outcome stands.
 - `Missing environment variables: ...` and `PM schedule config is missing list_id or
@@ -290,7 +332,8 @@ The log lines to look for:
   Manager) or anything else unexpected failed.
 
 Only IDs are logged (event ID, channel ID, message `ts`, task ID, Slack user ID): never the
-message text, a token, the event body or a person's name.
+message text, a token, the event body or a person's name. The name in the ClickUp comment
+goes to ClickUp only, never to the log.
 
 ## Testing
 
@@ -340,3 +383,8 @@ In Slack, the reminder's thread should hold exactly one `Marked done in ClickUp.
 <date>` reply (the PM Bot's own description reply may be there too), with the date matching the task's new due date in ClickUp; the second
 ✅ adds nothing. A ✅ on last week's reminder for the same task gets `Already marked done
 on <date>; nothing changed.` once.
+
+In ClickUp, the task's activity should show exactly one comment, `Marked done from Slack
+by <display name> on <Austin time>.`, with a `Reminder:` link that opens the reminder;
+the second ✅ adds none. `Slack user U…` instead of the name means the Maintenance Bot
+lacks `users:read`.

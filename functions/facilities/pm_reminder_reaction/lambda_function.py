@@ -8,14 +8,16 @@ each task complete once per cycle: a second check mark, a redelivered event, a L
 retry or a check mark on an older reminder changes nothing.
 
 After the outcome is known, the PM Bot replies in the reminder's thread: marked done
-(with the next due date), already done, or that ClickUp failed. The reply never changes
-the outcome, and stage replies nothing.
+(with the next due date), already done, or that ClickUp failed. Then, for a completion
+only, it comments on the ClickUp task naming who marked it done, when, and the reminder's
+link. Neither the reply nor the comment changes the outcome, and stage does neither.
 """
 import json
 import logging
 import os
 import re
 import time
+import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -24,6 +26,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import boto3
+import requests
 from boto3.dynamodb.types import TypeDeserializer
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
@@ -89,6 +92,11 @@ REPLY_COMPLETED_CLOSED = "Marked done in ClickUp. This task doesn't repeat, so i
 REPLY_COMPLETED_PLAIN = "Marked done in ClickUp."
 REPLY_ALREADY_DONE = "Already marked done on {date}; nothing changed."
 REPLY_ALREADY_DONE_NO_DATE = "Already marked done in ClickUp; nothing changed."
+COMMENT_TEXT = "Marked done from Slack by {name} on {when}."
+COMMENT_TEXT_NO_TIME = "Marked done from Slack by {name}."
+COMMENT_LINK = "\nReminder: {link}"
+# The longest Slack name the comment shows; a longer one is cut.
+COMMENT_NAME_MAX = 80
 # After a failed update the claim stays pending for CLAIM_EXPIRY_SECONDS, and a check mark
 # added again in that window is a silent duplicate, hence the wait.
 REPLY_FAILED = (
@@ -105,7 +113,7 @@ _deserializer = TypeDeserializer()
 
 @dataclass
 class _ReplyContext:
-    """What _handle learned that the thread reply needs. Filled in as the checks pass."""
+    """What _handle learned that the thread reply and the comment need. Filled in as the checks pass."""
 
     dry_run: bool = True
     slack_token: str | None = None
@@ -120,6 +128,11 @@ class _ReplyContext:
     due_before: str = ""
     # The task update_task returned, or None when the update reported an error but landed.
     updated_task: dict[str, Any] | None = None
+    # The reacting user, and whether Slack listed them on the ✅ (not only counted them).
+    user: str | None = None
+    user_listed: bool = False
+    # Epoch seconds when the completion was recorded, for the ClickUp comment.
+    completed_at: int | None = None
 
 
 def parse_reminder_task_id(text: str) -> str | None:
@@ -141,6 +154,12 @@ def _austin_date(epoch_seconds: float) -> str:
     # The zone is loaded here, not at import, so a missing tzdata can only cost a reply.
     d = datetime.fromtimestamp(float(epoch_seconds), ZoneInfo(AUSTIN_TIME_ZONE))
     return f"{d:%a %b} {d.day}"
+
+
+def _austin_datetime(epoch_seconds: float) -> str:
+    """An Austin (Central) date and time such as "Mon Nov 16, 2026 3:04 PM CST"."""
+    d = datetime.fromtimestamp(float(epoch_seconds), ZoneInfo(AUSTIN_TIME_ZONE))
+    return f"{d:%a %b} {d.day}, {d.year} {d.hour % 12 or 12}:{d:%M %p %Z}"
 
 
 def _date_or_none(epoch_seconds: float) -> str | None:
@@ -324,26 +343,27 @@ def _get_bot_id(token: str) -> str:
     return _bot_id
 
 
-def _user_checkmarked(message: dict[str, Any], user: str) -> bool:
+def _user_checkmarked(message: dict[str, Any], user: str) -> str | None:
     """
-    True when the message carries a :white_check_mark: from `user`. Slack can truncate a
+    "listed" when the message's :white_check_mark: lists `user`. Slack can truncate a
     reaction's `users` list on a busy message; when `count` is larger than the list, a real
-    ✅ is on the message, so it is accepted too (a forged event can only repeat it).
+    ✅ is on the message, so it is accepted too as "counted" (a forged event can only repeat
+    it, but can name any user). None when there is no such ✅.
     """
     reactions = message.get("reactions")
     if not isinstance(reactions, list):
-        return False
+        return None
     for reaction in reactions:
         if not isinstance(reaction, dict) or reaction.get("name") != CHECKMARK:
             continue
         users = reaction.get("users")
         users = users if isinstance(users, list) else []
         if user in users:
-            return True
+            return "listed"
         count = reaction.get("count")
         if isinstance(count, int) and count > len(users):
-            return True
-    return False
+            return "counted"
+    return None
 
 
 def _handle(inner: dict[str, Any], item: dict[str, Any], event_id: Any, ctx: _ReplyContext) -> dict[str, Any]:
@@ -394,8 +414,10 @@ def _handle(inner: dict[str, Any], item: dict[str, Any], event_id: Any, ctx: _Re
     thread_ts = message.get("thread_ts")
     if thread_ts is not None and thread_ts != ts:
         return _ignored(event_id, "message %s in %s is a thread reply", ts, channel)
-    if not _user_checkmarked(message, user):
+    checkmark = _user_checkmarked(message, user)
+    if checkmark is None:
         return _ignored(event_id, "message %s in %s has no white_check_mark from %s", ts, channel, user)
+    ctx.user, ctx.user_listed = user, checkmark == "listed"
     task_id = parse_reminder_task_id(message.get("text", ""))
     if task_id is None:
         return _ignored(event_id, "message %s in %s is not a PM reminder", ts, channel)
@@ -540,7 +562,8 @@ def _handle(inner: dict[str, Any], item: dict[str, Any], event_id: Any, ctx: _Re
             logger.info("Task %s keeps its pending claim for up to %s seconds", task_id, CLAIM_EXPIRY_SECONDS)
             return _result(200, "failed")
         logger.warning("Task %s was completed although the update reported an error", task_id)
-    _mark_done(task_id, claim_id, _now())
+    ctx.completed_at = _now()
+    _mark_done(task_id, claim_id, ctx.completed_at)
     logger.info("Completed task %s from reminder %s in %s for user %s", task_id, ts, channel, user)
     return _result(200, "completed")
 
@@ -702,6 +725,69 @@ def _send_reply(ctx: _ReplyContext, result: dict[str, Any]) -> None:
     logger.info("Replied %s for task %s in the thread of %s in %s", outcome, ctx.task_id, ctx.ts, ctx.channel)
 
 
+def _comment_name(ctx: _ReplyContext) -> str:
+    """
+    The Slack display name (else real name) of the user who ticked the reminder, cleaned
+    and capped. "Slack user <id>" when the lookup fails, or when Slack only counted the
+    user on a truncated ✅ list (until #79, a forged event could name anyone). Never logged.
+    """
+    fallback = f"Slack user {ctx.user}"
+    if not ctx.user_listed or ctx.slack_token is None or ctx.user is None:
+        return fallback
+    try:
+        info = slack.get_slack_user_info(ctx.slack_token, ctx.user)
+    except (requests.exceptions.RequestException, ValueError):
+        logger.warning("Could not look up Slack user %s", ctx.user)
+        return fallback
+    info = _as_dict(info)
+    if not info.get("ok"):
+        logger.warning("Could not look up Slack user %s", ctx.user)
+        return fallback
+    profile = _as_dict(_as_dict(info.get("user")).get("profile"))
+    for key in ("display_name", "real_name"):
+        value = profile.get(key)
+        if not isinstance(value, str):
+            continue
+        # Control and format characters (newlines, bidi overrides) and line and paragraph
+        # separators are dropped, so a name can't fake a second line.
+        cleaned = "".join(
+            ch for ch in value
+            if unicodedata.category(ch)[0] != "C" and unicodedata.category(ch) not in ("Zl", "Zp")
+        ).strip()
+        if cleaned:
+            return cleaned[:COMMENT_NAME_MAX].rstrip()
+    return fallback
+
+
+def _comment(ctx: _ReplyContext, result: dict[str, Any]) -> None:
+    """Comments on the ClickUp task after a completion from Slack. Called once, after the reply."""
+    try:
+        outcome = json.loads(result["body"]).get("result")
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return
+    if outcome != "completed" or ctx.dry_run:
+        return
+    if ctx.task_id is None or ctx.clickup_token is None or ctx.channel is None or ctx.ts is None:
+        return
+    name = _comment_name(ctx)
+    try:
+        when = _austin_datetime(ctx.completed_at if ctx.completed_at is not None else _now())
+        text = COMMENT_TEXT.format(name=name, when=when)
+    # LookupError covers ZoneInfoNotFoundError (tzdata missing from the bundle).
+    except (ValueError, OverflowError, OSError, LookupError):
+        logger.warning("Could not format the completion time of task %s", ctx.task_id)
+        text = COMMENT_TEXT_NO_TIME.format(name=name)
+    link = slack.get_slack_post_url(os.environ.get("SLACK_WORKSPACE_URL"), ctx.channel, ctx.ts)
+    if isinstance(link, str) and link:
+        text += COMMENT_LINK.format(link=link)
+    try:
+        clickup.create_task_comment(ctx.clickup_token, ctx.task_id, text)
+    except ValueError:
+        logger.error("Could not comment on task %s", ctx.task_id)
+        return
+    logger.info("Commented on task %s", ctx.task_id)
+
+
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Handles one Slack reaction event forwarded by the Slack Event Router. Never raises."""
     body = _as_dict(event)
@@ -725,4 +811,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         _send_reply(ctx, result)
     except Exception:
         logger.exception("Could not reply for event %r", event_id)
+    # The comment comes last, so its two calls can't hold up the reply, and can't change the outcome.
+    try:
+        _comment(ctx, result)
+    except Exception:
+        logger.exception("Could not comment for event %r", event_id)
     return result

@@ -12,7 +12,10 @@ import pytest
 from botocore.exceptions import ClientError, ReadTimeoutError
 from moto import mock_aws
 
+import requests
+
 from common.slack import SlackRequestError
+from common.slack import get_slack_post_url as real_get_slack_post_url
 from functions.facilities.pm_bot_reminder.lambda_function import PMTask, format_slack_message
 from functions.facilities.pm_reminder_reaction import lambda_function
 
@@ -26,6 +29,7 @@ ENV = {
     "ROUTER_CONFIG_PARAMETER_NAME": "/test/config/router/slack-event-router",
     "PM_COMPLETIONS_TABLE_NAME": "PMReminderCompletions-test",
     "DRY_RUN": "false",
+    "SLACK_WORKSPACE_URL": "https://asmbly-makerspace.slack.com",
 }
 ROUTER_CONFIG = {"pm_channels": {"C0CJAK1D725": "woodshop-maintenance"}}
 PM_CONFIG = {"list_id": "901310894771", "complete_status": "complete"}
@@ -70,6 +74,11 @@ class Mocks:
             "id": task_id, "status": {"status": "to do", "type": "open"}, "due_date": NEXT_DUE,
         }
         slack.send_slack_message.return_value = {"ok": True, "ts": "1763200000.000200"}
+        slack.get_slack_user_info.return_value = {
+            "ok": True, "user": {"id": "U0REACTOR", "profile": {"display_name": "Jamie", "real_name": "Jamie Rivera"}},
+        }
+        slack.get_slack_post_url.side_effect = real_get_slack_post_url
+        clickup.create_task_comment.return_value = {"id": "90120000001"}
         self.sleep = sleep
 
     def _parameter(self, name: str) -> Any:
@@ -422,7 +431,7 @@ def test_clickup_update_error_is_logged_with_task_id(
 
 # --- Configuration ---
 
-@pytest.mark.parametrize("name", [n for n in ENV if n != "DRY_RUN"])
+@pytest.mark.parametrize("name", [n for n in ENV if n not in ("DRY_RUN", "SLACK_WORKSPACE_URL")])
 def test_missing_env_var_answers_500(
     mocks: Mocks, event: dict[str, Any], monkeypatch: pytest.MonkeyPatch, name: str,
     caplog: pytest.LogCaptureFixture,
@@ -1375,3 +1384,188 @@ def test_already_closed_falls_back_to_date_done(mocks: Mocks, event: dict[str, A
     mocks.task["date_done"] = "1763150000000"
     lambda_function.lambda_handler(event, None)
     assert _replies(mocks) == ["Already marked done on Fri Nov 14; nothing changed."]
+
+
+# --- ClickUp comment (phase 6) ---
+
+# Mon Nov 16, 2026 3:04 PM in Austin (21:04 UTC, CST).
+COMMENT_NOW = 1794863040
+LINK = "https://asmbly-makerspace.slack.com/archives/C0CJAK1D725/p1763100000000100"
+
+
+def _comments(mocks: Mocks) -> list[str]:
+    """The comment texts posted, after checking each went to the task with the ClickUp token."""
+    texts = []
+    for call in mocks.clickup.create_task_comment.call_args_list:
+        token, task_id, text = call.args
+        assert (token, task_id) == ("pk_clickup_token", TASK_ID)
+        texts.append(text)
+    return texts
+
+
+def test_austin_datetime_drops_the_hours_leading_zero() -> None:
+    assert lambda_function._austin_datetime(COMMENT_NOW) == "Mon Nov 16, 2026 3:04 PM CST"
+    # 2026-07-01 17:00 UTC is noon in Austin, daylight time.
+    assert lambda_function._austin_datetime(1782925200) == "Wed Jul 1, 2026 12:00 PM CDT"
+
+
+def test_completion_adds_one_comment_with_name_time_and_link(
+    mocks: Mocks, event: dict[str, Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    mocks.now = COMMENT_NOW
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _comments(mocks) == [
+        f"Marked done from Slack by Jamie on Mon Nov 16, 2026 3:04 PM CST.\nReminder: {LINK}"
+    ]
+    mocks.slack.get_slack_user_info.assert_called_once_with("xoxb-slack-token", "U0REACTOR")
+    assert f"Commented on task {TASK_ID}" in caplog.text
+    assert "Jamie" not in caplog.text
+    assert "Marked done from Slack" not in caplog.text
+
+
+def test_comment_comes_after_the_reply(mocks: Mocks, event: dict[str, Any]) -> None:
+    order: list[str] = []
+    mocks.slack.send_slack_message.side_effect = lambda *a, **k: order.append("reply") or {"ok": True}
+    mocks.clickup.create_task_comment.side_effect = lambda *a: order.append("comment") or {"id": "c1"}
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert order == ["reply", "comment"]
+
+
+@pytest.mark.parametrize(
+    "info, name",
+    [
+        ({"ok": True, "user": {"profile": {"display_name": "", "real_name": "Jamie Rivera"}}}, "Jamie Rivera"),
+        ({"ok": True, "user": {"profile": {"display_name": "  ", "real_name": ""}}}, "Slack user U0REACTOR"),
+        ({"ok": False, "error": "missing_scope"}, "Slack user U0REACTOR"),
+        ({"ok": True, "user": "not a dict"}, "Slack user U0REACTOR"),
+        (["not", "a", "dict"], "Slack user U0REACTOR"),
+        (requests.exceptions.ConnectionError("boom"), "Slack user U0REACTOR"),
+        (ValueError("not json"), "Slack user U0REACTOR"),
+    ],
+)
+def test_comment_falls_back_to_real_name_then_user_id(
+    mocks: Mocks, event: dict[str, Any], caplog: pytest.LogCaptureFixture, info: Any, name: str
+) -> None:
+    if isinstance(info, Exception):
+        mocks.slack.get_slack_user_info.side_effect = info
+    else:
+        mocks.slack.get_slack_user_info.return_value = info
+    mocks.now = COMMENT_NOW
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _comments(mocks) == [f"Marked done from Slack by {name} on Mon Nov 16, 2026 3:04 PM CST.\nReminder: {LINK}"]
+    assert "Jamie" not in caplog.text
+    if isinstance(info, Exception) or (isinstance(info, dict) and not info.get("ok")) or isinstance(info, list):
+        assert "Could not look up Slack user U0REACTOR" in caplog.text
+
+
+def test_comment_name_is_sanitized(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.slack.get_slack_user_info.return_value = {
+        "ok": True, "user": {"profile": {"display_name": "Ja\nmi\u2028e\u2029\u202e\x00" + "x" * 200}},
+    }
+    lambda_function.lambda_handler(event, None)
+    (text,) = _comments(mocks)
+    name = text.removeprefix("Marked done from Slack by ").split(" on ")[0]
+    assert name == "Jamie" + "x" * 75
+    assert len(name) == 80
+
+
+def test_truncated_reaction_names_user_id_without_lookup(mocks: Mocks, event: dict[str, Any]) -> None:
+    # Slack only counted the user; until #79 a forged event could name anyone, so no lookup.
+    mocks.message["reactions"] = [{"name": "white_check_mark", "users": ["U0OTHER1"], "count": 60}]
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    mocks.slack.get_slack_user_info.assert_not_called()
+    (text,) = _comments(mocks)
+    assert text.startswith("Marked done from Slack by Slack user U0REACTOR on ")
+
+
+@pytest.mark.parametrize("case", ["duplicate", "stale_record", "stale_clickup", "already_closed", "failed"])
+def test_duplicate_and_stale_add_no_comment(mocks: Mocks, event: dict[str, Any], case: str) -> None:
+    if case == "duplicate":
+        mocks.put_record(state="done", completed_at=NOW - 10, reminder_ts=TS, due_before=DUE, claim_id="x")
+    elif case == "stale_record":
+        mocks.put_record(state="done", completed_at=1763150000, reminder_ts="1763140000.000200", due_before=DUE)
+    elif case == "stale_clickup":
+        mocks.task["date_done"] = "1763150000000"
+    elif case == "already_closed":
+        mocks.task["status"] = {"status": "complete", "type": "closed"}
+    else:
+        mocks.clickup.update_task.side_effect = ValueError("503")
+        mocks.clickup.get_task.side_effect = [copy.deepcopy(mocks.task), copy.deepcopy(mocks.task)]
+    expected = {"stale_record": "stale", "stale_clickup": "stale"}.get(case, case)
+    assert _body(lambda_function.lambda_handler(event, None)) == expected
+    mocks.clickup.create_task_comment.assert_not_called()
+    mocks.slack.get_slack_user_info.assert_not_called()
+
+
+def test_dry_run_adds_no_comment(
+    mocks: Mocks, event: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DRY_RUN", "true")
+    assert _body(lambda_function.lambda_handler(event, None)) == "would_complete"
+    mocks.clickup.create_task_comment.assert_not_called()
+    mocks.slack.get_slack_user_info.assert_not_called()
+
+
+def test_dry_run_flag_alone_blocks_the_comment(mocks: Mocks) -> None:
+    ctx = lambda_function._ReplyContext(
+        dry_run=True, clickup_token="pk_clickup_token", channel=CHANNEL, ts=TS, task_id=TASK_ID, user="U0REACTOR"
+    )
+    lambda_function._comment(ctx, lambda_function._result(200, "completed"))
+    mocks.clickup.create_task_comment.assert_not_called()
+
+
+def test_comment_failure_keeps_completion(
+    mocks: Mocks, event: dict[str, Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    mocks.clickup.create_task_comment.side_effect = ValueError("ClickUp API HTTP Error: 500")
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert mocks.record()["state"] == "done"
+    assert _replies(mocks) == ["Marked done in ClickUp. Next due Tue Nov 25"]
+    assert f"Could not comment on task {TASK_ID}" in caplog.text
+    assert "Commented on task" not in caplog.text
+
+
+@pytest.mark.parametrize("where", ["lookup", "comment"])
+def test_unexpected_comment_error_keeps_completion_and_reply(
+    mocks: Mocks, event: dict[str, Any], caplog: pytest.LogCaptureFixture, where: str
+) -> None:
+    if where == "lookup":
+        mocks.slack.get_slack_user_info.side_effect = RuntimeError("boom")
+    else:
+        mocks.clickup.create_task_comment.side_effect = RuntimeError("boom")
+    result = lambda_function.lambda_handler(event, None)
+    assert result["statusCode"] == 200
+    assert _body(result) == "completed"
+    assert _replies(mocks) == ["Marked done in ClickUp. Next due Tue Nov 25"]
+    assert "Could not comment for event 'Ev1'" in caplog.text
+    assert "Jamie" not in caplog.text
+
+
+def test_comment_without_workspace_url_has_no_link(
+    mocks: Mocks, event: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("SLACK_WORKSPACE_URL")
+    mocks.now = COMMENT_NOW
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _comments(mocks) == ["Marked done from Slack by Jamie on Mon Nov 16, 2026 3:04 PM CST."]
+
+
+def test_comment_after_an_update_error_that_landed(mocks: Mocks, event: dict[str, Any]) -> None:
+    mocks.clickup.update_task.side_effect = ValueError("timeout")
+    landed = {**mocks.task, "due_date": NEXT_DUE}
+    reads = [copy.deepcopy(mocks.task), landed, landed]
+    mocks.clickup.get_task.side_effect = lambda token, task_id: reads.pop(0)
+    assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert len(_comments(mocks)) == 1
+
+
+def test_comment_without_time_zone_data_has_no_time(
+    mocks: Mocks, event: dict[str, Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    from zoneinfo import ZoneInfoNotFoundError
+
+    with patch(f"{MODULE}.ZoneInfo", side_effect=ZoneInfoNotFoundError("America/Chicago")):
+        assert _body(lambda_function.lambda_handler(event, None)) == "completed"
+    assert _comments(mocks) == [f"Marked done from Slack by Jamie.\nReminder: {LINK}"]
+    assert f"Could not format the completion time of task {TASK_ID}" in caplog.text

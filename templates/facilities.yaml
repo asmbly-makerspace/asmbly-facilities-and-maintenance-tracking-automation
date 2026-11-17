@@ -225,9 +225,10 @@ Resources:
       Runtime: python3.12
       # auth.test, conversations.history, Get Task, Update Task, a re-read after a failed
       # update, a 2-second wait and re-read to see whether the task recurred, and the
-      # thread reply, each with an 8-second connect and read timeout, plus SSM, Secrets
-      # Manager and DynamoDB; later phases add calls. The worst case of every timeout adds
-      # up to more than this; a run cut off leaves a pending claim the code resolves.
+      # thread reply, then users.info and the ClickUp comment (last, so a cut-off run only
+      # loses the comment), each with an 8-second connect and read timeout, plus SSM,
+      # Secrets Manager and DynamoDB. The worst case of every timeout adds up to more than
+      # this; a run cut off leaves a pending claim the code resolves.
       # CLAIM_EXPIRY_SECONDS in the code must stay at least three times this (a test checks it).
       Timeout: 90
       Role: !GetAtt PMReminderReactionLambdaRole.Arn
@@ -246,6 +247,7 @@ Resources:
           CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME: !Ref ClickUpPMScheduleParameter
           ROUTER_CONFIG_PARAMETER_NAME: !Ref RouterConfigParameterName
           PM_COMPLETIONS_TABLE_NAME: !Ref PMReminderCompletionsTable
+          SLACK_WORKSPACE_URL: 'https://asmbly-makerspace.slack.com'
       Tags:
         Project: facilities:pm-reminder-reaction
 
