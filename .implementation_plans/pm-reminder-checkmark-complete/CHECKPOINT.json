@@ -535,6 +535,20 @@
     {
       "ts": "2026-11-16",
       "type": "manual_qa_start"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "manual_qa_done",
+      "stories_covered": [
+        162,
+        163,
+        164,
+        165
+      ],
+      "stories_without_stage_surface": [
+        165
+      ],
+      "total_steps": 22
     }
   ]
 }
