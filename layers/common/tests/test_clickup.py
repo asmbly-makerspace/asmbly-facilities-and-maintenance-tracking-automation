@@ -538,3 +538,66 @@ def test_make_clickup_request_timeout_raises_network_error(mock_requests_request
     assert len(errors) == 1
     assert errors[0].getMessage() == "ClickUp POST list/L1/task request failed: ReadTimeout"
     assert "pk_URL_MARKER" not in caplog.text
+
+
+@patch('common.clickup.requests.request')
+def test_create_task_comment_posts_text_without_notifying(mock_requests_request: MagicMock) -> None:
+    """The comment is a POST to task/<id>/comment with notify_all false and the token header."""
+    mock_requests_request.return_value.json.return_value = {"id": "90120000001", "hist_id": "h1", "date": 1}
+    mock_requests_request.return_value.raise_for_status.return_value = None
+
+    result = clickup.create_task_comment("pk_token", "abc123", "hi")
+
+    assert result == {"id": "90120000001", "hist_id": "h1", "date": 1}
+    mock_requests_request.assert_called_once()
+    args, kwargs = mock_requests_request.call_args
+    assert args[0] == "POST"
+    assert args[1].endswith("task/abc123/comment")
+    assert kwargs["json"] == {"comment_text": "hi", "notify_all": False}
+    assert kwargs["headers"]["Authorization"] == "pk_token"
+
+
+@patch('common.clickup.requests.request')
+def test_create_task_comment_http_error_raises_safe_message(
+    mock_requests_request: MagicMock, caplog: pytest.LogCaptureFixture, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A 401 raises ValueError with no body, token or comment text in the message or the log."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    body = {"err": "echo pk_BODY_MARKER", "ECODE": "OAUTH_025"}
+    mock_requests_request.return_value.raise_for_status.side_effect = requests.exceptions.HTTPError(
+        "401 Unauthorized", response=_http_error_response(401, "Unauthorized", json_body=body)
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.create_task_comment("pk_TOKEN_MARKER", "abc123", "by TEXT_MARKER")
+
+    assert str(excinfo.value) == "ClickUp API HTTP Error: 401 Unauthorized - POST task/abc123/comment (ECODE=OAUTH_025)"
+    assert capsys.readouterr().out == ""
+    assert len(_clickup_errors(caplog)) == 1
+    for forbidden in ("pk_BODY_MARKER", "pk_TOKEN_MARKER", "TEXT_MARKER"):
+        assert forbidden not in str(excinfo.value)
+        assert forbidden not in caplog.text
+
+
+@pytest.mark.parametrize("response_data", [
+    {"err": "TEXT_MARKER", "ECODE": "COMMENT_001"},
+    [],
+    None,
+])
+@patch('common.clickup._make_clickup_request')
+def test_create_task_comment_error_body_raises(
+    mock_make_request: MagicMock, response_data: object, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A 200 without a comment ID raises ValueError with the task ID and ECODE only."""
+    caplog.set_level(logging.DEBUG, logger="common.clickup")
+    mock_make_request.return_value = response_data
+
+    with pytest.raises(ValueError) as excinfo:
+        clickup.create_task_comment("token", "abc123", "hi")
+
+    assert "abc123" in str(excinfo.value)
+    assert "TEXT_MARKER" not in str(excinfo.value)
+    assert "TEXT_MARKER" not in caplog.text
+    errors = _clickup_errors(caplog)
+    assert len(errors) == 1
+    assert "abc123" in errors[0].getMessage()

@@ -394,3 +394,42 @@ def test_deploy_policy_is_under_iams_size_limit(policy: str) -> None:
     assert size <= DEPLOY_POLICY_SIZE_BUDGET, (
         f"{policy} is {size} characters; IAM allows {IAM_MANAGED_POLICY_LIMIT} and this test {DEPLOY_POLICY_SIZE_BUDGET}"
     )
+
+
+def test_router_can_invoke_every_function_it_routes_to() -> None:
+    # A target the router is told about but can't invoke fails only in prod, as an
+    # AccessDenied in the router's log. Each *_LAMBDA_ARN variable must be a parameter
+    # that the invoke statement grants and that RoutersStack passes, from the nested
+    # stack output of the same name.
+    router = _load(ROUTER_TEMPLATE)
+    function = router["Resources"]["SlackEventSubscriptionsRouterFunction"]["Properties"]
+    targets = {
+        name: value["Ref"]
+        for name, value in function["Environment"]["Variables"].items()
+        if name.endswith("_LAMBDA_ARN")
+    }
+    invokable = {
+        resource["Ref"]
+        for policy in function["Policies"]
+        for statement in policy["Statement"]
+        if "lambda:InvokeFunction" in _as_list(statement["Action"])
+        for resource in _as_list(statement["Resource"])
+    }
+    root = _load(ROOT / "template.yaml")["Resources"]
+    passed = root["RoutersStack"]["Properties"]["Parameters"]
+
+    assert "PM_REMINDER_LAMBDA_ARN" in targets
+    for variable, parameter in targets.items():
+        assert parameter in router["Parameters"], variable
+        assert parameter in invokable, variable
+        source = _get_att(passed.get(parameter))
+        assert source is not None, f"RoutersStack doesn't pass {parameter}"
+        assert source[-1] == f"Outputs.{parameter}", source
+        nested = ROOT / root[source[0]]["Properties"]["Location"]
+        assert parameter in _load(nested).get("Outputs", {}), f"{nested.name} has no output {parameter}"
+    # Nothing to invoke beyond the routed targets.
+    assert invokable == set(targets.values())
+    # The code reads each variable under the same name.
+    router_code = (ROOT / "functions" / "routers" / "slack_event_subscriptions" / "lambda_function.py").read_text()
+    for variable in targets:
+        assert f'"{variable}"' in router_code, variable

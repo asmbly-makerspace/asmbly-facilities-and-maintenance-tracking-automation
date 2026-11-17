@@ -10,6 +10,9 @@ Parameters:
     Type: String
   PurchaseRequestReactionFunctionArn: { Type: String }
   ProblemReportReactionFunctionArn: { Type: String }
+  PMReminderReactionFunctionArn:
+    Type: String
+    Description: "ARN of the PM Reminder Reaction function, the target for reactions in pm_channels"
   RouterConfigParameterName: { Type: String }
 
 Resources:
@@ -43,6 +46,7 @@ Resources:
         Variables:
           PURCHASE_REQUEST_LAMBDA_ARN: !Ref PurchaseRequestReactionFunctionArn
           PROBLEM_REPORT_LAMBDA_ARN: !Ref ProblemReportReactionFunctionArn
+          PM_REMINDER_LAMBDA_ARN: !Ref PMReminderReactionFunctionArn
           ROUTER_CONFIG_PARAMETER_NAME: !Ref RouterConfigParameterName
       Policies:
         - Version: '2012-10-17'
@@ -52,6 +56,7 @@ Resources:
               Resource:
                 - !Ref PurchaseRequestReactionFunctionArn
                 - !Ref ProblemReportReactionFunctionArn
+                - !Ref PMReminderReactionFunctionArn
             - Effect: Allow
               Action: ssm:GetParameter
               Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RouterConfigParameterName}"

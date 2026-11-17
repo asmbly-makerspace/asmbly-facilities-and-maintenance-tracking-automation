@@ -205,3 +205,115 @@ class TestSlackEventRouter(TestCase):
         self.assertEqual(self.mock_lambda.invoke.call_count, 2)
         # The routing config is read on every invocation, not cached.
         self.assertEqual(self.mock_ssm.get_parameter.call_count, 2)
+
+
+PM_REMINDER_LAMBDA_ARN = "arn:aws:lambda:us-east-1:123:function:pm-reminder-fn"
+
+
+@patch(f"{LAMBDA_FUNCTION_PATH}.boto3.client")
+class TestPMChannelRouting(TestCase):
+    """Reactions in the PM channels (pm_channels in the router config)."""
+
+    def setUp(self) -> None:
+        self.router_config: dict = {
+            "purchase_request_channel_id": "C_PURCHASE",
+            "problem_report_channel_id": "C_PROBLEM",
+            "pm_channels": {"C_PM": "woodshop-maintenance"},
+        }
+        self.env_vars = {
+            "ROUTER_CONFIG_PARAMETER_NAME": "/fake/router/config",
+            "PURCHASE_REQUEST_LAMBDA_ARN": "arn:aws:lambda:us-east-1:123:function:purchase-request-fn",
+            "PROBLEM_REPORT_LAMBDA_ARN": "arn:aws:lambda:us-east-1:123:function:problem-report-fn",
+            "PM_REMINDER_LAMBDA_ARN": PM_REMINDER_LAMBDA_ARN,
+        }
+        self.mock_ssm = MagicMock()
+        self.mock_lambda = MagicMock()
+        lambda_function._ssm_client = None
+        lambda_function._lambda_client = None
+
+    def _run(self, mock_boto3_client: MagicMock, channel: object, env: dict | None = None) -> dict:
+        self.mock_ssm.get_parameter.return_value = {
+            'Parameter': {'Value': json.dumps(self.router_config)}
+        }
+        clients = {'ssm': self.mock_ssm, 'lambda': self.mock_lambda}
+        mock_boto3_client.side_effect = lambda service, *args, **kwargs: clients[service]
+        self.event = {
+            "body": json.dumps({
+                "event": {
+                    "type": "reaction_added",
+                    "reaction": "white_check_mark",
+                    "item": {"type": "message", "channel": channel, "ts": "1.2"},
+                }
+            })
+        }
+        with patch.dict(os.environ, self.env_vars if env is None else env, clear=True):
+            return lambda_function.lambda_handler(self.event, None)
+
+    def test_routes_to_pm_reminder_lambda(self, mock_boto3_client: MagicMock) -> None:
+        response = self._run(mock_boto3_client, "C_PM")
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertEqual(response["body"], json.dumps("Request forwarded successfully."))
+        self.mock_ssm.get_parameter.assert_called_once_with(Name="/fake/router/config")
+        self.mock_lambda.invoke.assert_called_once_with(
+            FunctionName=PM_REMINDER_LAMBDA_ARN,
+            InvocationType='Event',
+            Payload=self.event["body"],
+        )
+
+    def test_purchase_and_problem_routing_unchanged_with_pm_channels(
+        self, mock_boto3_client: MagicMock
+    ) -> None:
+        for channel, env_name in (
+            ("C_PURCHASE", "PURCHASE_REQUEST_LAMBDA_ARN"),
+            ("C_PROBLEM", "PROBLEM_REPORT_LAMBDA_ARN"),
+        ):
+            with self.subTest(channel=channel):
+                self.mock_lambda.reset_mock()
+                response = self._run(mock_boto3_client, channel)
+
+                self.assertEqual(response["body"], json.dumps("Request forwarded successfully."))
+                self.mock_lambda.invoke.assert_called_once_with(
+                    FunctionName=self.env_vars[env_name],
+                    InvocationType='Event',
+                    Payload=self.event["body"],
+                )
+
+    def test_pm_channel_without_pm_lambda_arn_takes_no_action(
+        self, mock_boto3_client: MagicMock
+    ) -> None:
+        env = {k: v for k, v in self.env_vars.items() if k != "PM_REMINDER_LAMBDA_ARN"}
+
+        with self.assertLogs(lambda_function.logger, level="ERROR") as logs:
+            response = self._run(mock_boto3_client, "C_PM", env=env)
+
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIn("No action taken", response["body"])
+        self.mock_lambda.invoke.assert_not_called()
+        self.assertIn("PM_REMINDER_LAMBDA_ARN environment variable not set", "\n".join(logs.output))
+
+    def test_missing_pm_channels_key_routes_nothing_new(self, mock_boto3_client: MagicMock) -> None:
+        del self.router_config["pm_channels"]
+
+        response = self._run(mock_boto3_client, "C_PM")
+
+        self.assertIn("No action taken", response["body"])
+        self.mock_lambda.invoke.assert_not_called()
+
+    def test_non_dict_pm_channels_is_ignored(self, mock_boto3_client: MagicMock) -> None:
+        self.router_config["pm_channels"] = ["C_PM"]
+
+        response = self._run(mock_boto3_client, "C_PM")
+
+        self.assertIn("No action taken", response["body"])
+        self.mock_lambda.invoke.assert_not_called()
+
+    def test_non_string_channel_is_ignored_without_an_error(self, mock_boto3_client: MagicMock) -> None:
+        # A forged event can put a list where the channel ID goes; `in` on a dict would
+        # raise TypeError for it.
+        with self.assertLogs(lambda_function.logger, level="INFO") as logs:
+            response = self._run(mock_boto3_client, ["C_PM"])
+
+        self.assertEqual(response["body"], json.dumps("Event ignored."))
+        self.mock_lambda.invoke.assert_not_called()
+        self.assertFalse(any(record.levelname == "ERROR" for record in logs.records))

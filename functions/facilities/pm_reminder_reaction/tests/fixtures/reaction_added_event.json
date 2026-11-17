@@ -1,0 +1,15 @@
+{
+  "token": "VERIFICATION_TOKEN_SECRET",
+  "type": "event_callback",
+  "event_id": "Ev1",
+  "event": {
+    "type": "reaction_added",
+    "user": "U0REACTOR",
+    "reaction": "white_check_mark",
+    "item": {
+      "type": "message",
+      "channel": "C0CJAK1D725",
+      "ts": "1763100000.000100"
+    }
+  }
+}

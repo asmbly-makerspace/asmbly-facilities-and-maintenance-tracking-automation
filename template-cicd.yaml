@@ -308,6 +308,7 @@ Resources:
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewWaiverCompletedFunction-stage"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:KilnDropoffRecentEntriesViewerFunction-stage"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PMReminderBotFunction-stage"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PMReminderReactionFunction-stage"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewProblemReportRequestReceived-stage"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ProblemReport-ReactionFunction-stage"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SlackSlashReorderFunction-stage"
@@ -343,6 +344,7 @@ Resources:
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewWaiverCompletedFunction-stage*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-stage*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PMReminderBotFunction-stage*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PMReminderReactionFunction-stage*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewProblemReportRequestReceived-stage*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ProblemReport-ReactionFunction-stage*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/SlackSlashReorderFunction-stage*"
@@ -377,8 +379,9 @@ Resources:
             Resource:
               - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-stage"
               - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-stage"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/PMReminderCompletions-stage"
           # CloudFormation's table handler reads these after CreateTable (seen in CloudTrail).
-          - Sid: AllowClassListCacheTableReads
+          - Sid: AllowTableReadsAfterCreate
             Effect: Allow
             Action:
               - dynamodb:DescribeContinuousBackups
@@ -386,7 +389,9 @@ Resources:
               - dynamodb:DescribeKinesisStreamingDestination
               - dynamodb:GetResourcePolicy
               - dynamodb:ListTagsOfResource
-            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-stage"
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-stage"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/PMReminderCompletions-stage"
           - Sid: AllowSSMParameterWrite
             Effect: Allow
             Action:
@@ -466,6 +471,7 @@ Resources:
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewWaiverCompletedFunction-prod"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:KilnDropoffRecentEntriesViewerFunction-prod"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PMReminderBotFunction-prod"
+              - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:PMReminderReactionFunction-prod"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:NewProblemReportRequestReceived-prod"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ProblemReport-ReactionFunction-prod"
               - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:SlackSlashReorderFunction-prod"
@@ -501,6 +507,7 @@ Resources:
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewWaiverCompletedFunction-prod*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/KilnDropoffRecentEntriesViewerFunction-prod*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PMReminderBotFunction-prod*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/PMReminderReactionFunction-prod*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/NewProblemReportRequestReceived-prod*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/ProblemReport-ReactionFunction-prod*"
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/asmbly/lambda/SlackSlashReorderFunction-prod*"
@@ -535,8 +542,9 @@ Resources:
             Resource:
               - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-prod"
               - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-prod"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/PMReminderCompletions-prod"
           # CloudFormation's table handler reads these after CreateTable (seen in CloudTrail).
-          - Sid: AllowClassListCacheTableReads
+          - Sid: AllowTableReadsAfterCreate
             Effect: Allow
             Action:
               - dynamodb:DescribeContinuousBackups
@@ -544,7 +552,9 @@ Resources:
               - dynamodb:DescribeKinesisStreamingDestination
               - dynamodb:GetResourcePolicy
               - dynamodb:ListTagsOfResource
-            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-prod"
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-prod"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/PMReminderCompletions-prod"
           - Sid: AllowSSMParameterWrite
             Effect: Allow
             Action:

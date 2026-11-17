@@ -137,6 +137,27 @@ def update_task(api_token: str, task_id: str, payload: dict[str, Any]) -> Any:
 
     return response_data
 
+
+def create_task_comment(api_token: str, task_id: str, comment_text: str) -> Any:
+    """
+    Adds a comment to a ClickUp task. notify_all is false, so ClickUp doesn't also notify
+    the comment's creator. Raises ValueError on failure; the message never holds the text.
+    """
+    response_data = _make_clickup_request(
+        api_token, "POST", f"task/{task_id}/comment",
+        json={"comment_text": comment_text, "notify_all": False},
+    )
+    # ClickUp can return 200 OK with an error in the body; a created comment has an id.
+    if not (isinstance(response_data, dict) and response_data.get("id") is not None):
+        safe_task_id = _task_id_for_log(task_id)
+        ecode = _ecode_for_log(response_data)
+        logger.error("ClickUp comment on task %s returned no comment ID (ECODE=%s)", safe_task_id, ecode)
+        raise ValueError(
+            f"ClickUp comment on task {safe_task_id} returned 200 OK but no comment ID (ECODE={ecode})"
+        )
+    return response_data
+
+
 def set_custom_field_value(api_token, task_id, field_id, value):
     """Sets the value of a single custom field on a task."""
     endpoint = f"task/{task_id}/field/{field_id}"
