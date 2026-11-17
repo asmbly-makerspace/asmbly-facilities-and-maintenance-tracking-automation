@@ -44,7 +44,7 @@ Only the pull request that lands the last phase in a row says `Closes #N`; insid
 | --- | --- | --- | --- | --- |
 | 1 | PM channel config and Slack message helpers | layer, infra | S | [x] Complete |
 | 2 | PM reminder reaction handler | lambda, infra, docs | L | [x] Complete |
-| 3 | Complete once per cycle | lambda, infra, docs | M | [ ] Pending |
+| 3 | Complete once per cycle | lambda, infra, docs | M | [x] Complete |
 | 4 | Route PM channel reactions to the handler | lambda, infra, docs | M | [ ] Pending |
 | 5 | Thread replies in Slack | lambda, docs | M | [ ] Pending |
 | 6 | ClickUp comment naming who ticked it | lambda, layer, infra, docs | S | [ ] Pending |

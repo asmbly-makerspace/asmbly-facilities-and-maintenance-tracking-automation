@@ -2,12 +2,24 @@
 Completes a PM Schedule task in ClickUp when someone adds :white_check_mark: to its
 PM Bot reminder in a PM channel. The Slack Event Router invokes it asynchronously with
 the Slack event body; the answer reaches no one, so the outcome is for logs and tests.
+
+A claim in the PMReminderCompletions table, written before the ClickUp update, makes
+each task complete once per cycle: a second check mark, a redelivered event, a Lambda
+retry or a check mark on an older reminder changes nothing.
 """
 import json
 import logging
 import os
 import re
+import time
+import uuid
+from decimal import Decimal, InvalidOperation
 from typing import Any
+
+import boto3
+from boto3.dynamodb.types import TypeDeserializer
+from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
 
 from common import aws, clickup, slack
 from common.slack import SlackRequestError
@@ -22,7 +34,30 @@ REQUIRED_ENV_VARS = (
     "SLACK_MAINTENANCE_BOT_SECRET_NAME",
     "CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME",
     "ROUTER_CONFIG_PARAMETER_NAME",
+    "PM_COMPLETIONS_TABLE_NAME",
 )
+# A pending claim older than this belongs to a dead invocation. More than three times the
+# 90-second function timeout, and longer than Lambda's two async retries after a timeout
+# (about 1 and 2 minutes apart), so the first retry finds the claim and stops. A retry
+# that comes later takes the claim over, and the due-date check keeps that safe.
+CLAIM_EXPIRY_SECONDS = 300
+CLAIM_CONDITION = (
+    "attribute_not_exists(pk)"
+    " OR (#state = :done AND #completed_at < :reminder_epoch)"
+    " OR (#state = :pending AND #claimed_at < :expired"
+    # A pending claim keeps the completed_at of the completion before it, so a failed
+    # update can't let a reminder older than that completion through.
+    " AND (attribute_not_exists(#completed_at) OR #completed_at < :reminder_epoch))"
+)
+NAMES = {
+    "#state": "state",
+    "#claim_id": "claim_id",
+    "#claimed_at": "claimed_at",
+    "#completed_at": "completed_at",
+    "#reminder_ts": "reminder_ts",
+    "#channel": "channel",
+    "#due_before": "due_before",
+}
 
 # The PM Bot's reminder, as built by pm_bot_reminder.format_slack_message:
 # "[OVERDUE] woodshop - <asset> - <task> - Frequency: <f> - ClickUp ID: <id>". The whole
@@ -34,6 +69,9 @@ USER_ID_PATTERN = re.compile(r"[UW][A-Z0-9]+")
 
 # The bot_id of the Maintenance Bot, cached for the life of the container.
 _bot_id: str | None = None
+# The completions table, created on first use.
+_table: Any = None
+_deserializer = TypeDeserializer()
 
 
 def parse_reminder_task_id(text: str) -> str | None:
@@ -44,8 +82,148 @@ def parse_reminder_task_id(text: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _result(status_code: int, outcome: str) -> dict[str, Any]:
-    return {"statusCode": status_code, "body": json.dumps({"result": outcome})}
+def _result(status_code: int, outcome: str, completed_at: Any = None) -> dict[str, Any]:
+    """The answer. `completed_at` (epoch seconds) is the task's last completion, for stale and duplicate."""
+    body: dict[str, Any] = {"result": outcome}
+    if isinstance(completed_at, (int, Decimal)) and not isinstance(completed_at, bool):
+        body["completed_at"] = int(completed_at)
+    return {"statusCode": status_code, "body": json.dumps(body)}
+
+
+def _now() -> int:
+    return int(time.time())
+
+
+def _get_table() -> Any:
+    """Returns the completions table, creating the resource on first use."""
+    global _table
+    if _table is None:
+        # Short timeouts and few retries, so a DynamoDB outage ends as a logged "failed"
+        # well inside the 90-second function timeout.
+        config = Config(connect_timeout=3, read_timeout=5, retries={"max_attempts": 2, "mode": "standard"})
+        _table = boto3.resource("dynamodb", config=config).Table(os.environ["PM_COMPLETIONS_TABLE_NAME"])
+    return _table
+
+
+def _error_code(error: ClientError | BotoCoreError) -> str:
+    """The DynamoDB error code, or the exception's class name for a network error."""
+    if isinstance(error, ClientError):
+        return str(error.response.get("Error", {}).get("Code", "Unknown"))
+    return type(error).__name__
+
+
+def _due_date(task: dict[str, Any]) -> str:
+    """The task's due date as ClickUp gives it (ms string), or "" if it has none."""
+    due = task.get("due_date")
+    return due if isinstance(due, str) else ""
+
+
+def _clickup_completed_after(task: dict[str, Any], reminder_epoch: Decimal) -> tuple[str, int] | None:
+    """
+    (field, epoch seconds) when ClickUp's date_done or date_closed is later than the
+    reminder, so the task was completed after it was posted. A missing or malformed value
+    is ignored. Best effort only: API v2 may return these as null on a reopened recurring
+    task, so the claim, not this check, is what stops a second completion.
+    """
+    for field in ("date_done", "date_closed"):
+        value = task.get(field)
+        if isinstance(value, bool) or not isinstance(value, (str, int)):
+            continue
+        try:
+            millis = Decimal(str(value))
+        except InvalidOperation:
+            continue
+        if millis.is_finite() and millis > reminder_epoch * 1000:
+            return field, int(millis / 1000)
+    return None
+
+
+def _completed_before(record: dict[str, Any], reminder_epoch: Decimal) -> bool:
+    """True when the record has no completion yet, or its completion is older than the reminder."""
+    completed_at = record.get("completed_at")
+    if completed_at is None:
+        return True
+    return isinstance(completed_at, Decimal) and completed_at < reminder_epoch
+
+
+def _classify_blocked(record: dict[str, Any], ts: str, reminder_epoch: Decimal) -> str:
+    """Why a claim was refused: this reminder did it or is doing it, another is, or the reminder is older."""
+    if record.get("reminder_ts") == ts:
+        return "duplicate"
+    if not _completed_before(record, reminder_epoch):
+        return "stale"
+    return "duplicate" if record.get("state") == "pending" else "stale"
+
+
+def _last_completion(record: dict[str, Any], outcome: str) -> Any:
+    """The completed_at to report: on a pending record it is the previous cycle's, so only for stale."""
+    if outcome == "stale" or record.get("state") == "done":
+        return record.get("completed_at")
+    return None
+
+
+def _claimable(record: dict[str, Any] | None, reminder_epoch: Decimal, now: int) -> bool:
+    """The claim condition, evaluated in Python for the dry run."""
+    if not record:
+        return True
+    state = record.get("state")
+    if state == "done":
+        return record.get("completed_at") is not None and _completed_before(record, reminder_epoch)
+    if state == "pending":
+        claimed_at = record.get("claimed_at")
+        expired = isinstance(claimed_at, Decimal) and claimed_at < now - CLAIM_EXPIRY_SECONDS
+        return expired and _completed_before(record, reminder_epoch)
+    return False
+
+
+def _mark_done(
+    task_id: str, claim_id: str, completed_at: Any, reminder_ts: Any = None, channel: Any = None
+) -> bool:
+    """Records the task as done, if this invocation still holds the claim. Never raises."""
+    update = "SET #state = :done, #completed_at = :completed_at"
+    values: dict[str, Any] = {":done": "done", ":completed_at": completed_at, ":claim": claim_id}
+    if reminder_ts is not None:
+        update += ", #reminder_ts = :reminder_ts"
+        values[":reminder_ts"] = reminder_ts
+    if channel is not None:
+        update += ", #channel = :channel"
+        values[":channel"] = channel
+    update += " REMOVE #claim_id"
+    names = {name: attribute for name, attribute in NAMES.items() if name in update}
+    try:
+        _get_table().update_item(
+            Key={"pk": f"task#{task_id}"},
+            UpdateExpression=update,
+            ConditionExpression="#claim_id = :claim",
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+        )
+    except (ClientError, BotoCoreError) as error:
+        code = _error_code(error)
+        if code == "ConditionalCheckFailedException":
+            logger.warning("The claim on task %s expired before it was recorded as done", task_id)
+        else:
+            logger.error("Could not record task %s as done: %s", task_id, code)
+        return False
+    return True
+
+
+def _update_landed(clickup_token: str, task_id: str, complete_status: str, due_before: str) -> bool:
+    """After a failed update, re-reads the task: True if the update was applied anyway."""
+    try:
+        task = _as_dict(clickup.get_task(clickup_token, task_id))
+    except ValueError:
+        logger.error("Could not re-read task %s after its update failed", task_id)
+        return False
+    status = _as_dict(task.get("status"))
+    status_name = status.get("status")
+    status_type = status.get("type")
+    if isinstance(status_type, str) and status_type in CLOSED_STATUS_TYPES:
+        return True
+    if isinstance(status_name, str) and status_name.casefold() == complete_status.casefold():
+        return True
+    # ClickUp can answer 200 with an error body; only a real task's due date counts.
+    return task.get("id") == task_id and _due_date(task) != due_before
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -168,16 +346,114 @@ def _handle(inner: dict[str, Any], item: dict[str, Any], event_id: Any) -> dict[
         logger.info("Task %s is already closed", task_id)
         return _result(200, "already_closed")
 
-    if dry_run:
-        logger.info("Dry run: would complete task %s from reminder %s in %s for user %s", task_id, ts, channel, user)
-        return _result(200, "would_complete")
+    reminder_epoch = Decimal(ts)
+    key = {"pk": f"task#{task_id}"}
+    completed_after = _clickup_completed_after(task, reminder_epoch)
+    if completed_after is not None:
+        # If ClickUp keeps date_done on the reopened task, this reminder may be the one that
+        # completed it (a second check mark or a redelivery): that is a duplicate, not stale.
+        try:
+            record = _as_dict(_get_table().get_item(Key=key, ConsistentRead=True).get("Item"))
+        except (ClientError, BotoCoreError) as error:
+            logger.warning("Could not read the completion record of task %s: %s", task_id, _error_code(error))
+            record = {}
+        if record.get("reminder_ts") == ts:
+            logger.info("Task %s: duplicate for reminder %s", task_id, ts)
+            return _result(200, "duplicate", _last_completion(record, "duplicate"))
+        field, completed_at = completed_after
+        logger.info("Reminder %s for task %s is older than its last completion (%s)", ts, task_id, field)
+        return _result(200, "stale", completed_at)
 
-    # Complete. A failed or timed-out PUT leaves the task's state unknown, not unchanged.
+    due_before = _due_date(task)
+    now = _now()
+
+    if dry_run:
+        try:
+            record = _get_table().get_item(Key=key, ConsistentRead=True).get("Item")
+        except (ClientError, BotoCoreError) as error:
+            logger.error("Could not read the completion record of task %s: %s", task_id, _error_code(error))
+            return _result(200, "failed")
+        if _claimable(record, reminder_epoch, now):
+            logger.info(
+                "Dry run: would complete task %s from reminder %s in %s for user %s", task_id, ts, channel, user
+            )
+            return _result(200, "would_complete")
+        outcome = _classify_blocked(record, ts, reminder_epoch)
+        logger.info("Dry run: task %s: %s for reminder %s", task_id, outcome, ts)
+        return _result(200, outcome, _last_completion(record, outcome))
+
+    # Claim the task before the update, so a retry or a second check mark can't complete it again.
+    claim_id = uuid.uuid4().hex
+    try:
+        response = _get_table().update_item(
+            Key=key,
+            UpdateExpression=(
+                "SET #state = :pending, #claim_id = :claim, #claimed_at = :now,"
+                " #reminder_ts = :ts, #channel = :channel, #due_before = :due"
+            ),
+            ConditionExpression=CLAIM_CONDITION,
+            ExpressionAttributeNames=NAMES,
+            ExpressionAttributeValues={
+                ":pending": "pending",
+                ":done": "done",
+                ":claim": claim_id,
+                ":now": now,
+                ":ts": ts,
+                ":channel": channel,
+                ":due": due_before,
+                ":reminder_epoch": reminder_epoch,
+                ":expired": now - CLAIM_EXPIRY_SECONDS,
+            },
+            ReturnValues="ALL_OLD",
+            ReturnValuesOnConditionCheckFailure="ALL_OLD",
+        )
+    except (ClientError, BotoCoreError) as error:
+        code = _error_code(error)
+        if not isinstance(error, ClientError) or code != "ConditionalCheckFailedException":
+            logger.error("Could not record completion of task %s: %s", task_id, code)
+            return _result(200, "failed")
+        raw_item = error.response.get("Item")
+        if not isinstance(raw_item, dict) or not raw_item:
+            logger.error("Could not read the record that blocked the claim on task %s", task_id)
+            return _result(200, "failed")
+        blocking = {name: _deserializer.deserialize(value) for name, value in raw_item.items()}
+        if blocking.get("claim_id") == claim_id:
+            # Our own write landed and botocore retried it after a lost response. The claim
+            # is ours but the run stops here; it expires after CLAIM_EXPIRY_SECONDS.
+            logger.error("The claim on task %s was written but its response was lost", task_id)
+            return _result(200, "failed")
+        outcome = _classify_blocked(blocking, ts, reminder_epoch)
+        logger.info("Task %s: %s for reminder %s", task_id, outcome, ts)
+        return _result(200, outcome, _last_completion(blocking, outcome))
+
+    old = _as_dict(response.get("Attributes"))
+    if old.get("state") == "pending" and old.get("due_before", "") != due_before:
+        # Took over an expired claim whose update landed before its invocation died.
+        old_claimed_at = old.get("claimed_at")
+        if old.get("reminder_ts") == ts or not (
+            isinstance(old_claimed_at, Decimal) and old_claimed_at < reminder_epoch
+        ):
+            outcome = "duplicate" if old.get("reminder_ts") == ts else "stale"
+            if not _mark_done(task_id, claim_id, old_claimed_at, old.get("reminder_ts"), old.get("channel")):
+                # The claim now holds the current due date, so the next takeover can't see
+                # that the earlier update landed. Rare (two failures in a row); logged to check by hand.
+                logger.error("Task %s: an earlier update landed but could not be recorded; check the record", task_id)
+            logger.info("Task %s: %s for reminder %s (an earlier update landed)", task_id, outcome, ts)
+            return _result(200, outcome, old_claimed_at)
+        # The earlier claim predates this reminder: the task came back, and this is a new cycle.
+        logger.info("Task %s: an earlier claim landed before reminder %s was posted", task_id, ts)
+
+    # Complete. A failed or timed-out PUT may still have landed, so the claim is kept
+    # unless the re-read shows the update was applied; it expires after CLAIM_EXPIRY_SECONDS.
     try:
         clickup.update_task(clickup_token, task_id, {"status": complete_status})
     except ValueError:
         logger.error("Could not complete task %s for event %r", task_id, event_id)
-        return _result(200, "failed")
+        if not _update_landed(clickup_token, task_id, complete_status, due_before):
+            logger.info("Task %s keeps its pending claim for up to %s seconds", task_id, CLAIM_EXPIRY_SECONDS)
+            return _result(200, "failed")
+        logger.warning("Task %s was completed although the update reported an error", task_id)
+    _mark_done(task_id, claim_id, _now())
     logger.info("Completed task %s from reminder %s in %s for user %s", task_id, ts, channel, user)
     return _result(200, "completed")
 

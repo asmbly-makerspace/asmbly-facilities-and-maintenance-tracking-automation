@@ -17,13 +17,15 @@
       "title": "PM reminder reaction handler",
       "file": "phase-2-reaction-handler.md",
       "status": "done",
-      "review_rounds": 3
+      "review_rounds": 3,
+      "squashed_sha": "2921957ba45fd2276e12be205023500abd9da0a4"
     },
     {
       "id": 3,
       "title": "Complete once per cycle",
       "file": "phase-3-complete-once.md",
-      "status": "pending"
+      "status": "done",
+      "review_rounds": 3
     },
     {
       "id": 4,
@@ -47,12 +49,14 @@
   "integration": null,
   "final_pr_number": null,
   "admin_actions": [
-    "FIRST, before this reaches stage: redeploy AsmblyFacilitiesMaintTrackingStack-cicd by hand (phase 2 adds PMReminderReactionFunction-{stage,prod} and log groups; phase 3 may add the PMReminderCompletions table).",
+    "FIRST, before this reaches stage: redeploy AsmblyFacilitiesMaintTrackingStack-cicd by hand. Adds PMReminderReactionFunction-{stage,prod} + log groups (deploy policies) and table PMReminderCompletions-{stage,prod} (data policies; Sid AllowClassListCacheTableReads renamed AllowTableReadsAfterCreate).",
     "Before phase 4 reaches prod: supply Slack channel IDs for 3d-printing, ceramics, electronics, lasers, metal-shop, textiles in configs/router_config.json pm_channels (only woodshop-maintenance C0CJAK1D725 is filled in).",
     "Before phase 4 reaches prod: confirm the Maintenance Bot is in all 7 PM channels with channels:history (groups:history if private), reactions:read, chat:write, users:read.",
     "Before prod: turn on ClickUp recurrence for Clean Metal Shop Sink (86a8be2bc).",
     "On the first prod check mark: confirm API v2 PUT /task status=complete brings a recurring task back as to do with next due date.",
-    "Before prod: confirm ClickUp list 901310894771 has a closed status named exactly 'complete' (stage is a dry run and cannot catch a wrong name)."
+    "Optional: one read-only GET https://api.clickup.com/api/v2/task/86a8eb482 with the Lambda's token to see whether date_done survives a recurrence reopen in v2 (decides whether the stale check can fire; the DynamoDB claim is the guard either way).",
+    "Decide (owner, ClickUp hygiene, not code): possible duplicate tasks 'Update iPad' (86acdg2cu, 86acdg066) and 'Inspect Blades' (86a88jye1, 86a88jxn2).",
+    "On the first prod \u2705: add a second \u2705 to the same reminder, expect one completed and one duplicate with the due date moved one cycle; check ClickUp doesn't stamp date_done later than the next reminder (README check, required)."
   ],
   "events": [
     {
@@ -210,6 +214,99 @@
       "type": "phase_done",
       "phase": 2,
       "checks": "pytest 2105 passed; cfn-lint no new; sam validate ok; sam build ok"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "phase_start",
+      "phase": 3
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "clickup_facts",
+      "source": "issue #7 comment 2026-11-17T03:49Z (read-only, other session)",
+      "text": "Status 'complete' (closed) verified on list 901310894771; 45/46 tasks recur on complete + skip missed, 86a8be2bc off; date_done kept in raw record after reopen but MCP summary shows null, v2 unverified; time-in-status unreliable after reopen. 86a8eb482 due date still Nov 4 because the epic test restored it by hand. Facts sent to the phase 3 agent."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "text": "Owner says further ClickUp questions go as comments on epic #7; another session answers them."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 3,
+      "text": "Prep NEEDS_REVISION; amendments applied."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 3,
+      "text": "CLAIM_EXPIRY_SECONDS=300 from 90s timeout; test ties it to template Timeout."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 3,
+      "text": "Conditional UpdateItem claim before ClickUp PUT; duplicate on retry/redelivery/reopen; tested with date_done null and present."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 3,
+      "text": "After a failed ClickUp update the claim stays pending (not reverted); expires after 5 min; takeover checks whether the due date moved. No DeleteItem."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 3,
+      "text": "ReturnValuesOnConditionCheckFailure=ALL_OLD to classify refusals."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 3,
+      "text": "IAM only GetItem and UpdateItem on the table; phase 5 adds PutItem itself."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 3,
+      "text": "Takeover double-completion hole: an earlier update that landed but whose done write failed can let a later takeover complete once more.",
+      "recommend": "follow-up issue"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 3,
+      "text": "A definite ClickUp 4xx leaves the 5-min pending lockout (update_task raises the same ValueError for every error; helper needs to expose HTTP status).",
+      "recommend": "follow-up issue"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 3,
+      "text": "A due date moved by hand while a failed claim is expired reads as a landed update.",
+      "recommend": "accept (documented)"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 3,
+      "text": "Lost response on the done write logs a misleading 'claim expired' line.",
+      "recommend": "accept"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 3,
+      "text": "Phase 5: failure reply should say to wait 5 minutes.",
+      "recommend": "phase 5"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "phase_done",
+      "phase": 3,
+      "checks": "pytest 2153 passed; cfn-lint no new; sam validate ok; sam build ok"
     }
   ]
 }

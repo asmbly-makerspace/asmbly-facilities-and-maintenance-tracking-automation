@@ -10,7 +10,7 @@ estimated_size: M
 
 # Phase 3: Complete once per cycle
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-11-16 on branch feature/pm-reminder-checkmark-complete
 
 ## Required reading
 
@@ -70,8 +70,11 @@ Table `PM_COMPLETIONS_TABLE_NAME`, partition key `pk` (string). One item per tas
 
 (Phase 5 adds a second item kind, `reply#…`, with a TTL attribute `expires_at`.)
 
-Constants: `CLAIM_EXPIRY_SECONDS = 120` (four times the 30-second function timeout, so a
-`pending` claim older than that belongs to a dead invocation). A `_now() -> int` helper
+Constants: `CLAIM_EXPIRY_SECONDS = 300` (prep amendment: the function Timeout is 90 s,
+not 30 s. 300 s is more than three times the timeout, so a `pending` claim older than
+that belongs to a dead invocation, and it outlasts Lambda's two async retries after a
+timeout, about 1 and 2 minutes apart, so those retries see the claim and answer
+`duplicate`). A `_now() -> int` helper
 returns `int(time.time())` so tests can patch it. `reminder_epoch = Decimal(ts)`.
 
 New environment variable `PM_COMPLETIONS_TABLE_NAME`, added to the required list (step
@@ -83,7 +86,9 @@ New environment variable `PM_COMPLETIONS_TABLE_NAME`, added to the required list
 8a. **ClickUp-side stale check.** If the task's `date_done` or `date_closed` (ms strings,
 may be null) is later than `reminder_epoch * 1000`, the task was completed after this
 reminder was posted: outcome `stale`, no claim, no update. Log
-`logger.info("Reminder %s for task %s is older than its last completion", ts, task_id)`.
+`logger.info("Reminder %s for task %s is older than its last completion (%s)", ts, task_id, field)`
+naming the field. Parse defensively (prep amendment): a missing, null or non-numeric
+value is ignored, never a 500.
 
 9. **Dry run** (replaces phase 2's step 9). `GetItem(ConsistentRead=True)` on the task's
    item, classify it with the same rules as the claim condition below (`would_complete`,
@@ -97,15 +102,18 @@ reminder was posted: outcome `stale`, no claim, no update. Log
     ConditionExpression:
         attribute_not_exists(pk)
         OR (#state = :done AND completed_at < :reminder_epoch)
-        OR (#state = :pending AND claimed_at < :expired)
+        OR (#state = :pending AND claimed_at < :expired
+            AND (attribute_not_exists(completed_at) OR completed_at < :reminder_epoch))
     ReturnValues: ALL_OLD
     ```
 
-    with `:expired = now - CLAIM_EXPIRY_SECONDS`. Keep the returned old item (may be
-    empty) for a revert.
+    with `:expired = now - CLAIM_EXPIRY_SECONDS`, and
+    `ReturnValuesOnConditionCheckFailure: ALL_OLD` (prep amendment) so a failed condition
+    returns the item that blocked it, with no separate read that could race. Keep the
+    returned old item (may be empty).
 
-    - **`ConditionalCheckFailedException`:** read the item (`GetItem`,
-      `ConsistentRead=True`) and classify: `state == "pending"` → `duplicate` (another
+    - **`ConditionalCheckFailedException`:** take the blocking item from the error
+      (built: if it is absent the item doesn't exist, so the outcome is `failed`, no fallback read) and classify: `state == "pending"` → `duplicate` (another
       invocation is completing it); `state == "done"` and `reminder_ts == ts` →
       `duplicate` (this reminder already completed it: a second ✅ or a redelivery);
       otherwise → `stale` (an older reminder; keep `completed_at` for phase 5's reply).
@@ -115,9 +123,17 @@ reminder was posted: outcome `stale`, no claim, no update. Log
       %s: %s", task_id, error_code)` → `failed`, no ClickUp call.
     - **Took over an expired claim** (old item `state == "pending"`): if the task's
       current `due_date` differs from the old item's `due_before`, the earlier
-      invocation's update landed before it died. Mark `done` with `completed_at =
-      old["claimed_at"]` and `reminder_ts = old["reminder_ts"]` (conditional on our
-      `claim_id`) and return `stale`. Otherwise carry on.
+      invocation's update landed before it died (prep amendment):
+      - the old claim was for this same reminder (`old["reminder_ts"] == ts`): mark
+        `done` with `completed_at = old["claimed_at"]` and the old `reminder_ts` and
+        `channel` (conditional on our `claim_id`) and return `duplicate`;
+      - the old claim is from before this reminder was posted
+        (`old["claimed_at"] < reminder_epoch`): the task came back and this reminder is
+        for the new cycle; keep our claim and carry on to step 11;
+      - otherwise (this reminder is older than the landed claim): mark `done` as above
+        and return `stale`.
+
+      If the due date is unchanged, carry on.
 
 11. **Update ClickUp** (phase 2's step 10).
     - **Success:** `UpdateItem SET #state = :done, completed_at = :now REMOVE claim_id`,
@@ -130,12 +146,22 @@ reminder was posted: outcome `stale`, no claim, no update. Log
         complete_status`, or a `due_date` different from `due_before`: the update landed.
         Mark `done` as on success, log `logger.warning("Task %s was completed although
         the update reported an error", task_id)`, return `completed`.
-      - It is unchanged: revert the claim, conditional on `claim_id = :claim`: `PutItem`
-        the old item if there was one, else `DeleteItem`. Log the failure with the task
-        ID → `failed`. A later ✅ can try again.
-      - The re-read fails too: leave the `pending` claim; it expires after
-        `CLAIM_EXPIRY_SECONDS`, and the expired-claim check in step 10 then sees whether
-        the update landed. Log with the task ID → `failed`.
+      - It is unchanged, or the re-read fails too (prep amendment: no revert): leave
+        the `pending` claim. A timed-out PUT can still land after an immediate re-read
+        shows the task unchanged, so reverting could let a second ✅ complete it twice.
+        The claim expires after `CLAIM_EXPIRY_SECONDS`; a later ✅ then takes it over and
+        the expired-claim check in step 10 sees whether the update landed. Log with the
+        task ID → `failed`.
+      - Compare `status.status` with `complete_status` case-insensitively (`casefold()`).
+    - **DynamoDB errors after the claim** (prep amendment): a non-conditional
+      `ClientError` on the `done` write, the fallback `GetItem`, or the takeover's `done`
+      write is caught and logged with the task ID and error code, never left to the
+      catch-all. After a ClickUp success the outcome is still `completed`; elsewhere it is
+      `failed`.
+
+The answer's body carries `completed_at` (epoch seconds) next to `result` on `stale` and
+`duplicate` when the record has one (prep amendment, for phase 5's reply); a `stale` from
+step 8a carries ClickUp's time instead, converted to seconds.
 
 Why this is enough for #163:
 
@@ -145,8 +171,13 @@ Why this is enough for #163:
   `ts` → `stale`.
 - This week's reminder after last week's completion: last week's `completed_at` is
   earlier than this week's `ts` → the claim succeeds.
-- Lambda retry after a timeout: the claim is still `pending` (≤ 120 s) → `duplicate`;
+- Lambda retry after a timeout: the claim is still `pending` (≤ 300 s, longer than Lambda's retry delays) → `duplicate`;
   later, the expired-claim check compares the due date.
+- A ClickUp failure: the claim stays `pending` for up to 5 minutes, so a ✅ re-added in
+  that window answers `duplicate`; after it, a ✅ completes the task if the earlier update
+  didn't land. Known limit: a second person's ✅ while the first invocation's claim is in
+  flight answers `duplicate`, and if that first invocation then fails, the second ✅ is
+  not retried; they re-add it after 5 minutes.
 
 Logged: task ID, `ts`, channel ID, outcome, DynamoDB error code. Never the item's
 contents as a whole.
@@ -188,9 +219,7 @@ contents as a whole.
               - Effect: Allow
                 Action:
                   - dynamodb:GetItem
-                  - dynamodb:PutItem
                   - dynamodb:UpdateItem
-                  - dynamodb:DeleteItem
                 Resource: !GetAtt PMReminderCompletionsTable.Arn
 ```
 
@@ -211,9 +240,16 @@ The same in `GitHubDeployPolicyprodData` with `-prod`. Both data policies are ab
 ### docs
 
 - Function README: a "Completed once" section: the table, the item, the four cases
-  above in plain words, the 2-minute claim expiry, and how to clear a record by hand if
+  above in plain words, the 5-minute claim expiry, and how to clear a record by hand if
   ever needed (delete the `task#<id>` item; read-only AWS commands are fine, deleting is
   an admin action).
+- Function README, "Outcomes" (prep amendment): replace the phase 2 paragraph that says a
+  retry after a landed update would complete the task again (the claim now prevents it),
+  add `duplicate` and `stale` to the table, and change "remove the ✅ and add it again"
+  to: after a `failed`, remove the ✅ and add it again; if it still does nothing, wait 5
+  minutes (a claim left `pending` by an uncertain failure expires then) and try again.
+  Add the new log lines to "Logs" and the table and DynamoDB actions to "AWS
+  infrastructure".
 - `docs/README.md`: in the handler's entry, "A task is completed once per reminder
   cycle: a second ✅, a repeated event or a ✅ on an older reminder changes nothing." and
   the table `PMReminderCompletions-${Stage}` (created by `templates/facilities.yaml`)
@@ -232,21 +268,30 @@ The same in `GitHubDeployPolicyprodData` with `-prod`. Both data policies are ab
 - `test_redelivered_event_is_duplicate`: the same body twice → one `update_task`.
 - `test_in_flight_claim_is_duplicate`: a fresh `pending` item → `duplicate`, no update.
 - `test_older_reminder_after_completion_is_stale`: item `done` with `completed_at` after
-  the event's `ts` and another `reminder_ts` → `stale`, no update (#163 criterion 2).
+  the event's `ts` and another `reminder_ts` → `stale` with that `completed_at` in the
+  body, no update (#163 criterion 2).
 - `test_newer_reminder_after_old_completion_completes`: `completed_at` before `ts` →
   `completed`.
 - `test_clickup_date_done_after_reminder_is_stale`: no item, task `date_done` later than
   the reminder → `stale`, no claim written.
-- `test_update_failure_reverts_claim`: `update_task` raises, re-read unchanged → `failed`;
-  with no prior item the item is gone; with a prior `done` item it is restored exactly
+- `test_update_failure_keeps_pending_claim`: `update_task` raises, re-read unchanged →
+  `failed`, item stays `pending` with our claim, the failure logged with the task ID
   (#163 criterion 6).
-- `test_retry_after_reverted_failure_completes_once`: failure, then the same event
-  again with ClickUp working → `completed`, `update_task` succeeded once.
+- `test_retry_after_failure_completes_once`: failure, then the same event again within
+  300 s → `duplicate`; again after 300 s with ClickUp working and the due date unchanged
+  → `completed`, `update_task` succeeded once.
 - `test_update_error_that_landed_counts_as_completed`: `update_task` raises, re-read
   shows a later `due_date` → `completed`, item `done`.
 - `test_reread_failure_leaves_pending_claim`: both raise → `failed`, item stays
-  `pending`; a second event within 120 s → `duplicate`.
-- `test_expired_claim_whose_update_landed_is_stale`: `pending` item 200 s old with
+  `pending`; a second event within 300 s → `duplicate`.
+- `test_expired_claim_for_same_reminder_that_landed_is_duplicate`.
+- `test_expired_claim_from_before_this_reminder_that_landed_completes`: old `claimed_at`
+  before the event's `ts`, due date moved → `completed`, `update_task` called.
+- `test_done_write_error_still_completed`: the `done` write raises a non-conditional
+  `ClientError` → `completed`, error code logged.
+- `test_clickup_date_done_malformed_is_ignored`: `date_done` non-numeric → `completed`.
+- `test_landed_check_ignores_status_case`.
+- `test_expired_claim_whose_update_landed_is_stale`: `pending` item 400 s old with
   `due_before` different from the task's `due_date` → `stale`, item `done`, no update.
 - `test_expired_claim_whose_update_did_not_land_completes`: same, `due_before` equal →
   `completed`.
@@ -264,13 +309,14 @@ The same in `GitHubDeployPolicyprodData` with `-prod`. Both data policies are ab
 2. A ✅ on a reminder older than the task's last recorded completion makes no ClickUp
    call (#163 criterion 2).
 3. When ClickUp fails, the task is unchanged, the failure is logged with the task ID,
-   the claim is reverted so a later ✅ can complete it, and a retry of the same event
-   completes the task at most once (#163 criterion 6).
+   the claim stays `pending` for at most `CLAIM_EXPIRY_SECONDS` so a later ✅ can
+   complete it, and a retry of the same event completes the task at most once (#163
+   criterion 6).
 4. An update that reported an error but landed is recorded as a completion, not
    retried.
 5. `PMReminderCompletions-${Stage}` exists, pay per request, TTL on `expires_at`, tag
-   `Project`; the function can only `GetItem`, `PutItem`, `UpdateItem` and
-   `DeleteItem` on it.
+   `Project`; the function can only `GetItem` and `UpdateItem` on it
+   (built: `PutItem` is left to phase 5, which first calls it).
 6. Both data policies list the table for their stage in table management and the
    after-create reads.
 7. The stage dry run writes nothing to the table.
@@ -291,6 +337,13 @@ with TTL on `expires_at`. Invoking the function by hand as in phase 2 logs `Dry 
 with outcome `would_complete`, and `aws dynamodb scan --table-name
 PMReminderCompletions-stage --select COUNT` stays 0.
 
+Stage never writes to the table, so the `duplicate` and `stale` paths first run for real
+on prod (prep amendment): on the first prod ✅, add a second ✅ from another account to
+the same reminder and confirm one `Completed task` line, one `duplicate` line, and that
+the task's due date moved one cycle. Also check that a reopened recurring task's
+`date_done`/`date_closed` is not later than its new reminder (README admin action 5); if
+it is, step 8a would make every ✅ `stale`.
+
 ## Admin actions
 
 Covered by README admin action 1: the deploy-role redeploy must include this phase's
@@ -299,7 +352,45 @@ without them, redeploy again.
 
 ## Hand-off
 
-_Filled in when the phase is done._ Phase 4 relies on: the handler completing a task at
-most once, so it is safe to route live events. Phase 5 relies on: the outcomes
-`completed`, `duplicate`, `stale` (with the record's `completed_at`), `failed`; the
-table and its `expires_at` TTL; `PutItem` permission.
+Done. Phase 4 can rely on the handler completing a task at most once, so it is safe to
+route live events. Phase 5 can rely on:
+
+- As built (review fixes, they supersede steps 8a and 10 above): a `pending` claim keeps
+  the `completed_at` of the completion before it, and the takeover clause also needs that
+  to be older than the reminder. Classification of a refused claim: `reminder_ts == ts` →
+  `duplicate`; else `completed_at` not older than the reminder → `stale`; else `pending` →
+  `duplicate`, `done` → `stale`. A step 8a hit reads the record and answers `duplicate`
+  when it names this reminder. A refused claim holding our own `claim_id` (botocore
+  retried a write whose response was lost) → `failed`. DynamoDB client: 3 s connect,
+  5 s read, 2 attempts.
+
+- Outcomes: `completed`, `would_complete`, `duplicate`, `stale`, `already_closed`,
+  `ignored`, `failed`, `misconfigured`, `error`. On `duplicate` and `stale` the answer's
+  body carries `completed_at` (int epoch seconds) when known (from the record, or from
+  ClickUp's `date_done`/`date_closed` for the step 8a stale).
+- `lambda_function.py`: `CLAIM_EXPIRY_SECONDS = 300`, `_now()`, `_get_table()` (cached
+  `_table`, reset in tests), `_mark_done(task_id, claim_id, completed_at, reminder_ts=None,
+  channel=None) -> bool`, `_classify_blocked(record, ts, reminder_epoch)`,
+  `_claimable(record, reminder_epoch, now)`. DynamoDB calls catch `(ClientError,
+  BotoCoreError)`.
+- Table `PMReminderCompletions-${Stage}` (`PMReminderCompletionsTable`), key `pk`, TTL on
+  `expires_at`; env var `PM_COMPLETIONS_TABLE_NAME`. **The role grants only `GetItem` and
+  `UpdateItem`: phase 5 must add `dynamodb:PutItem`** (its doc says no IAM change; that
+  is now wrong).
+- Tests: the `mocks` fixture creates the moto table; `Mocks.record()`, `Mocks.put_record()`,
+  `mocks.now` (patched `_now`).
+- ClickUp (read-only check on #7): `complete` is a closed status on the list, every
+  recurring task recurs on `complete`; API v2 may hide `date_done`/`date_closed` on a
+  reopened task, so the step 8a check is best effort and the claim alone guards
+  duplicates.
+- Deferred: a takeover that finds an earlier update landed but can't write `done` logs
+  an error and leaves the claim with the current due date, so a later takeover could
+  complete once more (needs two DynamoDB failures in a row). The same hole opens if a
+  takeover claim's response is lost, or the Lambda dies between the takeover claim and
+  its `done` write; each needs an earlier failed-but-landed update first. A fix
+  (`due_before = if_not_exists(...)`) would trade it for a missed completion, so it is
+  left as is.
+- `completed_at` in the body: on `duplicate` it is reported only for a `done` record
+  (on a `pending` one it is the previous cycle's).
+- Phase 5: after a `failed`, a re-added ✅ is `duplicate` for 5 minutes and gets no
+  reply, so the failure reply should say to wait 5 minutes before trying again.

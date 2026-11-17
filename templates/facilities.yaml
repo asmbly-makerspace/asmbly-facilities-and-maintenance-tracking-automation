@@ -143,6 +143,27 @@ Resources:
       SourceArn: !GetAtt PMReminderBotScheduleRule.Arn
 
   # --- Facilities: PM reminder checkmark reactions ---
+  # One item per PM task: whether a completion from Slack is in flight or done, and for
+  # which reminder. It makes duplicate and stale check marks harmless. Phase 5 adds
+  # short-lived reply markers, which expire through the TTL.
+  PMReminderCompletionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "PMReminderCompletions-${Stage}"
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: facilities:pm-reminder-reaction
+
   PMReminderReactionLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -184,6 +205,11 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RouterConfigParameterName}'
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/cmms/pmSchedule'
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt PMReminderCompletionsTable.Arn
       Tags:
         - Key: Project
           Value: facilities:pm-reminder-reaction
@@ -196,8 +222,11 @@ Resources:
       CodeUri: ../functions/facilities/pm_reminder_reaction/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
-      # auth.test, conversations.history, Get Task and Update Task, each with an 8-second
-      # connect and read timeout (up to 64 s), plus SSM and Secrets Manager; later phases add calls.
+      # auth.test, conversations.history, Get Task, Update Task and a re-read after a
+      # failed update, each with an 8-second connect and read timeout, plus SSM, Secrets
+      # Manager and DynamoDB; later phases add calls. The worst case of every timeout adds
+      # up to more than this; a run cut off leaves a pending claim the code resolves.
+      # CLAIM_EXPIRY_SECONDS in the code must stay at least three times this (a test checks it).
       Timeout: 90
       Role: !GetAtt PMReminderReactionLambdaRole.Arn
       LoggingConfig:
@@ -212,6 +241,7 @@ Resources:
           SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
           CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME: !Ref ClickUpPMScheduleParameter
           ROUTER_CONFIG_PARAMETER_NAME: !Ref RouterConfigParameterName
+          PM_COMPLETIONS_TABLE_NAME: !Ref PMReminderCompletionsTable
       Tags:
         Project: facilities:pm-reminder-reaction
 

@@ -379,8 +379,9 @@ Resources:
             Resource:
               - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-stage"
               - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-stage"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/PMReminderCompletions-stage"
           # CloudFormation's table handler reads these after CreateTable (seen in CloudTrail).
-          - Sid: AllowClassListCacheTableReads
+          - Sid: AllowTableReadsAfterCreate
             Effect: Allow
             Action:
               - dynamodb:DescribeContinuousBackups
@@ -388,7 +389,9 @@ Resources:
               - dynamodb:DescribeKinesisStreamingDestination
               - dynamodb:GetResourcePolicy
               - dynamodb:ListTagsOfResource
-            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-stage"
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-stage"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/PMReminderCompletions-stage"
           - Sid: AllowSSMParameterWrite
             Effect: Allow
             Action:
@@ -539,8 +542,9 @@ Resources:
             Resource:
               - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/SlackReorderStateTable-prod"
               - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-prod"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/PMReminderCompletions-prod"
           # CloudFormation's table handler reads these after CreateTable (seen in CloudTrail).
-          - Sid: AllowClassListCacheTableReads
+          - Sid: AllowTableReadsAfterCreate
             Effect: Allow
             Action:
               - dynamodb:DescribeContinuousBackups
@@ -548,7 +552,9 @@ Resources:
               - dynamodb:DescribeKinesisStreamingDestination
               - dynamodb:GetResourcePolicy
               - dynamodb:ListTagsOfResource
-            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-prod"
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ClassPhotoClassListCache-prod"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/PMReminderCompletions-prod"
           - Sid: AllowSSMParameterWrite
             Effect: Allow
             Action:

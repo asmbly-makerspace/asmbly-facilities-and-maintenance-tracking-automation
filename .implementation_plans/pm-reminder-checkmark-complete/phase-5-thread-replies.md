@@ -123,7 +123,7 @@ Logged: outcome, task ID, channel ID, `ts`. The reply texts hold no personal dat
           BOT_ICON_EMOJI: ':hammer_and_wrench:'
 ```
 
-No IAM change: `PutItem` on the table and the Slack token are already granted. No
+IAM (phase 3 hand-off): add `dynamodb:PutItem` on `PMReminderCompletionsTable` to `PMReminderReactionPolicy`; the Slack token is already granted. No
 deploy-role change.
 
 ### docs

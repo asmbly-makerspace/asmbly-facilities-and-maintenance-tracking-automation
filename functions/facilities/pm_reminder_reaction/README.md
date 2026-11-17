@@ -6,6 +6,7 @@
 - [Purpose](#purpose)
 - [How it is triggered](#how-it-is-triggered)
 - [What it checks, in order](#what-it-checks-in-order)
+- [Completed once](#completed-once)
 - [Outcomes](#outcomes)
 - [Configuration](#configuration)
 - [AWS infrastructure](#aws-infrastructure)
@@ -38,8 +39,8 @@ It has no URL of its own.
 ## What it checks, in order
 
 Each failed check ends the run with an `Ignored event` log line and changes nothing,
-except check 8, which logs `Task <id> is already closed`. A Slack or ClickUp failure logs
-`Could not ...` instead.
+except checks 8 to 10, which end as `already_closed`, `stale` or `duplicate` (see
+[Outcomes](#outcomes)). A Slack, ClickUp or DynamoDB failure logs `Could not ...` instead.
 
 1. The event is a `reaction_added` of `white_check_mark` on a message, with a well-formed
    channel ID, message `ts` and user ID. No outside call is made before this passes.
@@ -56,29 +57,88 @@ except check 8, which logs `Task <id> is already closed`. A Slack or ClickUp fai
 6. The text is a PM Bot reminder, and the ClickUp ID is read from it.
 7. ClickUp says the task is in the PM Schedule list (`list_id`).
 8. The task isn't already closed (status type `closed` or `done`).
+9. ClickUp's `date_done` or `date_closed` isn't later than the reminder (if it is, the
+   task was completed after the reminder was posted: `stale`). This is best effort:
+   ClickUp may return these as empty on a reopened recurring task, so the claim in
+   check 10 is what stops a second completion from Slack. For a task completed by hand
+   in ClickUp, this check is the only guard against a ✅ on the older reminder; if it
+   names the reminder that completed the task (a second ✅), the answer is `duplicate`.
+10. The task can be claimed in the completions table (see [Completed once](#completed-once)).
 
 Then it sets the task's status to `complete_status`.
+
+## Completed once
+
+A task is completed once per reminder cycle. The table `PMReminderCompletions-<stage>`
+(`templates/facilities.yaml`) holds one item per task, `pk = task#<task id>`:
+
+| Attribute | Meaning |
+| --- | --- |
+| `state` | `pending` while a completion is in flight, `done` after it |
+| `claim_id` | The invocation holding a `pending` claim (removed when `done`) |
+| `claimed_at` | When the claim was made (epoch seconds) |
+| `reminder_ts`, `channel` | The reminder that was (or is being) ticked |
+| `due_before` | The task's ClickUp due date before the update (`""` if none) |
+| `completed_at` | When the task was last completed (epoch seconds). A `pending` item keeps the previous completion's time until it is `done`. |
+
+Before it calls ClickUp, the function claims the item with a conditional write. The claim
+succeeds only when there is no item, the last completion is older than this reminder, or
+a `pending` claim is more than 5 minutes old (`CLAIM_EXPIRY_SECONDS`, over three times
+the 90-second timeout, so it belongs to a dead invocation) and any completion recorded
+before it is older than this reminder. So:
+
+- **A second ✅ on the same reminder, or the same event twice:** the item is `pending` or
+  `done` for this reminder: `duplicate`, no ClickUp call. The due date moves one cycle.
+- **A Lambda retry after a timeout:** the first arrives about 1 minute later and finds
+  the `pending` claim (if the timed-out run got that far): `duplicate`. If the timed-out
+  update didn't land, the task stays open until a ✅ is added again after 5 minutes.
+- **Last week's reminder after this week's was ticked:** the completion is newer than the
+  reminder: `stale`, no ClickUp call.
+- **This week's reminder after last week's completion:** the claim succeeds.
+- **ClickUp fails:** the function re-reads the task. If the update landed anyway (the
+  task is closed, has `complete_status`, or its due date moved), it is recorded as
+  `completed`. Otherwise the claim stays `pending` (a timed-out request can still land a
+  moment later) and expires after 5 minutes. The next ✅ after that takes the claim over,
+  and if the due date has moved since the claim, the earlier update landed: `duplicate`
+  for the same reminder, `stale` for an older one, and a new completion for a reminder
+  posted after that claim.
+
+If a second person adds a ✅ while the first one's update is in flight and that update
+then fails, the second ✅ is not retried; adding it again after 5 minutes works.
+
+The takeover reads "the due date moved since the claim" as "the earlier update landed".
+If someone changes the due date by hand while a failed claim sits expired, the next ✅ on
+that reminder is recorded as done without completing the task; the next reminder
+completes it as usual.
+
+To clear a record by hand, an admin deletes the `task#<id>` item from the table. Reading
+it is safe: `aws dynamodb get-item --table-name PMReminderCompletions-prod --key
+'{"pk":{"S":"task#<id>"}}'`.
 
 ## Outcomes
 
 The function is invoked asynchronously, so its answer reaches no one. The outcome is in
-the log and in the answer's `result`:
+the log and in the answer's `result` (with `completed_at`, the last completion in epoch seconds, on
+`duplicate` and `stale` when it is known):
 
 | Result | Meaning |
 | --- | --- |
 | `completed` | The task was set to `complete_status`. |
 | `would_complete` | Stage (`DRY_RUN=true`): every check passed, nothing was written. |
+| `duplicate` | This reminder already completed the task, or another invocation is completing it. |
+| `stale` | The task was completed after this reminder was posted. |
 | `already_closed` | The task is already closed in ClickUp. |
 | `ignored` | A check failed; the log line says which. |
-| `failed` | Slack or ClickUp failed. After a failed update the task's state is unknown: a timed-out request may still have been applied. |
+| `failed` | Slack, ClickUp or DynamoDB failed. After a failed update the claim stays `pending` for 5 minutes. |
 | `misconfigured` | An environment variable, `list_id` or `complete_status` is missing (HTTP 500). |
 | `error` | An unexpected error, logged with its traceback (HTTP 500). |
 
 It never raises, so an error doesn't make Lambda retry it. A run that hits the 90-second
-timeout is retried by Lambda (up to twice), and a retry after an update that ClickUp
-already applied would complete the task again; phase 3's completion claim makes that
-retry harmless. If a ✅ seems to do nothing (Slack or ClickUp was down, or rate-limited),
-remove the ✅ and add it again.
+timeout is retried by Lambda (up to twice); the first retry finds the completion claim
+and answers `duplicate`, and a later one takes the claim over only after checking
+whether the earlier update landed. If a ✅ seems to do nothing (Slack or ClickUp was down, or rate-limited),
+remove the ✅ and add it again. If that still does nothing, wait 5 minutes (a claim left
+`pending` by a failed update expires then) and try once more.
 
 ## Configuration
 
@@ -100,17 +160,19 @@ takes effect on the next deploy.
 | `SLACK_MAINTENANCE_BOT_SECRET_NAME` | `slack-maintenancebot-token` | Secret holding `SLACK_MAINTENANCE_BOT_TOKEN`. |
 | `CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME` | `/<stage>/clickup/cmms/pmSchedule` | SSM parameter built from `configs/clickup_cmms_pmSchedule.json`. |
 | `ROUTER_CONFIG_PARAMETER_NAME` | `/<stage>/config/router/slack-event-router` | SSM parameter built from `configs/router_config.json`. |
-| `DRY_RUN` | `true` on stage, `false` on prod | On stage, log what would be completed and write nothing. Only the exact value `false` writes to ClickUp; unset or anything else is a dry run. |
+| `PM_COMPLETIONS_TABLE_NAME` | `PMReminderCompletions-<stage>` | The completions table. |
+| `DRY_RUN` | `true` on stage, `false` on prod | On stage, log what would be completed and write nothing, to ClickUp or the table (it reads the table to report `duplicate` or `stale`). Only the exact value `false` writes; unset or anything else is a dry run. |
 
 ## AWS infrastructure
 
 - **Role** `PMReminderReactionLambdaRole`: writes logs to its own log group only;
   `ssm:GetParameter` on the two parameters above; `secretsmanager:GetSecretValue` on the
-  two secrets above.
+  two secrets above; `dynamodb:GetItem` and `UpdateItem` on the completions table.
+- **Table** `PMReminderCompletions-<stage>`, pay per request, TTL on `expires_at`.
 - **Log group** `/asmbly/lambda/PMReminderReactionFunction-<stage>`, kept 14 days.
-- **Timeout** 90 seconds: up to four Slack and ClickUp calls, each with an 8-second
-  connect and an 8-second read timeout (64 seconds at worst), plus SSM and Secrets
-  Manager.
+- **Timeout** 90 seconds. The worst case of every Slack, ClickUp and DynamoDB timeout
+  added up is longer than that; a run cut off by the timeout leaves a `pending` claim,
+  which the retry and takeover rules above handle.
 - **Output** `PMReminderReactionFunctionArn` of the Facilities stack, used by the router.
 
 The Maintenance Bot needs `channels:history` (and `groups:history` for a private
@@ -125,6 +187,19 @@ The log lines to look for:
 - `Ignored event '<event_id>': <reason>`
 - `Could not read reminder ...`, `Could not read task ...`, `Could not complete task ...`
 - `Task <id> is already closed`
+- `Task <id>: duplicate for reminder <ts>`, `Task <id>: stale for reminder <ts>`
+- `Reminder <ts> for task <id> is older than its last completion (date_done)`
+- `Task <id> keeps its pending claim for up to 300 seconds` (after a failed update)
+- `Task <id> was completed although the update reported an error`
+- `Could not record completion of task <id>: <DynamoDB error code>`, `Could not record
+  task <id> as done: ...`, `Could not read the completion record of task <id>: ...`,
+  `Could not read the record that blocked the claim on task <id>`
+- `The claim on task <id> was written but its response was lost` (an error; `failed`)
+- `Could not re-read task <id> after its update failed`
+- `Task <id>: an earlier claim landed before reminder <ts> was posted`
+- `The claim on task <id> expired before it was recorded as done`
+- `Task <id>: an earlier update landed but could not be recorded; check the record`
+- `Dry run: task <id>: <duplicate or stale> for reminder <ts>` (stage)
 - `Missing environment variables: ...` and `PM schedule config is missing list_id or
   complete_status` (`misconfigured`)
 - `Unexpected error handling event ...` (with a traceback): an AWS call (SSM, Secrets
@@ -157,4 +232,13 @@ or add the ✅ and test before prod routing is live.
    `tests/fixtures/reaction_added_event.json`, after setting `channel`, `ts` and `user`.
 4. The log group `/asmbly/lambda/PMReminderReactionFunction-stage` shows
    `Dry run: would complete task <id>`. With `reaction` set to `eyes` it shows
-   `Ignored event`.
+   `Ignored event`. The stage table stays empty.
+
+### On the first prod ✅
+
+Stage never writes to the table, so `duplicate` and `stale` first run for real on prod.
+On the first prod ✅, add a second ✅ from another account to the same reminder and
+check the log: one `Completed task` line and one `duplicate` line, and the task's due
+date in ClickUp moved one cycle. Also check that the reopened task's `date_done` and
+`date_closed` are not later than its next reminder; if ClickUp stamps them on reopening,
+every later ✅ would be `stale`. This check is required before relying on the feature.

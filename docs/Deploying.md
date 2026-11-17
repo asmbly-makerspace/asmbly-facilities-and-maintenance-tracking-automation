@@ -200,6 +200,8 @@ The change adds `ClassPhotoUploadApiFunction-{stage,prod}`, `ClassPhotoUploadPag
 
 The class list cache (epic #114) later added the DynamoDB table `ClassPhotoClassListCache-{stage,prod}` to both deploy policies (with the `Describe…`, `GetResourcePolicy` and `ListTagsOfResource` reads CloudFormation's table handler makes, on that table only), and the EventBridge rule `class-photo-class-list-refresh-prod` (with its tagging and `ListTargetsByRule`) to the prod policy only, because stage has no scheduled refresh. Redeploy the role as in item 2 before that change reaches `stage`. Nothing else needs setting up: the cache fills itself on the first visit.
 
+The PM reminder ✅ handler (epic #7) added the DynamoDB table `PMReminderCompletions-{stage,prod}` to both data policies, in table management and in the after-create reads (the Sid is now `AllowTableReadsAfterCreate`, covering both tables). Redeploy the role as in item 2 before that change reaches `stage`.
+
 To stop new pull requests at once (for example if the key leaks), suspend the App or uninstall it from `asmbly-classes`, then rotate the key as in step 3.
 
 ## Automated Production Deployment (via GitHub Actions)
