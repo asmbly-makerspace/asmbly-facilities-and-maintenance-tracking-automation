@@ -9,13 +9,15 @@
       "title": "PM channel config and Slack message helpers",
       "file": "phase-1-config-and-slack-helpers.md",
       "status": "done",
-      "review_rounds": 1
+      "review_rounds": 1,
+      "squashed_sha": "f18453e96dbc23610b6c24b390afcf0898c2cc09"
     },
     {
       "id": 2,
       "title": "PM reminder reaction handler",
       "file": "phase-2-reaction-handler.md",
-      "status": "pending"
+      "status": "done",
+      "review_rounds": 3
     },
     {
       "id": 3,
@@ -45,11 +47,12 @@
   "integration": null,
   "final_pr_number": null,
   "admin_actions": [
-    "Before phase 2 reaches stage: redeploy AsmblyFacilitiesMaintTrackingStack-cicd by hand (adds PMReminderReactionFunction-{stage,prod}, log groups, table PMReminderCompletions-{stage,prod}).",
+    "FIRST, before this reaches stage: redeploy AsmblyFacilitiesMaintTrackingStack-cicd by hand (phase 2 adds PMReminderReactionFunction-{stage,prod} and log groups; phase 3 may add the PMReminderCompletions table).",
     "Before phase 4 reaches prod: supply Slack channel IDs for 3d-printing, ceramics, electronics, lasers, metal-shop, textiles in configs/router_config.json pm_channels (only woodshop-maintenance C0CJAK1D725 is filled in).",
     "Before phase 4 reaches prod: confirm the Maintenance Bot is in all 7 PM channels with channels:history (groups:history if private), reactions:read, chat:write, users:read.",
     "Before prod: turn on ClickUp recurrence for Clean Metal Shop Sink (86a8be2bc).",
-    "On the first prod check mark: confirm API v2 PUT /task status=complete brings a recurring task back as to do with next due date."
+    "On the first prod check mark: confirm API v2 PUT /task status=complete brings a recurring task back as to do with next due date.",
+    "Before prod: confirm ClickUp list 901310894771 has a closed status named exactly 'complete' (stage is a dry run and cannot catch a wrong name)."
   ],
   "events": [
     {
@@ -124,6 +127,89 @@
       "type": "phase_done",
       "phase": 1,
       "checks": "pytest 2045 passed; cfn-lint ok (4 preexisting W3005); sam validate ok; sam build ok"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "phase_start",
+      "phase": 2
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 2,
+      "text": "Prep NEEDS_REVISION; amendments applied."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 2,
+      "text": "No reactions.get fallback: user counts if in users or count > len(users)."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 2,
+      "text": "Timeout 90s."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 2,
+      "text": "auth.test stays GET."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 2,
+      "text": "DRY_RUN fails closed: only exact 'false' writes to ClickUp (stage shares prod's list)."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 2,
+      "text": "IDs format-checked before outside calls."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 2,
+      "text": "REMINDER_PATTERN without DOTALL; whole text must be one-line reminder."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 2,
+      "text": "Phase 4 must remove 'routing added in phase 4' caveat from the function README."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 2,
+      "text": "Retry/redelivery completes a recurring task twice; phase 3 claim must be written before the PUT; phase 4 must not ship without phase 3."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 2,
+      "text": "Phase 3: re-derive CLAIM_EXPIRY_SECONDS for the 90s timeout; recheck 'remove and re-add \u2705' advice."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 2,
+      "text": "Phase 6: with truncated users, a forged event (#79) could name the wrong person in the ClickUp comment."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 2,
+      "text": "ClickUp secret read before message checks (as phase doc orders): one extra Secrets Manager call on ignored events."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "phase_done",
+      "phase": 2,
+      "checks": "pytest 2105 passed; cfn-lint no new; sam validate ok; sam build ok"
     }
   ]
 }

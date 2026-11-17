@@ -16,6 +16,9 @@ Parameters:
     Description: The ARN of the shared Common Utilities Lambda Layer.
 
   ClickUpWorkspaceFieldIdParameterName: { Type: String }
+  RouterConfigParameterName:
+    Type: String
+    Description: The name of the Slack event router's SSM parameter, which lists the PM channels (pm_channels).
 
 Conditions:
   IsProd: !Equals [!Ref Stage, 'prod']
@@ -139,7 +142,83 @@ Resources:
       Principal: "events.amazonaws.com"
       SourceArn: !GetAtt PMReminderBotScheduleRule.Arn
 
+  # --- Facilities: PM reminder checkmark reactions ---
+  PMReminderReactionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/asmbly/lambda/PMReminderReactionFunction-${Stage}"
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: facilities:pm-reminder-reaction
+
+  PMReminderReactionLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: PMReminderReactionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt PMReminderReactionLogGroup.Arn
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:clickup/api/token-*'
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:slack-maintenancebot-token-*'
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RouterConfigParameterName}'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Stage}/clickup/cmms/pmSchedule'
+      Tags:
+        - Key: Project
+          Value: facilities:pm-reminder-reaction
+
+  PMReminderReactionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "PMReminderReactionFunction-${Stage}"
+      Description: "Completes a PM Schedule task in ClickUp when someone adds a white check mark to its PM Bot reminder in Slack (invoked by the Slack event router)."
+      CodeUri: ../functions/facilities/pm_reminder_reaction/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      # auth.test, conversations.history, Get Task and Update Task, each with an 8-second
+      # connect and read timeout (up to 64 s), plus SSM and Secrets Manager; later phases add calls.
+      Timeout: 90
+      Role: !GetAtt PMReminderReactionLambdaRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref PMReminderReactionLogGroup
+      Layers:
+        - !Ref RequestsLayerARN
+        - !Ref CommonLayerARN
+      Environment:
+        Variables:
+          DRY_RUN: !If [IsProd, 'false', 'true']
+          CLICKUP_SECRET_NAME: 'clickup/api/token'
+          SLACK_MAINTENANCE_BOT_SECRET_NAME: 'slack-maintenancebot-token'
+          CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME: !Ref ClickUpPMScheduleParameter
+          ROUTER_CONFIG_PARAMETER_NAME: !Ref RouterConfigParameterName
+      Tags:
+        Project: facilities:pm-reminder-reaction
+
 Outputs:
   PMReminderBotFunctionArn:
     Description: "The ARN of the PM Reminder Bot Lambda Function"
     Value: !GetAtt PMReminderBotFunction.Arn
+  PMReminderReactionFunctionArn:
+    Description: "The ARN of the PM Reminder Reaction Lambda Function"
+    Value: !GetAtt PMReminderReactionFunction.Arn

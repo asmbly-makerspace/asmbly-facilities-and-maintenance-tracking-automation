@@ -10,7 +10,7 @@ estimated_size: L
 
 # Phase 2: PM reminder reaction handler
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-11-16 on branch feature/pm-reminder-checkmark-complete
 
 ## Required reading
 
@@ -53,13 +53,13 @@ once-only.
 - `functions/facilities/pm_reminder_reaction/tests/fixtures/reaction_added_event.json`:
   a router-forwarded body: `{"token": "VERIFICATION_TOKEN_SECRET", "type":
   "event_callback", "event_id": "Ev1", "event": {"type": "reaction_added", "user":
-  "U_REACTOR", "reaction": "white_check_mark", "item": {"type": "message", "channel":
+  "U0REACTOR", "reaction": "white_check_mark", "item": {"type": "message", "channel":
   "C0CJAK1D725", "ts": "1763100000.000100"}}}`
 - `functions/facilities/pm_reminder_reaction/tests/fixtures/reminder_message.json`: a
-  `conversations.history` message: `ts` as above, `bot_id: "B_PM"`, `username: "PM
+  `conversations.history` message: `ts` as above, `bot_id: "B0PMBOT"`, `username: "PM
   Bot"`, the text `[OVERDUE] woodshop - Downdraft Table - Check Downdraft Filters -
   Frequency: Every 3 weeks - ClickUp ID: 86a8eb482` (the literal pre-launch format), and
-  `reactions: [{"name": "white_check_mark", "users": ["U_REACTOR"], "count": 1}]`.
+  `reactions: [{"name": "white_check_mark", "users": ["U0REACTOR"], "count": 1}]`.
 - `functions/facilities/pm_reminder_reaction/tests/fixtures/clickup_task.json`: a Get
   Task answer: `id: "86a8eb482"`, `list: {"id": "901310894771"}`, `status: {"status":
   "to do", "type": "open"}`, `due_date: "1762300800000"`.
@@ -82,7 +82,7 @@ Module level: `logger = logging.getLogger(); logger.setLevel(logging.INFO)`;
 "done"})`; `_bot_id: str | None = None` (cached per container).
 
 ```python
-REMINDER_PATTERN = re.compile(r"\[[A-Z]+\] .+ - ClickUp ID: ([A-Za-z0-9]+)\s*", re.DOTALL)
+REMINDER_PATTERN = re.compile(r"\[[A-Z]+\] .+ - ClickUp ID: ([A-Za-z0-9]+)\s*")  # one line, no DOTALL
 
 def parse_reminder_task_id(text: str) -> str | None:
     """The ClickUp task ID from a PM Bot reminder's text, or None if it isn't one (fullmatch)."""
@@ -106,8 +106,8 @@ Flow, in order:
    `SLACK_MAINTENANCE_BOT_SECRET_NAME`, `CLICKUP_PM_SCHEDULE_CONFIG_PARAM_NAME`,
    `ROUTER_CONFIG_PARAMETER_NAME`. Any missing: `logger.error("Missing environment
    variables: %s", ", ".join(names))` and `_result(500, "misconfigured")`.
-   `DRY_RUN = os.environ.get("DRY_RUN", "false").lower() == "true"`, read inside the
-   handler so tests can set it.
+   `DRY_RUN` is read inside the handler so tests can set it, and fails closed: only the
+   exact value `false` writes (amended in review).
 3. **Cheap checks, no outside calls.** Ignored (`_result(200, "ignored")`, one
    `logger.info("Ignored event %s: %s", event_id, reason)`) when: `event.type !=
    "reaction_added"`; `reaction != "white_check_mark"`; `item.type != "message"`; or
@@ -141,7 +141,8 @@ Flow, in order:
    for user %s", task_id, ts, channel, user)` → `_result(200, "would_complete")`.
 10. **Complete.** `clickup.update_task(clickup_token, task_id, {"status":
     complete_status})`. `ValueError`: `logger.error("Could not complete task %s for
-    event %s", task_id, event_id)` → `_result(200, "failed")`, task unchanged. Success:
+    event %s", task_id, event_id)` → `_result(200, "failed")`. The task's state is then
+    unknown (a timed-out PUT may have been applied); phase 3 must not treat it as unchanged. Success:
     `logger.info("Completed task %s from reminder %s in %s for user %s", task_id, ts,
     channel, user)` → `_result(200, "completed")`.
 
@@ -219,8 +220,9 @@ New resources (after the PM Reminder Bot block):
       CodeUri: ../functions/facilities/pm_reminder_reaction/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
-      # Two Slack calls and two ClickUp calls, each with an 8-second timeout.
-      Timeout: 30
+      # auth.test, conversations.history, Get Task and Update Task at 8 seconds each,
+      # plus SSM and Secrets Manager; phases 5 and 6 add more calls.
+      Timeout: 90
       Role: !GetAtt PMReminderReactionLambdaRole.Arn
       LoggingConfig:
         LogGroup: !Ref PMReminderReactionLogGroup
@@ -301,6 +303,38 @@ The same two lines with `-prod` in `GitHubDeployPolicyprod`. Both policies are a
   Until phase 4 the router doesn't send it events; phase 4 checks this entry is true.
   The route table is unchanged.
 
+## Prep amendments (offshore, 2026-11-16)
+
+Decisions taken by `/prep` for this phase. They override the text above where they differ.
+
+1. **Timeout 90 s** (raised from 60 in review), not 30: four 8-second HTTP calls plus SSM and Secrets Manager
+   exceed 30 s, and phases 5 and 6 add calls.
+2. **Truncated `reactions[].users`**: the check in step 6 passes when the event's user is
+   in `users`, or when the ✅ entry's `count` is greater than `len(users)` (Slack
+   truncated the list). A real ✅ is on the message either way, so a forged event can only
+   repeat it. No `reactions.get` fallback (no new helper, no extra call).
+3. **`auth.test` stays a GET**: Slack accepts GET with a Bearer header for every Web API
+   method, and auth.test is read-only.
+4. **`complete_status` unverified**: no ClickUp tool was available. A wrong status makes
+   ClickUp answer 400, which the handler logs as `Could not complete task` → `failed`.
+   New admin action before prod: confirm list `901310894771` has a status named
+   `complete` of type closed/done (ClickUp → list → statuses).
+5. **Event IDs read before the `try`**, each with `.get` and type checks, so the
+   top-level catch can always log `event_id`.
+6. **Format checks in step 3**: `channel` must match `^[CG][A-Z0-9]+$`, `ts`
+   `^\d+\.\d+$`, `user` `^[UW][A-Z0-9]+$`; anything else is ignored. The step 1 log
+   line uses `%r` for these values so a forged event can't inject log lines.
+7. **`get_bot_id` errors**: a `SlackRequestError` from `get_bot_id` is handled like one
+   from `get_channel_message` (`failed`, logged).
+8. **Malformed ClickUp task**: step 8 reads `list.id` and `status.type` with `.get` and
+   type checks; a task without a readable `list.id` is `failed` (logged with the task ID),
+   not a 500.
+9. **`failed` after `update_task` means "unknown"**, not "unchanged" (see step 10).
+10. **No retry on 429/5xx**: the README tells people to remove and re-add the ✅ if
+    nothing happens; `already_closed` rarely fires on recurring tasks (ClickUp reopens
+    them), so phase 3's claim is the duplicate guard. The README names
+    `:white_check_mark:` exactly (other check emojis are ignored).
+
 ## Tests
 
 `functions/facilities/pm_reminder_reaction/tests/test_pm_reminder_reaction.py`, all
@@ -317,7 +351,7 @@ with `aws`, `clickup` and `slack` patched where used:
   reminder line followed by extra prose return `None`.
 - `test_checkmark_on_reminder_completes_task`: happy path. Asserts `update_task` was
   called once with `(clickup_token, "86a8eb482", {"status": "complete"})`, outcome
-  `completed`, and the log has the task ID and `U_REACTOR` but not the message text or
+  `completed`, and the log has the task ID and `U0REACTOR` but not the message text or
   `VERIFICATION_TOKEN_SECRET`.
 - `test_other_reaction_is_ignored_without_calls`: `reaction: "eyes"` → `ignored`;
   `get_json_parameter`, `get_secret`, Slack and ClickUp mocks not called.
@@ -346,7 +380,7 @@ with `aws`, `clickup` and `slack` patched where used:
   log has the task ID; no exception text beyond the helper's safe message.
 - `test_missing_env_var_answers_500`: each required variable removed in turn →
   `misconfigured`, 500, no outside calls.
-- `test_missing_complete_status_answers_500`.
+- `test_missing_pm_config_key_answers_500` (`complete_status` and `list_id`).
 - `test_unexpected_exception_is_caught`: `get_secret` raises `RuntimeError("SECRET")` →
   500 `error`; `"SECRET"` not in the response body.
 - `test_bot_id_is_cached`: two invocations call `get_bot_id` once.
@@ -370,8 +404,9 @@ tests cover the new role. Run them.
 6. A task ID not in the PM Schedule list changes nothing (#163 criterion 4).
 7. An event whose channel and `ts` aren't a PM Bot reminder carrying the user's ✅
    changes nothing (#163 criterion 5).
-8. A ClickUp error leaves the task unchanged and logs the task ID (#163 criterion 6,
-   first half; the retry half is phase 3).
+8. A ClickUp error on reading the task leaves it unchanged; any ClickUp error is logged
+   with the task ID and answered `failed` (#163 criterion 6, first half; the retry half
+   is phase 3).
 9. `PMReminderReactionFunction-${Stage}` exists with log group
    `/asmbly/lambda/PMReminderReactionFunction-${Stage}` (14 days), an explicit role
    whose logs grant is that log group only, `ssm:GetParameter` on exactly the router
@@ -389,7 +424,8 @@ sam validate --region us-east-2
 sam build
 ```
 
-On stage after deploy (the deploy role redeployed first): invoke
+On stage after deploy (the deploy role redeployed first; once prod routes PM channels,
+a real ✅ also completes the task in prod, so use a reminder for work actually done): invoke
 `PMReminderReactionFunction-stage` by hand with the fixture body, using the channel ID
 and `ts` of a real current PM reminder (copy the message link in Slack: the `p…` part
 is the `ts` without its dot) and the user ID of someone who has ✅ on it. The log group
@@ -399,12 +435,45 @@ is the `ts` without its dot) and the user ID of someone who has ✅ on it. The l
 
 ## Admin actions
 
+Before prod: confirm the ClickUp PM Schedule list has a closed status named `complete`
+(Prep amendment 4).
+
 Redeploy `AsmblyFacilitiesMaintTrackingStack-cicd` (docs/Deploying.md, "How to Manage
 the Deployer Role") before this reaches `stage` (README admin action 1).
 
 ## Hand-off
 
-_Filled in when the phase is done._ Phase 3 relies on: the handler's flow and outcome
+Done. Phase 3 and later can rely on:
+
+- `functions/facilities/pm_reminder_reaction/lambda_function.py`: `lambda_handler(event,
+  context)` never raises; outcomes `ignored`, `already_closed`, `would_complete`,
+  `completed`, `failed`, `misconfigured` (500), `error` (500), via `_result(status,
+  outcome)`. The completion step is `_handle(inner, item, event_id)`, after the dry-run
+  check; the ClickUp PUT is the last outside call. `failed` after the PUT means the task's
+  state is unknown. `parse_reminder_task_id(text) -> str | None` (one-line fullmatch).
+  `_user_checkmarked(message, user)`, cached `_get_bot_id(token)` (`_bot_id` module global;
+  tests reset it with `monkeypatch.setattr`). `SlackRequestError` is imported directly,
+  so `slack` can be patched as a MagicMock.
+- IDs are format-checked before any outside call: channel `^[CG][A-Z0-9]+$`, ts
+  `^\d+\.\d+$`, user `^[UW][A-Z0-9]+$` (fixtures use `U0REACTOR`, bot `B0PMBOT`).
+- Tests: `Mocks` fixture in `tests/test_pm_reminder_reaction.py` (mutable `message`,
+  `task`, `router_config`, `pm_config`), fixtures in `tests/fixtures/`.
+- `templates/facilities.yaml`: `PMReminderReactionLambdaRole`,
+  `PMReminderReactionLogGroup`, `PMReminderReactionFunction` (Timeout 90), parameter
+  `RouterConfigParameterName`, output `PMReminderReactionFunctionArn`.
+- Deploy role: function and log group named for stage and prod; the table for phase 3
+  still needs its Data-policy entries.
+- Deferred: the README note "routing is added in phase 4" and the `docs/README.md`
+  trigger line are true only once phase 4 lands (same pull request). A run that times
+  out is retried by Lambda; phase 3's claim must be written before the PUT.
+- `DRY_RUN` fails closed: only the exact value `false` writes (later phases' Slack
+  replies, comments and table writes should use the same `dry_run`). Phase 3 prep:
+  re-derive `CLAIM_EXPIRY_SECONDS` from the 90-second timeout (it was justified from 30),
+  and recheck the README's "remove the ✅ and add it again" advice against the claim.
+- Phase 6 note: the truncated-`users` path accepts the event's user without seeing it
+  in the list, so a forged event (#79) could name another person in the ClickUp comment.
+
+Phase 3 relies on: the handler's flow and outcome
 names (`ignored`, `already_closed`, `would_complete`, `completed`, `failed`,
 `misconfigured`, `error`); `parse_reminder_task_id`; the role
 `PMReminderReactionLambdaRole` and function `PMReminderReactionFunction` in
