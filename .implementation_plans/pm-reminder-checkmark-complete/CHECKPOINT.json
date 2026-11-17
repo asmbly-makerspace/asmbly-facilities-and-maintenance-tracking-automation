@@ -25,13 +25,15 @@
       "title": "Complete once per cycle",
       "file": "phase-3-complete-once.md",
       "status": "done",
-      "review_rounds": 3
+      "review_rounds": 3,
+      "squashed_sha": "b372f139daa89e8434b3c5ba3c2d572d62ae1c98"
     },
     {
       "id": 4,
       "title": "Route PM channel reactions to the handler",
       "file": "phase-4-router-wiring.md",
-      "status": "pending"
+      "status": "done",
+      "review_rounds": 2
     },
     {
       "id": 5,
@@ -56,7 +58,9 @@
     "On the first prod check mark: confirm API v2 PUT /task status=complete brings a recurring task back as to do with next due date.",
     "Optional: one read-only GET https://api.clickup.com/api/v2/task/86a8eb482 with the Lambda's token to see whether date_done survives a recurrence reopen in v2 (decides whether the stale check can fire; the DynamoDB claim is the guard either way).",
     "Decide (owner, ClickUp hygiene, not code): possible duplicate tasks 'Update iPad' (86acdg2cu, 86acdg066) and 'Inspect Blades' (86a88jye1, 86a88jxn2).",
-    "On the first prod \u2705: add a second \u2705 to the same reminder, expect one completed and one duplicate with the due date moved one cycle; check ClickUp doesn't stamp date_done later than the next reminder (README check, required)."
+    "On the first prod \u2705: add a second \u2705 to the same reminder, expect one completed and one duplicate with the due date moved one cycle; check ClickUp doesn't stamp date_done later than the next reminder (README check, required).",
+    "Optional, for a person with AWS access: stage router-path test (invoke facilities-slack-event-router-stage with an API Gateway-shaped event; steps in the handler README). Invokes functions, so not read-only.",
+    "Emergency stop: set prod DRY_RUN to 'true' on PMReminderReactionFunction (templates/facilities.yaml)."
   ],
   "events": [
     {
@@ -307,6 +311,61 @@
       "type": "phase_done",
       "phase": 3,
       "checks": "pytest 2153 passed; cfn-lint no new; sam validate ok; sam build ok"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "phase_start",
+      "phase": 4
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 4,
+      "text": "Prep READY; no open PR for #79/#92."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 4,
+      "text": "Router guards non-string channel IDs."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 4,
+      "text": "Routed channel with unset *_LAMBDA_ARN now logs ERROR (also purchase/problem branches; log level only)."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 4,
+      "text": "Seam test checks every *_LAMBDA_ARN from param to grant to output to code."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "decision",
+      "phase": 4,
+      "text": "Do not promote phase 4 without phase 5 (no Slack feedback otherwise)."
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 4,
+      "text": "templates/routers.yaml lacks AWS::LanguageExtensions transform (preexisting; also administrative.yaml, networking.yaml).",
+      "recommend": "follow-up issue"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "deferred",
+      "phase": 4,
+      "text": "#79: /slack/events unauthenticated now forwards PM reactions; a forged burst could use up the Slack rate limit. Raises #79's priority; PR Risk.",
+      "recommend": "comment on #79 / PR Risk"
+    },
+    {
+      "ts": "2026-11-16",
+      "type": "phase_done",
+      "phase": 4,
+      "checks": "pytest 2160 passed; cfn-lint no new; sam validate ok; sam build ok"
     }
   ]
 }

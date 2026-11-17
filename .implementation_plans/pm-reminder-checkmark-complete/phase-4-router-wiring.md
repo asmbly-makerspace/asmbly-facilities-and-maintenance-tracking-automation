@@ -10,7 +10,7 @@ estimated_size: M
 
 # Phase 4: Route PM channel reactions to the handler
 
-> **Status:** [ ] Pending
+> **Status:** [x] Complete — 2026-11-16 on branch feature/pm-reminder-checkmark-complete
 
 ## Required reading
 
@@ -197,6 +197,16 @@ history scopes. No deploy-role change in this phase.
 
 ## Hand-off
 
-_Filled in when the phase is done._ Phase 5 relies on: live events reaching the
-handler; the router unchanged otherwise. #79 and #92 rebase on this phase's router and
-`templates/routers.yaml`.
+- The router forwards every reaction in a `pm_channels` channel to
+  `PM_REMINDER_LAMBDA_ARN` (`InvocationType='Event'`, original body). Purchase-request
+  and problem-report routing is unchanged. A non-string `item.channel` is ignored; a
+  routed channel whose ARN variable is missing logs an error and returns 200.
+- `templates/routers.yaml` has the parameter `PMReminderReactionFunctionArn`, passed
+  from `FacilitiesStack.Outputs.PMReminderReactionFunctionArn` in `template.yaml`, and
+  `lambda:InvokeFunction` on it. `tests/test_templates.py`
+  (`test_router_can_invoke_every_function_it_routes_to`) pins the seam.
+- Phase 5 can rely on live events reaching the handler in prod once this reaches
+  `main`. Don't promote phase 4 without phase 5: ✅s would complete tasks with no Slack
+  feedback (`/offshore` ships them together).
+- Deferred: the six PM channel IDs other than `#woodshop-maintenance` (README admin
+  action 2). #79 and #92 rebase on this phase's router and `templates/routers.yaml`.

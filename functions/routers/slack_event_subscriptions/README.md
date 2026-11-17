@@ -22,7 +22,7 @@ The router is a serverless AWS Lambda function triggered by an API Gateway endpo
 *   **Slack Event Subscription:** A single subscription in the Slack App that listens for `reaction_added` events and sends them to one URL.
 *   **AWS API Gateway:** Provides the public `/slack/events` endpoint that Slack sends requests to.
 *   **AWS Lambda (This Function):** The serverless function containing the routing logic.
-*   **AWS SSM Parameter Store:** Securely stores the router's configuration, which maps Slack Channel IDs to the ARNs of the target Lambda functions.
+*   **AWS SSM Parameter Store:** Stores the router's configuration: the Slack channel IDs that are routed (the target functions' ARNs are environment variables).
 
 ### Visual Flow
 
@@ -50,14 +50,19 @@ The router is a serverless AWS Lambda function triggered by an API Gateway endpo
        |      (7a) Process Purchase Request...        (7b) Process Problem Report...
 ```
 
+A third target, the **PM Reminder Reaction Handler** (`PMReminderReactionFunction`,
+`functions/facilities/pm_reminder_reaction/`), receives reactions in the PM channels
+(`pm_channels`, below). It completes the ClickUp PM task named in a PM Bot reminder that
+gets a ✅.
+
 ### Step-by-Step Data Flow:
 
-1.  **Add Reaction:** A user adds an emoji reaction to a message in a monitored Slack channel (e.g., `#purchase-requests` or `#problem-reports`).
+1.  **Add Reaction:** A user adds an emoji reaction to a message in a monitored Slack channel (e.g., `#purchase-requests`, `#problem-reports`, or a PM channel such as `#woodshop-maintenance`).
 2.  **Send POST Request:** Slack sends a POST request with the event payload to the single `/slack/events` endpoint on the AWS API Gateway.
 3.  **Trigger Router Function:** The API Gateway request triggers this router Lambda function.
-4.  **Fetch Configuration:** The router fetches its configuration from an SSM Parameter. This configuration contains a JSON object mapping channel IDs to the ARNs of the target Lambda functions.
-5.  **Determine Target:** The function inspects the event payload to find the `channel_id` where the reaction occurred. It uses this ID to look up the corresponding target Lambda ARN from its configuration.
-6.  **Invoke Target Function:** The router makes an asynchronous `invoke` call to the target Lambda function (e.g., `PurchaseRequestReactionFunction` or `ProblemReportReactionFunction`), passing the original event payload for processing.
+4.  **Fetch Configuration:** The router fetches its configuration from an SSM Parameter. This configuration holds the channel IDs that are routed: the purchase-request channel, the problem-report channel and the PM channels.
+5.  **Determine Target:** The function inspects the event payload to find the `channel_id` where the reaction occurred. It compares this ID with `purchase_request_channel_id`, `problem_report_channel_id` and the keys of `pm_channels` in its configuration, and picks the matching target's ARN from its environment variables. A reaction in any other channel is logged and ignored.
+6.  **Invoke Target Function:** The router makes an asynchronous `invoke` call to the target Lambda function (`PurchaseRequestReactionFunction`, `ProblemReportReactionFunction` or `PMReminderReactionFunction`), passing the original event payload for processing.
 
 ## AWS Infrastructure
 
@@ -100,13 +105,41 @@ The router's configuration is managed in a single SSM Parameter, which is create
 ```
 
 `pm_channels` lists the channels the PM Reminder Bot posts to, by ID (`{channel_id:
-channel_name}`). The router doesn't read it yet; it is for the PM reminder ✅ handler
-that is being built (plan `pm-reminder-checkmark-complete`).
+channel_name}`; the name is for people and for `tests/test_configs.py`). The router
+forwards every reaction in these channels to the PM Reminder Reaction Handler, which
+acts only on a ✅ on a PM Bot reminder and ignores everything else. To add or remap a PM
+channel, see "Adding or remapping a PM channel" in
+`functions/facilities/pm_bot_reminder/README.md`.
 The list is partial: only `#woodshop-maintenance` is in it until an admin confirms the
 IDs of the other PM channels (3d-printing, ceramics, electronics, lasers, metal-shop,
-textiles). A ✅ in a channel that isn't listed will be ignored.
+textiles). A reaction in a channel that isn't listed is ignored.
+
+To stop ✅s completing PM tasks in an emergency, set the PM Reminder Reaction Handler's
+`DRY_RUN` to `'true'` for prod in `templates/facilities.yaml`
+(`PMReminderReactionFunction` → `Environment.Variables`) and deploy: reactions are
+still forwarded, but the handler only logs what it would do. Emptying `pm_channels`
+doesn't work (a test requires the list to be non-empty and to include every mapped PM
+channel), and neither does removing only the router's PM branch (the seam test in
+`tests/test_templates.py` requires the code to read `PM_REMINDER_LAMBDA_ARN`).
 
 The name of the SSM parameter itself is passed to the Lambda function via the `ROUTER_CONFIG_PARAMETER_NAME` environment variable.
+
+### Environment variables
+
+All are set in `templates/routers.yaml`; the ARNs come from the other stacks through `template.yaml` (`RoutersStack`).
+
+| Variable | What it is |
+|----------|------------|
+| `ROUTER_CONFIG_PARAMETER_NAME` | The SSM parameter that holds `configs/router_config.json` |
+| `PURCHASE_REQUEST_LAMBDA_ARN` | Target for reactions in the purchase-request channel |
+| `PROBLEM_REPORT_LAMBDA_ARN` | Target for reactions in the problem-report channel |
+| `PM_REMINDER_LAMBDA_ARN` | Target for reactions in the `pm_channels` channels |
+
+The function's role can invoke these three functions and nothing else. A test
+(`tests/test_templates.py`, `test_router_can_invoke_every_function_it_routes_to`) fails
+if a `*_LAMBDA_ARN` target isn't in the invoke permission or isn't passed from
+`template.yaml`. If a target's variable is missing, reactions in its channel are
+logged as an error (`<VARIABLE> environment variable not set`) and ignored.
 
 ## Deployment
 

@@ -160,7 +160,7 @@ turned into dashes (`Metal Shop` → `#metal-shop`). `workspace_channel_map` in
 - When you map a workspace to a new channel, also add that channel's ID to
   `pm_channels` in `configs/router_config.json`; a test fails otherwise.
 - `complete_status` is not read by this function. It names the ClickUp status that
-  marks a PM task done, for the PM reminder ✅ handler that is being built.
+  marks a PM task done, for the [PM Reminder Reaction Handler](../pm_reminder_reaction/README.md).
 - The message text still starts with the workspace name (`[OVERDUE] woodshop - …`), even
   when it posts to a mapped channel.
 - If any entry is invalid (an uppercase or spaced channel name, a value that isn't
@@ -181,6 +181,33 @@ finishes with 200, so after a change, search the
 `/asmbly/lambda/PMReminderBotFunction-prod` log group for `not_in_channel` and
 `channel_not_found` after the next run (Saturday 04:30 UTC, which is Friday night in
 Austin).
+
+### Adding or remapping a PM channel
+
+A ✅ on a reminder completes its ClickUp task only in a channel the Slack Event Router
+forwards to the PM Reminder Reaction Handler (`functions/facilities/pm_reminder_reaction/`).
+Adding or moving a PM channel changes `configs/` only, no template:
+
+1. `configs/clickup_cmms_pmSchedule.json` → `workspace_channel_map`, if the channel
+   isn't named after its workspace (this is where the bot posts).
+2. `configs/router_config.json` → `pm_channels`, as `"<channel ID>": "<channel name>"`
+   (this is where ✅s are acted on). The channel ID is in Slack's channel details, at the
+   bottom of the About tab.
+3. Invite the Maintenance Bot to the channel. It needs to be a member to read the
+   reminder a ✅ was added to.
+
+`tests/test_configs.py` fails if a channel in `workspace_channel_map` is missing from
+`pm_channels`. A workspace without a mapping posts to the channel named after it; add
+that channel's ID to `pm_channels` by hand, because no test can check it.
+
+**Renaming a PM channel in Slack:** the ID stays the same, so ✅s keep working. Update
+the name in `pm_channels`. Posting needs a change too, or Slack refuses Saturday's posts
+to the old name (`channel_not_found`): for a mapped channel, update its value in
+`workspace_channel_map`; for a channel named after its workspace, add a
+`workspace_channel_map` entry from the workspace to the new name.
+
+Only `:white_check_mark:` is acted on. Every other reaction, including `:loading:` for
+"in progress", does nothing, and removing a ✅ doesn't reopen the task.
 
 ## Testing
 

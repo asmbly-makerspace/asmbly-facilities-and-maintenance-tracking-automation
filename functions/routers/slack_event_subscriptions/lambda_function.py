@@ -82,17 +82,33 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         purchase_request_channel_id = router_config.get("purchase_request_channel_id")
         problem_report_channel_id = router_config.get("problem_report_channel_id")
+        # {channel_id: channel_name}: the channels the PM Reminder Bot posts to. The PM
+        # handler acts only on a ✅ and drops every other reaction itself.
+        pm_channels = router_config.get("pm_channels") or {}
 
         # --- Determine Target Function ---
-        if not channel_id:
-            logger.warning("Event is missing channel ID.")
+        if not isinstance(channel_id, str) or not channel_id:
+            logger.warning("Event is missing a valid channel ID.")
             return {"statusCode": 200, "body": json.dumps("Event ignored.")}
 
-        target_lambda_arn = None
+        target_variable = None
         if channel_id == purchase_request_channel_id:
-            target_lambda_arn = os.environ.get("PURCHASE_REQUEST_LAMBDA_ARN")
+            target_variable = "PURCHASE_REQUEST_LAMBDA_ARN"
         elif channel_id == problem_report_channel_id:
-            target_lambda_arn = os.environ.get("PROBLEM_REPORT_LAMBDA_ARN")
+            target_variable = "PROBLEM_REPORT_LAMBDA_ARN"
+        elif isinstance(pm_channels, dict) and channel_id in pm_channels:
+            target_variable = "PM_REMINDER_LAMBDA_ARN"
+
+        target_lambda_arn = os.environ.get(target_variable) if target_variable else None
+        if target_variable and not target_lambda_arn:
+            # A routed channel whose target isn't configured is a deploy error, not an
+            # expected miss. Still 200, so Slack doesn't retry.
+            logger.error(
+                "%s environment variable not set; reaction in channel %s not forwarded.",
+                target_variable,
+                channel_id,
+            )
+            return {"statusCode": 200, "body": json.dumps("No action taken for this reaction.")}
 
         if not target_lambda_arn:
             logger.info(

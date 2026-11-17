@@ -76,10 +76,10 @@ The project is organized into several functional areas, with a core infrastructu
 
 These services provide core functionality used by other parts of the system.
 * **Slack Event Router** (`SlackEventSubscriptionsRouterFunction`)
-    * **What it does:** Acts as the single entry point for all Slack `reaction_added` events. It inspects the event and forwards it to the correct handler function based on the channel where the reaction occurred.
+    * **What it does:** Acts as the single entry point for all Slack `reaction_added` events. It inspects the event and forwards it to the correct handler function based on the channel where the reaction occurred: reactions in the purchase-request channel, the problem-report channel and the PM channels (`pm_channels` in `configs/router_config.json`).
     * **How it's triggered:** An HTTP `POST` from a Slack Event Subscription.
     * **Webhook URL:** `https://facilities.asmbly.org/slack/events`
-    * **Config Location:** Slack Bot - Maintenance Bot -> Event Subscriptions
+    * **Config Location:** Slack Bot - Maintenance Bot -> Event Subscriptions; the routed channel IDs are in `configs/router_config.json`, and each handler's ARN is an environment variable set in `templates/routers.yaml`.
 
 #### Ceramics
 

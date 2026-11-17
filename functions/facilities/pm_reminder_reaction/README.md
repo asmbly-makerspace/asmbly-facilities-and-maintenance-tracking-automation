@@ -30,9 +30,20 @@ its next due date.
 
 The **Slack Event Router** (`functions/routers/slack_event_subscriptions/`) invokes it
 asynchronously (`InvocationType='Event'`) with the Slack `reaction_added` body, for
-reactions in the channels listed in `pm_channels` in `configs/router_config.json`. That
-routing is added in phase 4 of the `pm-reminder-checkmark-complete` plan; until then
-nothing invokes the function except a manual test.
+reactions in the channels listed in `pm_channels` in `configs/router_config.json`. The
+router forwards every reaction in those channels; this function drops everything but a
+✅ before any outside call. Each forward shows in the router's log group
+(`/asmbly/lambda/facilities-slack-event-router-<stage>`) as `Invoking target Lambda:
+…PMReminderReactionFunction-<stage>`.
+
+If a ✅ seems to do nothing, check the router's log first: a reaction in a channel
+missing from `pm_channels` shows as `No target function determined`, a missing target
+as `PM_REMINDER_LAMBDA_ARN environment variable not set`, and a failed forward as
+`An unexpected error occurred` (the router still answers Slack with 200, so
+Slack doesn't retry). Then check this function's log.
+
+If many ✅s land at once (someone clearing a backlog), Slack may rate-limit the reminder
+lookups and some end as `Could not read reminder ...`. Remove that ✅ and add it again.
 
 It has no URL of its own.
 
@@ -228,11 +239,20 @@ or add the ✅ and test before prod routing is live.
 1. In Slack, copy the link of a current PM reminder. The `p…` part of the link is the
    message `ts` without its dot (`p1763100000000100` is `1763100000.000100`).
 2. Add a ✅ to it yourself, and find your Slack user ID (profile → ⋯ → Copy member ID).
+   The event's `user` must be the person whose ✅ is on that message; any other user ID
+   ends as `Ignored event` (the ✅ check), not a dry run.
 3. With AWS access, in the Lambda console test the stage function `PMReminderReactionFunction-stage` with
    `tests/fixtures/reaction_added_event.json`, after setting `channel`, `ts` and `user`.
 4. The log group `/asmbly/lambda/PMReminderReactionFunction-stage` shows
    `Dry run: would complete task <id>`. With `reaction` set to `eyes` it shows
    `Ignored event`. The stage table stays empty.
+5. To test the route through the router as well (its environment variable and invoke
+   permission), test the stage router `facilities-slack-event-router-stage` instead,
+   with an API Gateway-shaped event: `{"body": "<the same event, as a JSON string>"}`.
+   The router's log group `/asmbly/lambda/facilities-slack-event-router-stage` shows
+   `Invoking target Lambda: …PMReminderReactionFunction-stage`, and the handler's log
+   shows the same `Dry run` line. A person with AWS access runs these tests; they invoke
+   functions, so they aren't read-only.
 
 ### On the first prod ✅
 
